@@ -354,8 +354,15 @@ function renderUI(): string {
 const T=new URLSearchParams(location.search).get('t');const q=p=>p+(T?('?t='+T):'');
 function friendly(p,enabled){
   if(!p||p.error)return{em:'⚠️',t:'문제가 있어요',sub:(p&&p.error)||'',c:'red',ac:'—'};
-  if(p.action==='set'&&p.seasonMode==='cooling')return{em:'❄️',t:'시원하게 트는 중',sub:p.reason,c:'blue',ac:'냉방'};
-  if(p.action==='set'&&p.seasonMode==='heating')return{em:'🔥',t:'따뜻하게 트는 중',sub:p.reason,c:'orange',ac:'난방'};
+  const heating=p.action==='set'&&p.seasonMode==='heating';
+  const cooling=p.action==='set'&&p.seasonMode==='cooling';
+  if(!enabled){ // 자동 꺼짐: 지금 상황 "제안"만 표시 (에어컨엔 아무것도 안 보냄)
+    if(heating)return{em:'🔥',t:'난방이 필요해요',sub:'자동을 켜면 따뜻하게 맞춰줘요',c:'orange',ac:'수동'};
+    if(cooling)return{em:'❄️',t:'냉방이 필요해요',sub:'자동을 켜면 시원하게 맞춰줘요',c:'blue',ac:'수동'};
+    return{em:'😌',t:'지금 알맞아요',sub:'냉난방 필요 없는 상태',c:'green',ac:'수동'};
+  }
+  if(cooling)return{em:'❄️',t:'시원하게 트는 중',sub:p.reason,c:'blue',ac:'냉방'};
+  if(heating)return{em:'🔥',t:'따뜻하게 트는 중',sub:p.reason,c:'orange',ac:'난방'};
   if(p.action==='off')return{em:'⏹️',t:'에어컨 끄는 중',sub:p.reason,c:'gray',ac:'끄기'};
   return{em:'😌',t:'지금 알맞아요',sub:'에어컨 대기 중',c:'green',ac:'대기'};
 }
@@ -387,8 +394,8 @@ async function load(){
   }
   const chip=document.getElementById('chip');chip.className='chip '+f.c;
   chip.querySelector('.em').textContent=f.em;document.getElementById('chipt').textContent=f.t;
-  document.getElementById('chipsub').textContent=c.enabled?(f.sub||''):'자동 꺼짐 — 아래 스위치로 켜세요';
-  document.getElementById('t_ac').textContent=c.enabled?f.ac:'꺼짐';
+  document.getElementById('chipsub').textContent=f.sub||'';
+  document.getElementById('t_ac').textContent=f.ac;
   const tc=getComputedStyle(document.documentElement).getPropertyValue(f.c==='blue'?'--blue':f.c==='orange'?'--orange':f.c==='red'?'--red':'--label');
   document.getElementById('temp').style.color=(c.enabled&&(f.c==='blue'||f.c==='orange'))?tc:'';
 }
