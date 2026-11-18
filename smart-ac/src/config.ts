@@ -12,6 +12,10 @@ export interface Config {
   winterTarget: number;
   /** 이력폭(℃). 목표에서 이만큼 벗어나야 작동 → 깜빡임 방지 */
   deadband: number;
+  /** 여름 경고: 실내가 이 온도 이상이면 '너무 더움' 경고 */
+  alertHot: number;
+  /** 겨울 최저기준: 실내가 이 온도 이하면 '너무 추움' 경고 */
+  alertCold: number;
   /** 온습도계(센서) 기기 ID */
   sensorDeviceId: string;
   /** IR 에어컨 기기 ID */
@@ -31,6 +35,8 @@ export const DEFAULT_CONFIG: Config = {
   summerTarget: 25,
   winterTarget: 22,
   deadband: 1.5,
+  alertHot: 30,
+  alertCold: 15,
   sensorDeviceId: '',
   acDeviceId: '',
   lat: 37.5665, // 기본값: 서울 (배포 후 매장 위치로 변경)

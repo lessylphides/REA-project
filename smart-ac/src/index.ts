@@ -87,6 +87,7 @@ interface RunStatus {
   action?: string;
   reason?: string;
   sent?: string[];
+  alert?: { type: 'hot' | 'cold'; temp: number; threshold: number } | null;
   error?: string;
 }
 
@@ -109,6 +110,9 @@ async function runOnce(env: Env, opts: { force?: boolean; preview?: boolean } = 
     const { temp, humidity } = readSensor(sensor.deviceState ?? {});
     if (temp === null) throw new Error('센서에서 온도를 읽지 못함 (deviceState 키 확인 필요)');
     status.indoorTemp = temp; status.indoorHumidity = humidity;
+    status.alert = temp >= cfg.alertHot ? { type: 'hot', temp, threshold: cfg.alertHot }
+                 : temp <= cfg.alertCold ? { type: 'cold', temp, threshold: cfg.alertCold }
+                 : null;
 
     const weather = await getWeather(cfg.lat, cfg.lon, cfg.owmKey || env.OWM_API_KEY);
     status.outdoorTemp = weather?.outdoorTemp ?? null;
@@ -334,6 +338,10 @@ function renderUI(): string {
       <div><label>겨울 목표℃</label><input id="winterTarget" type="number" inputmode="decimal"></div>
       <div><label>여유℃</label><input id="deadband" type="number" inputmode="decimal" step="0.5"></div>
     </div></div>
+    <div class="fld"><div class="row2">
+      <div><label>여름 경고 ℃이상</label><input id="alertHot" type="number" inputmode="decimal"></div>
+      <div><label>최저기준 ℃이하</label><input id="alertCold" type="number" inputmode="decimal"></div>
+    </div><div class="mini">실내가 이 온도를 넘으면 상단에 경고가 떠요.</div></div>
     <div class="fld"><label>매장 위치 (주소)</label><input id="address" placeholder="예: 서울 동작구 동작대로3길 44">
       <button class="btn" id="geocode" style="margin:8px 0 0">이 주소로 위치 설정</button>
       <div class="mini" id="loc"></div></div>
@@ -354,6 +362,9 @@ function renderUI(): string {
 const T=new URLSearchParams(location.search).get('t');const q=p=>p+(T?('?t='+T):'');
 function friendly(p,enabled){
   if(!p||p.error)return{em:'⚠️',t:'문제가 있어요',sub:(p&&p.error)||'',c:'red',ac:'—'};
+  // 경고: 기준 온도 넘으면 문구 자체를 경고로
+  if(p.alert&&p.alert.type==='hot')return{em:'🥵',t:'너무 더워요! '+p.alert.temp.toFixed(1)+'℃',sub:(enabled?'시원하게 트는 중':'자동을 켜면 시원하게 맞춰줘요'),c:'red',ac:enabled?'냉방':'수동'};
+  if(p.alert&&p.alert.type==='cold')return{em:'🥶',t:'너무 추워요! '+p.alert.temp.toFixed(1)+'℃',sub:'최저기준 '+p.alert.threshold+'℃ 아래 · '+(enabled?'따뜻하게 트는 중':'자동 켜면 따뜻하게'),c:'blue',ac:enabled?'난방':'수동'};
   const heating=p.action==='set'&&p.seasonMode==='heating';
   const cooling=p.action==='set'&&p.seasonMode==='cooling';
   if(!enabled){ // 자동 꺼짐: 지금 상황 "제안"만 표시 (에어컨엔 아무것도 안 보냄)
@@ -372,7 +383,7 @@ async function load(){
   // 설정값 채우기
   document.getElementById('title').textContent=c.storeName||'우리 매장';
   document.getElementById('storeName').value=c.storeName||'';
-  for(const k of ['summerTarget','winterTarget','deadband','sensorDeviceId','acDeviceId'])document.getElementById(k).value=c[k];
+  for(const k of ['summerTarget','winterTarget','deadband','alertHot','alertCold','sensorDeviceId','acDeviceId'])document.getElementById(k).value=c[k];
   document.getElementById('address').value=c.address||'';
   document.getElementById('loc').textContent=c.address?('현재 위치: '+c.address):('좌표 '+(c.lat||'-')+', '+(c.lon||'-'));
   document.getElementById('auto').checked=!!c.enabled;
@@ -396,13 +407,14 @@ async function load(){
   chip.querySelector('.em').textContent=f.em;document.getElementById('chipt').textContent=f.t;
   document.getElementById('chipsub').textContent=f.sub||'';
   document.getElementById('t_ac').textContent=f.ac;
+  const warn=!!(pv&&pv.alert);
   const tc=getComputedStyle(document.documentElement).getPropertyValue(f.c==='blue'?'--blue':f.c==='orange'?'--orange':f.c==='red'?'--red':'--label');
-  document.getElementById('temp').style.color=(c.enabled&&(f.c==='blue'||f.c==='orange'))?tc:'';
+  document.getElementById('temp').style.color=((c.enabled||warn)&&['blue','orange','red'].includes(f.c))?tc:'';
 }
 document.getElementById('auto').onchange=async()=>{await fetch(q('/api/toggle'),{method:'POST'});load()};
 document.getElementById('run').onclick=async(e)=>{e.target.textContent='실행 중…';await fetch(q('/api/run'),{method:'POST'});e.target.textContent='지금 한 번 실행';load()};
 document.getElementById('login').onclick=async()=>{const email=document.getElementById('email').value,password=document.getElementById('password').value;if(!email||!password){alert('이메일/비번을 입력하세요');return}const r=await fetch(q('/api/login'),{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({email,password})});const j=await r.json();if(j.ok){document.getElementById('password').value='';document.getElementById('dLogin').open=false;alert('로그인 성공!')}else alert('로그인 실패: '+(j.error||''));load()};
-document.getElementById('save').onclick=async()=>{const b={};for(const k of ['summerTarget','winterTarget','deadband','sensorDeviceId','acDeviceId']){const v=document.getElementById(k).value;b[k]=['sensorDeviceId','acDeviceId'].includes(k)?v:Number(v)}b.storeName=document.getElementById('storeName').value||'우리 매장';const ow=document.getElementById('owmKey').value;if(ow)b.owmKey=ow;await fetch(q('/api/config'),{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(b)});document.getElementById('owmKey').value='';alert('저장됨');load()};
+document.getElementById('save').onclick=async()=>{const b={};for(const k of ['summerTarget','winterTarget','deadband','alertHot','alertCold','sensorDeviceId','acDeviceId']){const v=document.getElementById(k).value;b[k]=['sensorDeviceId','acDeviceId'].includes(k)?v:Number(v)}b.storeName=document.getElementById('storeName').value||'우리 매장';const ow=document.getElementById('owmKey').value;if(ow)b.owmKey=ow;await fetch(q('/api/config'),{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(b)});document.getElementById('owmKey').value='';alert('저장됨');load()};
 document.getElementById('geocode').onclick=async()=>{const a=document.getElementById('address').value.trim();if(!a){alert('주소를 입력하세요');return}const loc=document.getElementById('loc');loc.textContent='위치 찾는 중…';const url='/api/geocode?q='+encodeURIComponent(a)+(T?'&t='+T:'');const j=await(await fetch(url)).json();if(j.ok){await fetch(q('/api/config'),{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({address:a,lat:j.lat,lon:j.lon})});loc.textContent='✓ 설정됨: '+j.name;load()}else{loc.textContent='✗ '+(j.error||'주소를 못 찾음')}};
 document.getElementById('list').onclick=async()=>{const el=document.getElementById('last');el.style.display='block';el.textContent='불러오는 중…';const r=await fetch(q('/api/devices'));el.textContent=JSON.stringify(await r.json(),null,2)};
 load();
