@@ -14,8 +14,12 @@ export interface Config {
   deadband: number;
   /** 여름 경고: 실내가 이 온도 이상이면 '너무 더움' 경고 */
   alertHot: number;
-  /** 겨울 최저기준: 실내가 이 온도 이하면 '너무 추움' 경고 */
+  /** 겨울 최저기준: 실내가 이 온도 이하면 '너무 추움' 경고 + 비영업 세트백 바닥 */
   alertCold: number;
+  /** 영업시간 자동 적용 (비영업엔 최저기준으로 세트백해 절전) */
+  useSchedule?: boolean;
+  /** 영업 시작 몇 분 전부터 미리 데울지(예열) */
+  preheatMinutes?: number;
   /** 온습도계(센서) 기기 ID */
   sensorDeviceId: string;
   /** IR 에어컨 기기 ID */
@@ -37,6 +41,8 @@ export const DEFAULT_CONFIG: Config = {
   deadband: 1.5,
   alertHot: 30,
   alertCold: 15,
+  useSchedule: true,
+  preheatMinutes: 60,
   sensorDeviceId: '',
   acDeviceId: '',
   lat: 37.5665, // 기본값: 서울 (배포 후 매장 위치로 변경)

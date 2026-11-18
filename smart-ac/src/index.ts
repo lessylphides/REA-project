@@ -4,7 +4,7 @@
 import { Config, DEFAULT_CONFIG, Env, DesiredAcState, MODE_CODES, FAN_CODES } from './config';
 import * as hej from './hej';
 import { getWeather } from './weather';
-import { decide, Reading } from './engine';
+import { decide, scheduleState, Reading } from './engine';
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -88,6 +88,7 @@ interface RunStatus {
   reason?: string;
   sent?: string[];
   alert?: { type: 'hot' | 'cold'; temp: number; threshold: number } | null;
+  scheduleState?: string;
   error?: string;
 }
 
@@ -118,7 +119,11 @@ async function runOnce(env: Env, opts: { force?: boolean; preview?: boolean } = 
     status.outdoorTemp = weather?.outdoorTemp ?? null;
 
     const reading: Reading = { indoorTemp: temp, indoorHumidity: humidity ?? undefined, outdoorTemp: weather?.outdoorTemp ?? null };
-    const decision = decide(reading, cfg);
+    // 영업시간: 쾌적 목표(22/25) / 비영업: 최저기준(12)~여름경고(30)로 세트백해 절전
+    const sched = scheduleState(new Date(), cfg);
+    status.scheduleState = sched.state;
+    const effCfg = sched.comfort ? cfg : { ...cfg, winterTarget: cfg.alertCold, summerTarget: cfg.alertHot };
+    const decision = decide(reading, effCfg);
     status.seasonMode = decision.seasonMode;
     status.action = decision.action;
     status.reason = decision.reason;
@@ -264,6 +269,7 @@ function renderUI(): string {
   .chip .em{font-size:19px}
   .chip.blue{color:var(--blue)} .chip.orange{color:var(--orange)} .chip.green{color:var(--green)} .chip.gray{color:var(--sec)} .chip.red{color:var(--red)}
   .chipsub{color:var(--sec);font-size:13px;margin-top:10px;min-height:16px}
+  .schedpill{font-size:12px;padding:3px 10px;border-radius:999px;background:var(--field);font-weight:600;white-space:nowrap}
   .tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:16px}
   .tile{background:var(--card);border-radius:16px;padding:12px 6px;text-align:center;box-shadow:0 1px 3px rgba(0,0,0,.04)}
   .tile .v{font-size:19px;font-weight:600;letter-spacing:-.01em} .tile .k{font-size:11px;color:var(--sec);margin-top:3px}
@@ -297,7 +303,7 @@ function renderUI(): string {
   pre{white-space:pre-wrap;word-break:break-all;font-size:11px;color:var(--sec);background:var(--field);border-radius:12px;padding:12px;margin:8px 0 0}
 </style></head><body>
 <h1 id="title">우리 매장</h1>
-<div style="color:var(--sec);font-size:14px;margin:-10px 2px 18px">실내 환경 자동관리</div>
+<div style="color:var(--sec);font-size:14px;margin:-10px 2px 16px">실내 환경 자동관리 <span id="sched" class="schedpill"></span></div>
 
 <div class="hero">
   <div style="color:var(--sec);font-size:13px;font-weight:500;margin-bottom:2px">실내 온도</div>
@@ -347,6 +353,18 @@ function renderUI(): string {
       <div class="mini" id="loc"></div></div>
     <div class="fld"><label>날씨 API 키 <span id="owm" style="color:var(--sec)"></span></label><input id="owmKey" type="password" placeholder="입력할 때만 변경 (비우면 유지)"></div>
     <button class="btn save" id="save">설정 저장</button>
+  </div></details>
+
+<div style="height:10px"></div>
+<details id="dSched"><summary>영업시간 · 절전</summary>
+  <div class="grp">
+    <div class="fld" style="display:flex;align-items:center;justify-content:space-between">
+      <div><div style="font-size:16px">영업시간 자동 적용</div><div class="mini">비영업엔 최저기준까지만 유지해 절전</div></div>
+      <label class="tg"><input type="checkbox" id="useSchedule"><span class="sl"></span></label>
+    </div>
+    <div class="fld"><label>영업 시작 몇 분 전부터 미리 데울지</label><input id="preheatMinutes" type="number" inputmode="numeric"></div>
+    <div class="fld"><div class="mini">현재 영업시간 (고정)<br>· 화·수·목·금 — 오후 5시 ~ 익일 새벽 2시<br>· 토·일 — 오후 1시 ~ 자정<br>· 월 — 휴무</div></div>
+    <button class="btn save" id="saveSched">영업시간 설정 저장</button>
   </div></details>
 
 <div style="height:10px"></div>
@@ -405,7 +423,13 @@ async function load(){
   }
   const chip=document.getElementById('chip');chip.className='chip '+f.c;
   chip.querySelector('.em').textContent=f.em;document.getElementById('chipt').textContent=f.t;
-  document.getElementById('chipsub').textContent=f.sub||'';
+  const SM={open:'🟢 영업중',preheat:'🟡 예열중',closed:'⚪ 비영업'};
+  document.getElementById('sched').textContent=pv&&pv.scheduleState?SM[pv.scheduleState]||'':'';
+  document.getElementById('useSchedule').checked=c.useSchedule!==false;
+  document.getElementById('preheatMinutes').value=c.preheatMinutes!=null?c.preheatMinutes:60;
+  let sub=f.sub||'';
+  if(pv&&!pv.alert){if(pv.scheduleState==='closed')sub='비영업 · 최저 '+c.alertCold+'℃만 유지 (절전)';else if(pv.scheduleState==='preheat')sub='영업 준비 — 미리 데우는 중';}
+  document.getElementById('chipsub').textContent=sub;
   document.getElementById('t_ac').textContent=f.ac;
   const warn=!!(pv&&pv.alert);
   const tc=getComputedStyle(document.documentElement).getPropertyValue(f.c==='blue'?'--blue':f.c==='orange'?'--orange':f.c==='red'?'--red':'--label');
@@ -416,6 +440,7 @@ document.getElementById('run').onclick=async(e)=>{e.target.textContent='실행 �
 document.getElementById('login').onclick=async()=>{const email=document.getElementById('email').value,password=document.getElementById('password').value;if(!email||!password){alert('이메일/비번을 입력하세요');return}const r=await fetch(q('/api/login'),{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({email,password})});const j=await r.json();if(j.ok){document.getElementById('password').value='';document.getElementById('dLogin').open=false;alert('로그인 성공!')}else alert('로그인 실패: '+(j.error||''));load()};
 document.getElementById('save').onclick=async()=>{const b={};for(const k of ['summerTarget','winterTarget','deadband','alertHot','alertCold','sensorDeviceId','acDeviceId']){const v=document.getElementById(k).value;b[k]=['sensorDeviceId','acDeviceId'].includes(k)?v:Number(v)}b.storeName=document.getElementById('storeName').value||'우리 매장';const ow=document.getElementById('owmKey').value;if(ow)b.owmKey=ow;await fetch(q('/api/config'),{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(b)});document.getElementById('owmKey').value='';alert('저장됨');load()};
 document.getElementById('geocode').onclick=async()=>{const a=document.getElementById('address').value.trim();if(!a){alert('주소를 입력하세요');return}const loc=document.getElementById('loc');loc.textContent='위치 찾는 중…';const url='/api/geocode?q='+encodeURIComponent(a)+(T?'&t='+T:'');const j=await(await fetch(url)).json();if(j.ok){await fetch(q('/api/config'),{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({address:a,lat:j.lat,lon:j.lon})});loc.textContent='✓ 설정됨: '+j.name;load()}else{loc.textContent='✗ '+(j.error||'주소를 못 찾음')}};
+document.getElementById('saveSched').onclick=async()=>{const b={useSchedule:document.getElementById('useSchedule').checked,preheatMinutes:Number(document.getElementById('preheatMinutes').value)||60};await fetch(q('/api/config'),{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(b)});alert('영업시간 설정 저장됨');load()};
 document.getElementById('list').onclick=async()=>{const el=document.getElementById('last');el.style.display='block';el.textContent='불러오는 중…';const r=await fetch(q('/api/devices'));el.textContent=JSON.stringify(await r.json(),null,2)};
 load();
 </script></body></html>`;

@@ -41,6 +41,27 @@ function decideSeason(outdoorTemp: number | null | undefined, month: number): 'c
   return 'neutral';
 }
 
+/**
+ * 영업시간 판단 (한국시간 기준).
+ *  화·수·목·금 17:00~익일 02:00 / 토·일 13:00~24:00 / 월 휴무.
+ * comfort=true면 쾌적 목표(22/25), false면 비영업 세트백.
+ */
+export function scheduleState(now: Date, cfg: Config): { state: 'open' | 'preheat' | 'closed'; comfort: boolean } {
+  if (cfg.useSchedule === false) return { state: 'open', comfort: true };
+  const kst = (d: Date) => new Date(d.getTime() + 9 * 3600 * 1000); // UTC→KST(+9), getUTC*로 읽음
+  const isOpen = (d: Date) => {
+    const day = d.getUTCDay(), h = d.getUTCHours(); // 0=일 … 6=토
+    if ((day === 3 || day === 4 || day === 5 || day === 6) && h < 2) return true; // 수~토 새벽(화~금 영업 연장)
+    if ((day === 2 || day === 3 || day === 4 || day === 5) && h >= 17) return true; // 화~금 저녁
+    if ((day === 6 || day === 0) && h >= 13) return true; // 토·일 오후
+    return false;
+  };
+  if (isOpen(kst(now))) return { state: 'open', comfort: true };
+  const soon = kst(new Date(now.getTime() + (cfg.preheatMinutes ?? 60) * 60000));
+  if (isOpen(soon)) return { state: 'preheat', comfort: true };
+  return { state: 'closed', comfort: false };
+}
+
 export function decide(reading: Reading, cfg: Config): Decision {
   const now = reading.now ?? new Date();
   const month = now.getMonth() + 1;
