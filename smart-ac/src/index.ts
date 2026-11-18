@@ -184,6 +184,18 @@ export default {
     if (url.pathname === '/api/preview') {
       return json(await runOnce(env, { preview: true }));
     }
+    // 주소 → 좌표 (OpenStreetMap Nominatim)
+    if (url.pathname === '/api/geocode') {
+      const query = url.searchParams.get('q');
+      if (!query) return json({ ok: false, error: '주소를 입력하세요' }, 400);
+      try {
+        const u = 'https://nominatim.openstreetmap.org/search?' + new URLSearchParams({ q: query, format: 'jsonv2', limit: '1', 'accept-language': 'ko' });
+        const r = await fetch(u, { headers: { 'User-Agent': 'heyhome-smart-ac/1.0 (store climate control)' } });
+        const arr = await r.json() as Array<{ lat: string; lon: string; display_name: string }>;
+        if (!Array.isArray(arr) || !arr.length) return json({ ok: false, error: '주소를 찾지 못했어요' }, 404);
+        return json({ ok: true, lat: Number(arr[0].lat), lon: Number(arr[0].lon), name: arr[0].display_name });
+      } catch (e: any) { return json({ ok: false, error: String(e?.message ?? e) }, 500); }
+    }
     // on/off 토글
     if (url.pathname === '/api/toggle' && req.method === 'POST') {
       const cfg = await loadConfig(env);
@@ -292,8 +304,8 @@ function renderUI(): string {
 </div>
 
 <div class="tiles">
+  <div class="tile"><div class="v" id="t_season">–</div><div class="k">계절</div></div>
   <div class="tile"><div class="v" id="t_target">–</div><div class="k">목표</div></div>
-  <div class="tile"><div class="v" id="t_humid">–</div><div class="k">습도</div></div>
   <div class="tile"><div class="v" id="t_out">–</div><div class="k">바깥</div></div>
   <div class="tile"><div class="v" id="t_ac">–</div><div class="k">에어컨</div></div>
 </div>
@@ -322,10 +334,9 @@ function renderUI(): string {
       <div><label>겨울 목표℃</label><input id="winterTarget" type="number" inputmode="decimal"></div>
       <div><label>여유℃</label><input id="deadband" type="number" inputmode="decimal" step="0.5"></div>
     </div></div>
-    <div class="fld"><div class="row2">
-      <div><label>위도</label><input id="lat" type="number" inputmode="decimal" step="0.0001"></div>
-      <div><label>경도</label><input id="lon" type="number" inputmode="decimal" step="0.0001"></div>
-    </div></div>
+    <div class="fld"><label>매장 위치 (주소)</label><input id="address" placeholder="예: 서울 동작구 동작대로3길 44">
+      <button class="btn" id="geocode" style="margin:8px 0 0">이 주소로 위치 설정</button>
+      <div class="mini" id="loc"></div></div>
     <div class="fld"><label>날씨 API 키 <span id="owm" style="color:var(--sec)"></span></label><input id="owmKey" type="password" placeholder="입력할 때만 변경 (비우면 유지)"></div>
     <button class="btn save" id="save">설정 저장</button>
   </div></details>
@@ -354,7 +365,9 @@ async function load(){
   // 설정값 채우기
   document.getElementById('title').textContent=c.storeName||'우리 매장';
   document.getElementById('storeName').value=c.storeName||'';
-  for(const k of ['summerTarget','winterTarget','deadband','sensorDeviceId','acDeviceId','lat','lon'])document.getElementById(k).value=c[k];
+  for(const k of ['summerTarget','winterTarget','deadband','sensorDeviceId','acDeviceId'])document.getElementById(k).value=c[k];
+  document.getElementById('address').value=c.address||'';
+  document.getElementById('loc').textContent=c.address?('현재 위치: '+c.address):('좌표 '+(c.lat||'-')+', '+(c.lon||'-'));
   document.getElementById('auto').checked=!!c.enabled;
   document.getElementById('swd').textContent=c.enabled?'10분마다 자동으로 맞춰요':'끄면 손으로만 관리';
   // 로그인 상태
@@ -367,7 +380,7 @@ async function load(){
   if(pv&&typeof pv.indoorTemp==='number'){
     document.getElementById('temp').innerHTML=pv.indoorTemp.toFixed(1)+'<span>℃</span>';
     document.getElementById('humid').textContent='습도 '+(pv.indoorHumidity!=null?pv.indoorHumidity+'%':'–');
-    document.getElementById('t_humid').textContent=pv.indoorHumidity!=null?pv.indoorHumidity+'%':'–';
+    document.getElementById('t_season').textContent=pv.seasonMode==='cooling'?'냉방철':pv.seasonMode==='heating'?'난방철':'간절기';
     document.getElementById('t_out').textContent=pv.outdoorTemp!=null?Math.round(pv.outdoorTemp)+'℃':'–';
     const tgt=pv.seasonMode==='cooling'?c.summerTarget:pv.seasonMode==='heating'?c.winterTarget:null;
     document.getElementById('t_target').textContent=tgt!=null?tgt+'℃':'–';
@@ -382,7 +395,8 @@ async function load(){
 document.getElementById('auto').onchange=async()=>{await fetch(q('/api/toggle'),{method:'POST'});load()};
 document.getElementById('run').onclick=async(e)=>{e.target.textContent='실행 중…';await fetch(q('/api/run'),{method:'POST'});e.target.textContent='지금 한 번 실행';load()};
 document.getElementById('login').onclick=async()=>{const email=document.getElementById('email').value,password=document.getElementById('password').value;if(!email||!password){alert('이메일/비번을 입력하세요');return}const r=await fetch(q('/api/login'),{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({email,password})});const j=await r.json();if(j.ok){document.getElementById('password').value='';document.getElementById('dLogin').open=false;alert('로그인 성공!')}else alert('로그인 실패: '+(j.error||''));load()};
-document.getElementById('save').onclick=async()=>{const b={};for(const k of ['summerTarget','winterTarget','deadband','sensorDeviceId','acDeviceId','lat','lon']){const v=document.getElementById(k).value;b[k]=['sensorDeviceId','acDeviceId'].includes(k)?v:Number(v)}b.storeName=document.getElementById('storeName').value||'우리 매장';const ow=document.getElementById('owmKey').value;if(ow)b.owmKey=ow;await fetch(q('/api/config'),{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(b)});document.getElementById('owmKey').value='';load()};
+document.getElementById('save').onclick=async()=>{const b={};for(const k of ['summerTarget','winterTarget','deadband','sensorDeviceId','acDeviceId']){const v=document.getElementById(k).value;b[k]=['sensorDeviceId','acDeviceId'].includes(k)?v:Number(v)}b.storeName=document.getElementById('storeName').value||'우리 매장';const ow=document.getElementById('owmKey').value;if(ow)b.owmKey=ow;await fetch(q('/api/config'),{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(b)});document.getElementById('owmKey').value='';alert('저장됨');load()};
+document.getElementById('geocode').onclick=async()=>{const a=document.getElementById('address').value.trim();if(!a){alert('주소를 입력하세요');return}const loc=document.getElementById('loc');loc.textContent='위치 찾는 중…';const url='/api/geocode?q='+encodeURIComponent(a)+(T?'&t='+T:'');const j=await(await fetch(url)).json();if(j.ok){await fetch(q('/api/config'),{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({address:a,lat:j.lat,lon:j.lon})});loc.textContent='✓ 설정됨: '+j.name;load()}else{loc.textContent='✗ '+(j.error||'주소를 못 찾음')}};
 document.getElementById('list').onclick=async()=>{const el=document.getElementById('last');el.style.display='block';el.textContent='불러오는 중…';const r=await fetch(q('/api/devices'));el.textContent=JSON.stringify(await r.json(),null,2)};
 load();
 </script></body></html>`;

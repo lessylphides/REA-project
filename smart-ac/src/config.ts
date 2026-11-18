@@ -16,6 +16,8 @@ export interface Config {
   sensorDeviceId: string;
   /** IR 에어컨 기기 ID */
   acDeviceId: string;
+  /** 매장 주소(표시용) */
+  address?: string;
   /** 매장 위치(바깥 날씨용) */
   lat: number;
   lon: number;
