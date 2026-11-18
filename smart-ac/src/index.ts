@@ -91,12 +91,12 @@ interface RunStatus {
 }
 
 // ---------- 자동화 1회 실행 ----------
-async function runOnce(env: Env, opts: { force?: boolean } = {}): Promise<RunStatus> {
+async function runOnce(env: Env, opts: { force?: boolean; preview?: boolean } = {}): Promise<RunStatus> {
   const status: RunStatus = { ts: new Date().toISOString(), ok: false, enabled: false };
   try {
     const cfg = await loadConfig(env);
     status.enabled = cfg.enabled;
-    if (!cfg.enabled && !opts.force) { status.ok = true; status.reason = '자동화 OFF 상태'; await env.KV.put('status', JSON.stringify(status)); return status; }
+    if (!cfg.enabled && !opts.force && !opts.preview) { status.ok = true; status.reason = '자동화 OFF 상태'; await env.KV.put('status', JSON.stringify(status)); return status; }
     if (!cfg.sensorDeviceId || !cfg.acDeviceId) { status.reason = '센서/에어컨 기기 ID 미설정 (설정에서 지정하세요)'; await env.KV.put('status', JSON.stringify(status)); return status; }
 
     const s = await getSession(env);
@@ -119,6 +119,8 @@ async function runOnce(env: Env, opts: { force?: boolean } = {}): Promise<RunSta
     status.action = decision.action;
     status.reason = decision.reason;
 
+    if (opts.preview) { status.sent = []; status.ok = true; return status; } // 미리보기: 전송/저장 없음
+
     const last = await env.KV.get('lastCommand', 'json') as DesiredAcState | null;
     if (decision.action === 'set' && decision.desired) {
       status.sent = await applyDesired(s, cfg.acDeviceId, decision.desired, last);
@@ -135,7 +137,7 @@ async function runOnce(env: Env, opts: { force?: boolean } = {}): Promise<RunSta
     return status;
   } catch (e: any) {
     status.error = String(e?.message ?? e);
-    await env.KV.put('status', JSON.stringify(status));
+    if (!opts.preview) await env.KV.put('status', JSON.stringify(status));
     return status;
   }
 }
@@ -178,6 +180,10 @@ export default {
     if (url.pathname === '/api/run' && req.method === 'POST') {
       return json(await runOnce(env, { force: true }));
     }
+    // 미리보기(현재 온도/판단만, 에어컨에 전송 안 함) — 화면 표시용
+    if (url.pathname === '/api/preview') {
+      return json(await runOnce(env, { preview: true }));
+    }
     // on/off 토글
     if (url.pathname === '/api/toggle' && req.method === 'POST') {
       const cfg = await loadConfig(env);
@@ -208,57 +214,171 @@ export default {
   },
 };
 
-// ---------- 최소 웹 UI ----------
+
+// ---------- 웹 UI (iOS 스타일) ----------
 function renderUI(): string {
-  return `<!doctype html><html lang="ko"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>헤이홈 에어컨 자동제어</title>
+  return `<!doctype html><html lang="ko"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#f2f2f7" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
+<title>매장 에어컨</title>
 <style>
-  body{font-family:system-ui,-apple-system,sans-serif;max-width:680px;margin:0 auto;padding:16px;background:#0f1419;color:#e6e6e6}
-  h1{font-size:1.2rem} .card{background:#1a2029;border:1px solid #2a323d;border-radius:12px;padding:16px;margin:12px 0}
-  button{font-size:1rem;padding:10px 16px;border-radius:10px;border:0;cursor:pointer}
-  .on{background:#2ea043;color:#fff}.off{background:#555;color:#fff}.run{background:#1f6feb;color:#fff}
-  label{display:block;margin:8px 0 2px;font-size:.85rem;color:#9aa4b2}
-  input{width:100%;padding:8px;border-radius:8px;border:1px solid #2a323d;background:#0f1419;color:#e6e6e6;box-sizing:border-box}
-  pre{white-space:pre-wrap;word-break:break-all;font-size:.8rem;color:#9aa4b2}
-  .row{display:flex;gap:8px} .row>div{flex:1}
+  :root{
+    --bg:#f2f2f7; --card:#fff; --label:#1c1c1e; --sec:#8e8e93; --sep:rgba(60,60,67,.18);
+    --blue:#007aff; --green:#34c759; --orange:#ff9500; --red:#ff3b30; --field:#f2f2f7;
+  }
+  @media (prefers-color-scheme:dark){:root{
+    --bg:#000; --card:#1c1c1e; --label:#fff; --sec:#8e8e93; --sep:rgba(84,84,88,.55);
+    --blue:#0a84ff; --green:#30d158; --orange:#ff9f0a; --red:#ff453a; --field:#2c2c2e;
+  }}
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  body{margin:0;background:var(--bg);color:var(--label);
+    font-family:-apple-system,BlinkMacSystemFont,'SF Pro Display','SF Pro Text',system-ui,sans-serif;
+    padding:max(16px,env(safe-area-inset-top)) 16px calc(32px + env(safe-area-inset-bottom));
+    max-width:480px;margin:0 auto;-webkit-font-smoothing:antialiased}
+  h1{font-size:28px;font-weight:700;letter-spacing:-.02em;margin:8px 2px 16px}
+  .hero{background:var(--card);border-radius:22px;padding:28px 20px 22px;text-align:center;margin-bottom:16px;
+    box-shadow:0 1px 3px rgba(0,0,0,.04)}
+  .temp{font-size:72px;font-weight:600;letter-spacing:-.04em;line-height:1;margin:2px 0}
+  .temp span{font-size:32px;font-weight:500;color:var(--sec)}
+  .humid{color:var(--sec);font-size:17px;margin-top:2px}
+  .chip{display:inline-flex;align-items:center;gap:7px;margin-top:18px;padding:11px 18px;border-radius:999px;
+    font-size:16px;font-weight:600;background:var(--field)}
+  .chip .em{font-size:19px}
+  .chip.blue{color:var(--blue)} .chip.orange{color:var(--orange)} .chip.green{color:var(--green)} .chip.gray{color:var(--sec)} .chip.red{color:var(--red)}
+  .chipsub{color:var(--sec);font-size:13px;margin-top:10px;min-height:16px}
+  .tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:16px}
+  .tile{background:var(--card);border-radius:16px;padding:12px 6px;text-align:center;box-shadow:0 1px 3px rgba(0,0,0,.04)}
+  .tile .v{font-size:19px;font-weight:600;letter-spacing:-.01em} .tile .k{font-size:11px;color:var(--sec);margin-top:3px}
+  .switch{display:flex;align-items:center;justify-content:space-between;background:var(--card);
+    border-radius:16px;padding:16px 18px;margin-bottom:10px;box-shadow:0 1px 3px rgba(0,0,0,.04)}
+  .switch .t{font-size:17px;font-weight:600} .switch .d{font-size:13px;color:var(--sec);margin-top:2px}
+  .tg{position:relative;width:52px;height:32px;flex:0 0 auto}
+  .tg input{opacity:0;width:0;height:0;position:absolute}
+  .tg .sl{position:absolute;inset:0;background:#e9e9ea;border-radius:999px;transition:.25s}
+  @media (prefers-color-scheme:dark){.tg .sl{background:#39393d}}
+  .tg .sl:before{content:"";position:absolute;width:28px;height:28px;left:2px;top:2px;background:#fff;border-radius:50%;
+    transition:.25s;box-shadow:0 2px 4px rgba(0,0,0,.25)}
+  .tg input:checked+.sl{background:var(--green)} .tg input:checked+.sl:before{transform:translateX(20px)}
+  .btn{display:block;width:100%;border:0;border-radius:14px;padding:15px;font-size:17px;font-weight:600;
+    background:var(--field);color:var(--blue);cursor:pointer;margin-bottom:10px;font-family:inherit}
+  .btn:active{opacity:.6}
+  .sec-h{font-size:13px;color:var(--sec);text-transform:none;margin:22px 4px 8px;font-weight:400}
+  details{background:var(--card);border-radius:16px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.04)}
+  summary{list-style:none;padding:16px 18px;font-size:17px;font-weight:500;cursor:pointer;display:flex;justify-content:space-between;align-items:center}
+  summary::-webkit-details-marker{display:none}
+  summary::after{content:"›";color:var(--sec);font-size:22px;transition:.2s}
+  details[open] summary::after{transform:rotate(90deg)}
+  .grp{padding:0 18px 10px}
+  .fld{padding:12px 0;border-top:1px solid var(--sep)}
+  .fld label{display:block;font-size:13px;color:var(--sec);margin-bottom:6px}
+  .fld input{width:100%;border:0;background:var(--field);border-radius:10px;padding:11px 12px;font-size:16px;color:var(--label);font-family:inherit}
+  .row2{display:flex;gap:10px}.row2>div{flex:1}
+  .save{color:#fff;background:var(--blue);margin-top:12px}
+  .mini{font-size:12px;color:var(--sec);margin-top:6px;padding:0 2px}
+  .dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:5px;vertical-align:1px}
+  pre{white-space:pre-wrap;word-break:break-all;font-size:11px;color:var(--sec);background:var(--field);border-radius:12px;padding:12px;margin:8px 0 0}
 </style></head><body>
-<h1>🌡️ 헤이홈 에어컨 자동제어</h1>
-<div class="card"><b>1) 헤이홈 로그인</b> <span id="conn"></span>
-  <label>헤이홈 이메일</label><input id="email" type="email" autocomplete="username">
-  <label>헤이홈 비밀번호</label><input id="password" type="password" autocomplete="current-password">
-  <div style="margin-top:10px"><button id="login" class="run">로그인 저장</button></div>
-  <div style="font-size:.75rem;color:#9aa4b2;margin-top:6px">비번은 사장님 Cloudflare에만 저장되고 화면에 다시 안 보입니다.</div></div>
-<div class="card"><div id="state">불러오는 중…</div>
-  <div style="margin-top:12px"><button id="toggle" class="on">on/off</button>
-  <button id="run" class="run">지금 실행</button></div></div>
-<div class="card"><b>설정</b>
-  <div class="row"><div><label>여름 목표℃</label><input id="summerTarget" type="number"></div>
-  <div><label>겨울 목표℃</label><input id="winterTarget" type="number"></div>
-  <div><label>이력폭℃</label><input id="deadband" type="number" step="0.5"></div></div>
-  <label>온습도계 기기ID</label><input id="sensorDeviceId">
-  <label>에어컨 기기ID</label><input id="acDeviceId">
-  <div class="row"><div><label>위도</label><input id="lat" type="number" step="0.0001"></div>
-  <div><label>경도</label><input id="lon" type="number" step="0.0001"></div></div>
-  <label>날씨 API 키 (OpenWeatherMap) <span id="owm"></span></label><input id="owmKey" type="password" placeholder="입력할 때만 변경됨 (비우면 유지)">
-  <div style="margin-top:10px"><button id="save" class="run">설정 저장</button>
-  <button id="list" class="off">기기 목록 보기</button></div></div>
-<div class="card"><b>마지막 실행</b><pre id="last"></pre></div>
+<h1>매장 에어컨</h1>
+
+<div class="hero">
+  <div class="temp" id="temp">–<span>℃</span></div>
+  <div class="humid" id="humid">습도 –</div>
+  <div class="chip gray" id="chip"><span class="em">⏳</span><span id="chipt">불러오는 중…</span></div>
+  <div class="chipsub" id="chipsub"></div>
+</div>
+
+<div class="tiles">
+  <div class="tile"><div class="v" id="t_target">–</div><div class="k">목표</div></div>
+  <div class="tile"><div class="v" id="t_humid">–</div><div class="k">습도</div></div>
+  <div class="tile"><div class="v" id="t_out">–</div><div class="k">바깥</div></div>
+  <div class="tile"><div class="v" id="t_ac">–</div><div class="k">에어컨</div></div>
+</div>
+
+<div class="switch">
+  <div><div class="t">자동 제어</div><div class="d" id="swd">끄면 손으로만 관리</div></div>
+  <label class="tg"><input type="checkbox" id="auto"><span class="sl"></span></label>
+</div>
+<button class="btn" id="run">지금 한 번 실행</button>
+
+<div class="sec-h">설정</div>
+<details id="dLogin"><summary><span><span class="dot" id="cDot" style="background:var(--sec)"></span>헤이홈 로그인</span></summary>
+  <div class="grp">
+    <div class="fld"><label>이메일</label><input id="email" type="email" autocomplete="username"></div>
+    <div class="fld"><label>비밀번호</label><input id="password" type="password" autocomplete="current-password"></div>
+    <button class="btn save" id="login">로그인 저장</button>
+    <div class="mini">비번은 사장님 Cloudflare에만 저장되고 화면에 다시 안 보여요.</div>
+  </div></details>
+
+<div style="height:10px"></div>
+<details id="dCfg"><summary>자동제어 설정</summary>
+  <div class="grp">
+    <div class="fld"><div class="row2">
+      <div><label>여름 목표℃</label><input id="summerTarget" type="number" inputmode="decimal"></div>
+      <div><label>겨울 목표℃</label><input id="winterTarget" type="number" inputmode="decimal"></div>
+      <div><label>여유℃</label><input id="deadband" type="number" inputmode="decimal" step="0.5"></div>
+    </div></div>
+    <div class="fld"><div class="row2">
+      <div><label>위도</label><input id="lat" type="number" inputmode="decimal" step="0.0001"></div>
+      <div><label>경도</label><input id="lon" type="number" inputmode="decimal" step="0.0001"></div>
+    </div></div>
+    <div class="fld"><label>날씨 API 키 <span id="owm" style="color:var(--sec)"></span></label><input id="owmKey" type="password" placeholder="입력할 때만 변경 (비우면 유지)"></div>
+    <button class="btn save" id="save">설정 저장</button>
+  </div></details>
+
+<div style="height:10px"></div>
+<details id="dAdv"><summary>기기 (고급)</summary>
+  <div class="grp">
+    <div class="fld"><label>온습도계 기기ID</label><input id="sensorDeviceId"></div>
+    <div class="fld"><label>에어컨 기기ID</label><input id="acDeviceId"></div>
+    <button class="btn" id="list">기기 목록 보기</button>
+    <pre id="last" style="display:none"></pre>
+  </div></details>
+
 <script>
 const T=new URLSearchParams(location.search).get('t');const q=p=>p+(T?('?t='+T):'');
-async function load(){const r=await fetch(q('/api/status'));const d=await r.json();const c=d.config;
+function friendly(p,enabled){
+  if(!p||p.error)return{em:'⚠️',t:'문제가 있어요',sub:(p&&p.error)||'',c:'red',ac:'—'};
+  if(p.action==='set'&&p.seasonMode==='cooling')return{em:'❄️',t:'시원하게 트는 중',sub:p.reason,c:'blue',ac:'냉방'};
+  if(p.action==='set'&&p.seasonMode==='heating')return{em:'🔥',t:'따뜻하게 트는 중',sub:p.reason,c:'orange',ac:'난방'};
+  if(p.action==='off')return{em:'⏹️',t:'에어컨 끄는 중',sub:p.reason,c:'gray',ac:'끄기'};
+  return{em:'😌',t:'지금 알맞아요',sub:'에어컨 대기 중',c:'green',ac:'대기'};
+}
+async function load(){
+  const [s,pv]=await Promise.all([fetch(q('/api/status')).then(r=>r.json()),fetch(q('/api/preview')).then(r=>r.json()).catch(()=>null)]);
+  const c=s.config;
+  // 설정값 채우기
   for(const k of ['summerTarget','winterTarget','deadband','sensorDeviceId','acDeviceId','lat','lon'])document.getElementById(k).value=c[k];
-  document.getElementById('toggle').className=c.enabled?'on':'off';
-  document.getElementById('toggle').textContent=c.enabled?'자동 ON (끄기)':'자동 OFF (켜기)';
-  document.getElementById('state').innerHTML='자동화: <b>'+(c.enabled?'켜짐':'꺼짐')+'</b>';
-  document.getElementById('conn').innerHTML=d.hasCreds?'<span style="color:#2ea043">● 로그인됨</span>':'<span style="color:#d29922">● 로그인 필요</span>';
-  document.getElementById('owm').innerHTML=d.hasOwmKey?'<span style="color:#2ea043">(연결됨)</span>':'<span style="color:#9aa4b2">(미설정 → 계절로만 판단)</span>';
-  document.getElementById('last').textContent=JSON.stringify(d.lastRun,null,2);}
-document.getElementById('login').onclick=async()=>{const email=document.getElementById('email').value,password=document.getElementById('password').value;if(!email||!password){alert('이메일/비번을 입력하세요');return}document.getElementById('conn').textContent='확인 중…';const r=await fetch(q('/api/login'),{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({email,password})});const j=await r.json();if(j.ok){alert('로그인 성공! 이제 아래 [기기 목록 보기]로 기기ID를 넣으세요.');document.getElementById('password').value=''}else{alert('로그인 실패: '+(j.error||''))}load()};
-document.getElementById('toggle').onclick=async()=>{await fetch(q('/api/toggle'),{method:'POST'});load()};
-document.getElementById('run').onclick=async()=>{document.getElementById('last').textContent='실행 중…';await fetch(q('/api/run'),{method:'POST'});load()};
-document.getElementById('save').onclick=async()=>{const b={};for(const k of ['summerTarget','winterTarget','deadband','sensorDeviceId','acDeviceId','lat','lon']){const v=document.getElementById(k).value;b[k]=['sensorDeviceId','acDeviceId'].includes(k)?v:Number(v)}const ow=document.getElementById('owmKey').value;if(ow)b.owmKey=ow;await fetch(q('/api/config'),{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(b)});document.getElementById('owmKey').value='';alert('저장됨');load()};
-document.getElementById('list').onclick=async()=>{document.getElementById('last').textContent='불러오는 중…';const r=await fetch(q('/api/devices'));document.getElementById('last').textContent=JSON.stringify(await r.json(),null,2)};
+  document.getElementById('auto').checked=!!c.enabled;
+  document.getElementById('swd').textContent=c.enabled?'10분마다 자동으로 맞춰요':'끄면 손으로만 관리';
+  // 로그인 상태
+  document.getElementById('cDot').style.background=s.hasCreds?'var(--green)':'var(--orange)';
+  if(!s.hasCreds)document.getElementById('dLogin').open=true;
+  document.getElementById('owm').textContent=s.hasOwmKey?'(연결됨)':'(미설정)';
+  document.getElementById('owm').style.color=s.hasOwmKey?'var(--green)':'var(--sec)';
+  // 히어로/타일
+  const f=friendly(pv,c.enabled);
+  if(pv&&typeof pv.indoorTemp==='number'){
+    document.getElementById('temp').innerHTML=pv.indoorTemp.toFixed(1)+'<span>℃</span>';
+    document.getElementById('humid').textContent='습도 '+(pv.indoorHumidity!=null?pv.indoorHumidity+'%':'–');
+    document.getElementById('t_humid').textContent=pv.indoorHumidity!=null?pv.indoorHumidity+'%':'–';
+    document.getElementById('t_out').textContent=pv.outdoorTemp!=null?Math.round(pv.outdoorTemp)+'℃':'–';
+    const tgt=pv.seasonMode==='cooling'?c.summerTarget:pv.seasonMode==='heating'?c.winterTarget:null;
+    document.getElementById('t_target').textContent=tgt!=null?tgt+'℃':'–';
+  }
+  const chip=document.getElementById('chip');chip.className='chip '+f.c;
+  chip.querySelector('.em').textContent=f.em;document.getElementById('chipt').textContent=f.t;
+  document.getElementById('chipsub').textContent=c.enabled?(f.sub||''):'자동 꺼짐 — 아래 스위치로 켜세요';
+  document.getElementById('t_ac').textContent=c.enabled?f.ac:'꺼짐';
+  const tc=getComputedStyle(document.documentElement).getPropertyValue(f.c==='blue'?'--blue':f.c==='orange'?'--orange':f.c==='red'?'--red':'--label');
+  document.getElementById('temp').style.color=(c.enabled&&(f.c==='blue'||f.c==='orange'))?tc:'';
+}
+document.getElementById('auto').onchange=async()=>{await fetch(q('/api/toggle'),{method:'POST'});load()};
+document.getElementById('run').onclick=async(e)=>{e.target.textContent='실행 중…';await fetch(q('/api/run'),{method:'POST'});e.target.textContent='지금 한 번 실행';load()};
+document.getElementById('login').onclick=async()=>{const email=document.getElementById('email').value,password=document.getElementById('password').value;if(!email||!password){alert('이메일/비번을 입력하세요');return}const r=await fetch(q('/api/login'),{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({email,password})});const j=await r.json();if(j.ok){document.getElementById('password').value='';document.getElementById('dLogin').open=false;alert('로그인 성공!')}else alert('로그인 실패: '+(j.error||''));load()};
+document.getElementById('save').onclick=async()=>{const b={};for(const k of ['summerTarget','winterTarget','deadband','sensorDeviceId','acDeviceId','lat','lon']){const v=document.getElementById(k).value;b[k]=['sensorDeviceId','acDeviceId'].includes(k)?v:Number(v)}const ow=document.getElementById('owmKey').value;if(ow)b.owmKey=ow;await fetch(q('/api/config'),{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(b)});document.getElementById('owmKey').value='';load()};
+document.getElementById('list').onclick=async()=>{const el=document.getElementById('last');el.style.display='block';el.textContent='불러오는 중…';const r=await fetch(q('/api/devices'));el.textContent=JSON.stringify(await r.json(),null,2)};
 load();
 </script></body></html>`;
 }
