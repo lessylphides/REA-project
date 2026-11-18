@@ -17,6 +17,8 @@ export interface Config {
   /** 매장 위치(바깥 날씨용) */
   lat: number;
   lon: number;
+  /** OpenWeatherMap API 키 (웹에서 입력, 없으면 바깥날씨 생략하고 계절로만 판단) */
+  owmKey?: string;
 }
 
 export const DEFAULT_CONFIG: Config = {

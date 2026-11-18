@@ -35,9 +35,9 @@ function decideSeason(outdoorTemp: number | null | undefined, month: number): 'c
     if (month === 11 || month === 12 || month <= 3) return 'heating';
     return 'neutral';
   }
-  // 바깥 날씨 없을 때: 월 기준
+  // 바깥 날씨 없을 때: 월 기준 (한국 기후 기준, 11~3월 난방 / 6~9월 냉방)
   if (month >= 6 && month <= 9) return 'cooling';
-  if (month === 12 || month <= 2) return 'heating';
+  if (month >= 11 || month <= 3) return 'heating';
   return 'neutral';
 }
 

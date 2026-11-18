@@ -110,7 +110,7 @@ async function runOnce(env: Env, opts: { force?: boolean } = {}): Promise<RunSta
     if (temp === null) throw new Error('센서에서 온도를 읽지 못함 (deviceState 키 확인 필요)');
     status.indoorTemp = temp; status.indoorHumidity = humidity;
 
-    const weather = await getWeather(cfg.lat, cfg.lon, env.OWM_API_KEY);
+    const weather = await getWeather(cfg.lat, cfg.lon, cfg.owmKey || env.OWM_API_KEY);
     status.outdoorTemp = weather?.outdoorTemp ?? null;
 
     const reading: Reading = { indoorTemp: temp, indoorHumidity: humidity ?? undefined, outdoorTemp: weather?.outdoorTemp ?? null };
@@ -162,7 +162,8 @@ export default {
     // 상태
     if (url.pathname === '/api/status') {
       const [cfg, st, creds] = await Promise.all([loadConfig(env), env.KV.get('status', 'json'), hasCreds(env)]);
-      return json({ config: { ...cfg }, lastRun: st, hasCreds: creds });
+      const hasOwmKey = !!(cfg.owmKey || env.OWM_API_KEY);
+      return json({ config: { ...cfg, owmKey: undefined }, hasOwmKey, hasCreds: creds, lastRun: st });
     }
     // 헤이홈 로그인 저장 + 즉시 검증 (비번은 저장만, 응답에 안 돌려줌)
     if (url.pathname === '/api/login' && req.method === 'POST') {
@@ -187,9 +188,10 @@ export default {
     // 설정 저장
     if (url.pathname === '/api/config' && req.method === 'POST') {
       const body = await req.json<Partial<Config>>();
+      if ('owmKey' in body && !body.owmKey) delete body.owmKey; // 빈 값이면 기존 키 유지
       const cfg = { ...(await loadConfig(env)), ...body };
       await saveConfig(env, cfg);
-      return json(cfg);
+      return json({ ...cfg, owmKey: undefined });
     }
     // 기기 목록(센서/에어컨 ID 찾기 + deviceState 확인용)
     if (url.pathname === '/api/devices') {
@@ -238,6 +240,7 @@ function renderUI(): string {
   <label>에어컨 기기ID</label><input id="acDeviceId">
   <div class="row"><div><label>위도</label><input id="lat" type="number" step="0.0001"></div>
   <div><label>경도</label><input id="lon" type="number" step="0.0001"></div></div>
+  <label>날씨 API 키 (OpenWeatherMap) <span id="owm"></span></label><input id="owmKey" type="password" placeholder="입력할 때만 변경됨 (비우면 유지)">
   <div style="margin-top:10px"><button id="save" class="run">설정 저장</button>
   <button id="list" class="off">기기 목록 보기</button></div></div>
 <div class="card"><b>마지막 실행</b><pre id="last"></pre></div>
@@ -249,11 +252,12 @@ async function load(){const r=await fetch(q('/api/status'));const d=await r.json
   document.getElementById('toggle').textContent=c.enabled?'자동 ON (끄기)':'자동 OFF (켜기)';
   document.getElementById('state').innerHTML='자동화: <b>'+(c.enabled?'켜짐':'꺼짐')+'</b>';
   document.getElementById('conn').innerHTML=d.hasCreds?'<span style="color:#2ea043">● 로그인됨</span>':'<span style="color:#d29922">● 로그인 필요</span>';
+  document.getElementById('owm').innerHTML=d.hasOwmKey?'<span style="color:#2ea043">(연결됨)</span>':'<span style="color:#9aa4b2">(미설정 → 계절로만 판단)</span>';
   document.getElementById('last').textContent=JSON.stringify(d.lastRun,null,2);}
 document.getElementById('login').onclick=async()=>{const email=document.getElementById('email').value,password=document.getElementById('password').value;if(!email||!password){alert('이메일/비번을 입력하세요');return}document.getElementById('conn').textContent='확인 중…';const r=await fetch(q('/api/login'),{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({email,password})});const j=await r.json();if(j.ok){alert('로그인 성공! 이제 아래 [기기 목록 보기]로 기기ID를 넣으세요.');document.getElementById('password').value=''}else{alert('로그인 실패: '+(j.error||''))}load()};
 document.getElementById('toggle').onclick=async()=>{await fetch(q('/api/toggle'),{method:'POST'});load()};
 document.getElementById('run').onclick=async()=>{document.getElementById('last').textContent='실행 중…';await fetch(q('/api/run'),{method:'POST'});load()};
-document.getElementById('save').onclick=async()=>{const b={};for(const k of ['summerTarget','winterTarget','deadband','sensorDeviceId','acDeviceId','lat','lon']){const v=document.getElementById(k).value;b[k]=['sensorDeviceId','acDeviceId'].includes(k)?v:Number(v)}await fetch(q('/api/config'),{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(b)});alert('저장됨');load()};
+document.getElementById('save').onclick=async()=>{const b={};for(const k of ['summerTarget','winterTarget','deadband','sensorDeviceId','acDeviceId','lat','lon']){const v=document.getElementById(k).value;b[k]=['sensorDeviceId','acDeviceId'].includes(k)?v:Number(v)}const ow=document.getElementById('owmKey').value;if(ow)b.owmKey=ow;await fetch(q('/api/config'),{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(b)});document.getElementById('owmKey').value='';alert('저장됨');load()};
 document.getElementById('list').onclick=async()=>{document.getElementById('last').textContent='불러오는 중…';const r=await fetch(q('/api/devices'));document.getElementById('last').textContent=JSON.stringify(await r.json(),null,2)};
 load();
 </script></body></html>`;
