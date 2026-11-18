@@ -17,11 +17,25 @@ async function saveConfig(env: Env, cfg: Config): Promise<void> {
   await env.KV.put('config', JSON.stringify(cfg));
 }
 
+// ---------- 헤이홈 로그인 정보 (웹에서 입력 → KV 저장, 없으면 시크릿) ----------
+interface Creds { email: string; password: string; }
+async function getCreds(env: Env): Promise<Creds> {
+  const c = await env.KV.get('creds', 'json') as Creds | null;
+  if (c?.email && c?.password) return c;
+  if (env.HEJ_EMAIL && env.HEJ_PASSWORD) return { email: env.HEJ_EMAIL, password: env.HEJ_PASSWORD };
+  throw new Error('헤이홈 로그인이 설정되지 않았습니다 (웹에서 이메일/비번 입력)');
+}
+async function hasCreds(env: Env): Promise<boolean> {
+  const c = await env.KV.get('creds', 'json') as Creds | null;
+  return !!(c?.email && c?.password) || !!(env.HEJ_EMAIL && env.HEJ_PASSWORD);
+}
+
 // ---------- 세션 캐시(로그인 재사용) ----------
 async function getSession(env: Env): Promise<hej.HejSession> {
   const cached = await env.KV.get('session', 'json') as hej.HejSession | null;
   if (cached && cached.expiresAt > Date.now() + 60_000) return cached;
-  const s = await hej.login(env.HEJ_EMAIL, env.HEJ_PASSWORD);
+  const { email, password } = await getCreds(env);
+  const s = await hej.login(email, password);
   await env.KV.put('session', JSON.stringify(s));
   return s;
 }
@@ -147,8 +161,17 @@ export default {
 
     // 상태
     if (url.pathname === '/api/status') {
-      const [cfg, st] = await Promise.all([loadConfig(env), env.KV.get('status', 'json')]);
-      return json({ config: { ...cfg }, lastRun: st });
+      const [cfg, st, creds] = await Promise.all([loadConfig(env), env.KV.get('status', 'json'), hasCreds(env)]);
+      return json({ config: { ...cfg }, lastRun: st, hasCreds: creds });
+    }
+    // 헤이홈 로그인 저장 + 즉시 검증 (비번은 저장만, 응답에 안 돌려줌)
+    if (url.pathname === '/api/login' && req.method === 'POST') {
+      const b = await req.json<{ email?: string; password?: string }>();
+      if (!b.email || !b.password) return json({ ok: false, error: '이메일과 비번을 입력하세요' }, 400);
+      await env.KV.put('creds', JSON.stringify({ email: b.email, password: b.password }));
+      await env.KV.delete('session'); // 새 로그인으로 교체
+      try { await getSession(env); return json({ ok: true }); }
+      catch (e: any) { return json({ ok: false, error: String(e?.message ?? e) }, 500); }
     }
     // 수동 실행
     if (url.pathname === '/api/run' && req.method === 'POST') {
@@ -199,6 +222,11 @@ function renderUI(): string {
   .row{display:flex;gap:8px} .row>div{flex:1}
 </style></head><body>
 <h1>🌡️ 헤이홈 에어컨 자동제어</h1>
+<div class="card"><b>1) 헤이홈 로그인</b> <span id="conn"></span>
+  <label>헤이홈 이메일</label><input id="email" type="email" autocomplete="username">
+  <label>헤이홈 비밀번호</label><input id="password" type="password" autocomplete="current-password">
+  <div style="margin-top:10px"><button id="login" class="run">로그인 저장</button></div>
+  <div style="font-size:.75rem;color:#9aa4b2;margin-top:6px">비번은 사장님 Cloudflare에만 저장되고 화면에 다시 안 보입니다.</div></div>
 <div class="card"><div id="state">불러오는 중…</div>
   <div style="margin-top:12px"><button id="toggle" class="on">on/off</button>
   <button id="run" class="run">지금 실행</button></div></div>
@@ -220,7 +248,9 @@ async function load(){const r=await fetch(q('/api/status'));const d=await r.json
   document.getElementById('toggle').className=c.enabled?'on':'off';
   document.getElementById('toggle').textContent=c.enabled?'자동 ON (끄기)':'자동 OFF (켜기)';
   document.getElementById('state').innerHTML='자동화: <b>'+(c.enabled?'켜짐':'꺼짐')+'</b>';
+  document.getElementById('conn').innerHTML=d.hasCreds?'<span style="color:#2ea043">● 로그인됨</span>':'<span style="color:#d29922">● 로그인 필요</span>';
   document.getElementById('last').textContent=JSON.stringify(d.lastRun,null,2);}
+document.getElementById('login').onclick=async()=>{const email=document.getElementById('email').value,password=document.getElementById('password').value;if(!email||!password){alert('이메일/비번을 입력하세요');return}document.getElementById('conn').textContent='확인 중…';const r=await fetch(q('/api/login'),{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({email,password})});const j=await r.json();if(j.ok){alert('로그인 성공! 이제 아래 [기기 목록 보기]로 기기ID를 넣으세요.');document.getElementById('password').value=''}else{alert('로그인 실패: '+(j.error||''))}load()};
 document.getElementById('toggle').onclick=async()=>{await fetch(q('/api/toggle'),{method:'POST'});load()};
 document.getElementById('run').onclick=async()=>{document.getElementById('last').textContent='실행 중…';await fetch(q('/api/run'),{method:'POST'});load()};
 document.getElementById('save').onclick=async()=>{const b={};for(const k of ['summerTarget','winterTarget','deadband','sensorDeviceId','acDeviceId','lat','lon']){const v=document.getElementById(k).value;b[k]=['sensorDeviceId','acDeviceId'].includes(k)?v:Number(v)}await fetch(q('/api/config'),{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(b)});alert('저장됨');load()};
