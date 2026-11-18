@@ -2,6 +2,8 @@
 // 헤이홈 온습도계 + IR 에어컨 자동제어 (여름=냉방 / 겨울=난방)
 
 export interface Config {
+  /** 화면 상단에 표시할 매장 이름 */
+  storeName?: string;
   /** 자동화 on/off. false면 cron이 아무것도 안 함 */
   enabled: boolean;
   /** 여름(냉방) 목표 실내온도 ℃ */
@@ -22,6 +24,7 @@ export interface Config {
 }
 
 export const DEFAULT_CONFIG: Config = {
+  storeName: '우리 매장',
   enabled: true,
   summerTarget: 25,
   winterTarget: 22,

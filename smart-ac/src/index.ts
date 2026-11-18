@@ -280,9 +280,11 @@ function renderUI(): string {
   .dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:5px;vertical-align:1px}
   pre{white-space:pre-wrap;word-break:break-all;font-size:11px;color:var(--sec);background:var(--field);border-radius:12px;padding:12px;margin:8px 0 0}
 </style></head><body>
-<h1>매장 에어컨</h1>
+<h1 id="title">우리 매장</h1>
+<div style="color:var(--sec);font-size:14px;margin:-10px 2px 18px">실내 환경 자동관리</div>
 
 <div class="hero">
+  <div style="color:var(--sec);font-size:13px;font-weight:500;margin-bottom:2px">실내 온도</div>
   <div class="temp" id="temp">–<span>℃</span></div>
   <div class="humid" id="humid">습도 –</div>
   <div class="chip gray" id="chip"><span class="em">⏳</span><span id="chipt">불러오는 중…</span></div>
@@ -314,6 +316,7 @@ function renderUI(): string {
 <div style="height:10px"></div>
 <details id="dCfg"><summary>자동제어 설정</summary>
   <div class="grp">
+    <div class="fld"><label>매장 이름</label><input id="storeName" placeholder="예: 동작동 카페"></div>
     <div class="fld"><div class="row2">
       <div><label>여름 목표℃</label><input id="summerTarget" type="number" inputmode="decimal"></div>
       <div><label>겨울 목표℃</label><input id="winterTarget" type="number" inputmode="decimal"></div>
@@ -349,6 +352,8 @@ async function load(){
   const [s,pv]=await Promise.all([fetch(q('/api/status')).then(r=>r.json()),fetch(q('/api/preview')).then(r=>r.json()).catch(()=>null)]);
   const c=s.config;
   // 설정값 채우기
+  document.getElementById('title').textContent=c.storeName||'우리 매장';
+  document.getElementById('storeName').value=c.storeName||'';
   for(const k of ['summerTarget','winterTarget','deadband','sensorDeviceId','acDeviceId','lat','lon'])document.getElementById(k).value=c[k];
   document.getElementById('auto').checked=!!c.enabled;
   document.getElementById('swd').textContent=c.enabled?'10분마다 자동으로 맞춰요':'끄면 손으로만 관리';
@@ -377,7 +382,7 @@ async function load(){
 document.getElementById('auto').onchange=async()=>{await fetch(q('/api/toggle'),{method:'POST'});load()};
 document.getElementById('run').onclick=async(e)=>{e.target.textContent='실행 중…';await fetch(q('/api/run'),{method:'POST'});e.target.textContent='지금 한 번 실행';load()};
 document.getElementById('login').onclick=async()=>{const email=document.getElementById('email').value,password=document.getElementById('password').value;if(!email||!password){alert('이메일/비번을 입력하세요');return}const r=await fetch(q('/api/login'),{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({email,password})});const j=await r.json();if(j.ok){document.getElementById('password').value='';document.getElementById('dLogin').open=false;alert('로그인 성공!')}else alert('로그인 실패: '+(j.error||''));load()};
-document.getElementById('save').onclick=async()=>{const b={};for(const k of ['summerTarget','winterTarget','deadband','sensorDeviceId','acDeviceId','lat','lon']){const v=document.getElementById(k).value;b[k]=['sensorDeviceId','acDeviceId'].includes(k)?v:Number(v)}const ow=document.getElementById('owmKey').value;if(ow)b.owmKey=ow;await fetch(q('/api/config'),{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(b)});document.getElementById('owmKey').value='';load()};
+document.getElementById('save').onclick=async()=>{const b={};for(const k of ['summerTarget','winterTarget','deadband','sensorDeviceId','acDeviceId','lat','lon']){const v=document.getElementById(k).value;b[k]=['sensorDeviceId','acDeviceId'].includes(k)?v:Number(v)}b.storeName=document.getElementById('storeName').value||'우리 매장';const ow=document.getElementById('owmKey').value;if(ow)b.owmKey=ow;await fetch(q('/api/config'),{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(b)});document.getElementById('owmKey').value='';load()};
 document.getElementById('list').onclick=async()=>{const el=document.getElementById('last');el.style.display='block';el.textContent='불러오는 중…';const r=await fetch(q('/api/devices'));el.textContent=JSON.stringify(await r.json(),null,2)};
 load();
 </script></body></html>`;
