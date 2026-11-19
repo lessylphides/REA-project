@@ -152,6 +152,22 @@ export async function rawProbe(s: HejSession, path: string): Promise<{ path: str
   }
 }
 
+export interface HejScene { sceneId: string; name: string; }
+
+/** 레시피(장면) 목록 — 헤이홈 앱에서 만든 레시피. DIY 버튼을 담아 실행하는 용도 */
+export async function getScenes(s: HejSession, familyId: number): Promise<HejScene[]> {
+  const r = await get<{ result?: HejScene[] }>(s, `dashboard/scene?family-id=${familyId}`);
+  return (r?.result ?? []).filter((x) => x && typeof x.sceneId === 'string' && typeof x.name === 'string');
+}
+
+/** 레시피 실행 (본문 없는 POST, 쿼리로 식별) */
+export async function runScene(s: HejSession, familyId: number, sceneId: string): Promise<void> {
+  const res = await fetch(`${SQUARE_ORIGIN}/dashboard/scene/?family-id=${familyId}&scene-id=${encodeURIComponent(sceneId)}`, {
+    method: 'POST', headers: authHeaders(s),
+  });
+  if (!res.ok) throw new Error(`레시피 실행 실패 (${res.status})`);
+}
+
 /** 기기 제어. requirments 는 한 번에 하나의 키만 권장(IR은 명령 1개/요청) */
 export async function control(s: HejSession, deviceId: string, requirments: Record<string, unknown>): Promise<void> {
   const res = await fetch(`${SQUARE_ORIGIN}/dashboard/control/${deviceId}`, {

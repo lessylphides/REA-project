@@ -311,6 +311,24 @@ export default {
       return json(await manualControl(env, b.action ?? ''));
     }
     // 에어컨 리모컨 — 전원/모드/온도/바람세기/풍향 세밀 제어
+    // 헤이홈 레시피(DIY 버튼 묶음) 목록 / 실행
+    if (url.pathname === '/api/scenes') {
+      try {
+        const s = await getSession(env);
+        const fams = await hej.getFamilies(s);
+        return json({ ok: true, scenes: await hej.getScenes(s, fams[0].familyId) });
+      } catch (e: any) { return json({ ok: false, error: String(e?.message ?? e) }, 500); }
+    }
+    if (url.pathname === '/api/scene' && req.method === 'POST') {
+      try {
+        const b = await req.json<{ sceneId?: string }>();
+        if (!b.sceneId) return json({ ok: false, error: 'sceneId 필요' }, 400);
+        const s = await getSession(env);
+        const fams = await hej.getFamilies(s);
+        await hej.runScene(s, fams[0].familyId, b.sceneId);
+        return json({ ok: true });
+      } catch (e: any) { return json({ ok: false, error: String(e?.message ?? e) }, 500); }
+    }
     if (url.pathname === '/api/ac' && req.method === 'POST') {
       const cmd = await req.json<{ power?: boolean; mode?: string; temperature?: number; fanSpeed?: string; fanSpeedCode?: string; swing?: boolean; raw?: Record<string, unknown> }>();
       return json(await sendAc(env, cmd));
@@ -449,6 +467,9 @@ function renderUI(token: string): string {
   .card{background:var(--card);border-radius:18px;box-shadow:0 1px 3px rgba(0,0,0,.04)}
   #sparkBox svg{width:100%;height:auto;display:block}
   .qa{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:8px}
+  .scgrid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
+  .scbtn{padding:12px 8px;border:0;border-radius:12px;background:var(--fill,rgba(127,127,127,.16));color:inherit;font-size:15px;font-weight:600;cursor:pointer}
+  .scbtn:disabled{opacity:.45}
   .qbtn{border:0;border-radius:16px;background:var(--card);box-shadow:0 1px 3px rgba(0,0,0,.04);padding:14px 4px;font-size:14px;font-weight:600;color:var(--label);cursor:pointer;font-family:inherit;display:flex;flex-direction:column;align-items:center;gap:4px}
   .qbtn .qi{font-size:22px}
   .qbtn:active{opacity:.55}
@@ -655,7 +676,9 @@ function renderUI(token: string): string {
     <div class="actemp" id="acTempBox"><button id="tDown">−</button><span id="tVal">24℃</span><button id="tUp">＋</button></div>
     <div class="aclabel">바람세기</div>
     <div class="acseg" id="acFan"><button data-c="1">약</button><button data-c="2">중</button><button data-c="3">강</button></div>
-    <div class="mini" style="margin-top:14px">4단·파워·상하/좌우 풍향은 헤이홈 기본 에어컨엔 없어요. DIY 리모컨으로 학습하면 앱에 추가할 수 있어요.</div>
+    <div class="aclabel">레시피 (DIY 버튼)</div>
+    <div class="scgrid" id="acScenes"><div class="mini">불러오는 중…</div></div>
+    <div class="mini" style="margin-top:8px">헤이홈 앱 → 레시피 → 간편 레시피에 DIY 버튼(상하/좌우바람·파워·바람 1~4단)을 담아 만들면 여기 자동으로 나타나요.</div>
     <div class="mini" id="acMsg" style="margin-top:10px;min-height:16px"></div>
   </div>
 </div>
@@ -744,7 +767,13 @@ document.getElementById('outTile').onclick=openWeather;
 let acTemp=24;function showAcTemp(){document.getElementById('tVal').textContent=acTemp+'℃';}
 function applyAcUI(){var b=document.getElementById('acTempBox');if(b)b.classList.toggle('off',curAcOn===false);}
 async function acSend(cmd,label){const m=document.getElementById('acMsg');m.textContent='전송 중…';let j;try{j=await(await fetch(q('/api/ac'),{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(cmd)})).json();}catch(e){j={ok:false,error:'전송 실패'}}m.textContent=j.ok?('✓ '+(label||'전송됨')):('✗ '+(j.error||''));}
-document.getElementById('acTile').onclick=()=>{document.getElementById('acModal').style.display='flex';showAcTemp();applyAcUI();document.getElementById('acMsg').textContent=''};
+document.getElementById('acTile').onclick=()=>{document.getElementById('acModal').style.display='flex';showAcTemp();applyAcUI();document.getElementById('acMsg').textContent='';loadScenes()};
+async function loadScenes(){const box=document.getElementById('acScenes');let j;try{j=await(await fetch(q('/api/scenes'))).json();}catch(e){j={ok:false}}
+  if(!j.ok){box.innerHTML='<div class="mini">레시피를 불러오지 못했어요</div>';return}
+  if(!j.scenes.length){box.innerHTML='<div class="mini">아직 만든 레시피가 없어요</div>';return}
+  box.innerHTML='';j.scenes.forEach(function(sc){const b=document.createElement('button');b.className='scbtn';b.textContent=sc.name;
+    b.onclick=async function(){const m=document.getElementById('acMsg');b.disabled=true;m.textContent='실행 중…';let r;try{r=await(await fetch(q('/api/scene'),{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({sceneId:sc.sceneId})})).json();}catch(e){r={ok:false,error:'전송 실패'}}m.textContent=r.ok?('✓ '+sc.name):('✗ '+(r.error||''));b.disabled=false;};
+    box.appendChild(b);});}
 document.getElementById('acClose').onclick=()=>document.getElementById('acModal').style.display='none';
 document.getElementById('acModal').onclick=e=>{if(e.target.id==='acModal')e.target.style.display='none'};
 document.querySelectorAll('#acPower button').forEach(b=>b.onclick=()=>{const on=b.dataset.p==='on';curAcOn=on;applyAcUI();acSend({power:on},on?'켜기':'끄기')});
