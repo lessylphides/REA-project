@@ -224,9 +224,10 @@ export default {
 
     // 상태
     if (url.pathname === '/api/status') {
-      const [cfg, st, creds] = await Promise.all([loadConfig(env), env.KV.get('status', 'json'), hasCreds(env)]);
+      const [cfg, st, creds, last] = await Promise.all([loadConfig(env), env.KV.get('status', 'json'), hasCreds(env), env.KV.get('lastCommand', 'json')]);
       const hasOwmKey = !!(cfg.owmKey || env.OWM_API_KEY);
-      return json({ config: { ...cfg, owmKey: undefined }, hasOwmKey, hasCreds: creds, lastRun: st });
+      const acOn = last ? !!(last as DesiredAcState).power : null;
+      return json({ config: { ...cfg, owmKey: undefined }, hasOwmKey, hasCreds: creds, acOn, lastRun: st });
     }
     // 헤이홈 로그인 저장 + 즉시 검증 (비번은 저장만, 응답에 안 돌려줌)
     if (url.pathname === '/api/login' && req.method === 'POST') {
@@ -377,6 +378,7 @@ function renderUI(): string {
   .actemp button{width:50px;height:50px;border-radius:50%;border:0;background:var(--field);color:var(--label);font-size:26px;cursor:pointer;font-family:inherit}
   .actemp button:active{opacity:.55}
   .actemp span{font-size:30px;font-weight:700;min-width:84px;text-align:center}
+  .actemp.off{opacity:.35;pointer-events:none}
   .tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:16px}
   .tile{background:var(--card);border-radius:16px;padding:12px 6px;text-align:center;box-shadow:0 1px 3px rgba(0,0,0,.04)}
   .tile .v{font-size:19px;font-weight:600;letter-spacing:-.01em} .tile .k{font-size:11px;color:var(--sec);margin-top:3px}
@@ -508,9 +510,9 @@ function renderUI(): string {
     <div class="sheet-h"><b>🎛️ 에어컨 리모컨</b><button id="acClose" class="x">✕</button></div>
     <div class="acseg" id="acPower"><button data-p="on">전원 켜기</button><button data-p="off">전원 끄기</button></div>
     <div class="aclabel">모드</div>
-    <div class="acseg" id="acMode"><button data-m="cool">❄️ 냉방</button><button data-m="heat">🔥 난방</button><button data-m="fan">💨 송풍</button><button data-m="dry">💧 제습</button><button data-m="auto">자동</button></div>
+    <div class="acseg" id="acMode"><button data-m="cool">❄️ 냉방</button><button data-m="heat">🔥 난방</button><button data-m="fan">💨 송풍</button><button data-m="auto">자동</button></div>
     <div class="aclabel">온도</div>
-    <div class="actemp"><button id="tDown">−</button><span id="tVal">24℃</span><button id="tUp">＋</button></div>
+    <div class="actemp" id="acTempBox"><button id="tDown">−</button><span id="tVal">24℃</span><button id="tUp">＋</button></div>
     <div class="aclabel">바람세기</div>
     <div class="acseg" id="acFan"><button data-f="auto">자동</button><button data-f="low">약</button><button data-f="medium">중</button><button data-f="high">강</button></div>
     <div class="aclabel">풍향 스윙 (탭 = 움직임 ⟷ 정지)</div>
@@ -542,7 +544,7 @@ document.addEventListener('gesturestart',e=>e.preventDefault());
 document.addEventListener('gesturechange',e=>e.preventDefault());
 let _lt=0;document.addEventListener('touchend',e=>{const n=Date.now();if(n-_lt<300)e.preventDefault();_lt=n;},{passive:false});
 const T=new URLSearchParams(location.search).get('t');const q=p=>p+(T?('?t='+T):'');
-let histRange=24;let lastPv=null;let curSensor='',curAc='';
+let histRange=24;let lastPv=null;let curSensor='',curAc='';let curAcOn=true;
 function svgChart(d,col){
   const W=440,H=240,pl=32,pr=30,pt=22,pb=26;
   const temps=d.map(p=>p.temp);const outs=d.filter(p=>p.out!=null).map(p=>p.out);const hums=d.filter(p=>p.hum!=null).map(p=>p.hum);
@@ -602,12 +604,13 @@ function openWeather(){const w=lastPv&&lastPv.weather;const b=document.getElemen
 document.getElementById('outTile').onclick=openWeather;
 // 에어컨 리모컨
 let acTemp=24;function showAcTemp(){document.getElementById('tVal').textContent=acTemp+'℃';}
+function applyAcUI(){var b=document.getElementById('acTempBox');if(b)b.classList.toggle('off',curAcOn===false);}
 async function acSend(cmd,label){const m=document.getElementById('acMsg');m.textContent='전송 중…';let j;try{j=await(await fetch(q('/api/ac'),{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(cmd)})).json();}catch(e){j={ok:false,error:'전송 실패'}}m.textContent=j.ok?('✓ '+(label||'전송됨')):('✗ '+(j.error||''));}
-document.getElementById('acTile').onclick=()=>{document.getElementById('acModal').style.display='flex';showAcTemp();document.getElementById('acMsg').textContent=''};
+document.getElementById('acTile').onclick=()=>{document.getElementById('acModal').style.display='flex';showAcTemp();applyAcUI();document.getElementById('acMsg').textContent=''};
 document.getElementById('acClose').onclick=()=>document.getElementById('acModal').style.display='none';
 document.getElementById('acModal').onclick=e=>{if(e.target.id==='acModal')e.target.style.display='none'};
-document.querySelectorAll('#acPower button').forEach(b=>b.onclick=()=>acSend({power:b.dataset.p==='on'},b.dataset.p==='on'?'켜기':'끄기'));
-document.querySelectorAll('#acMode button').forEach(b=>b.onclick=()=>{document.querySelectorAll('#acMode button').forEach(x=>x.classList.remove('on'));b.classList.add('on');acSend({mode:b.dataset.m},b.textContent.trim())});
+document.querySelectorAll('#acPower button').forEach(b=>b.onclick=()=>{const on=b.dataset.p==='on';curAcOn=on;applyAcUI();acSend({power:on},on?'켜기':'끄기')});
+document.querySelectorAll('#acMode button').forEach(b=>b.onclick=()=>{document.querySelectorAll('#acMode button').forEach(x=>x.classList.remove('on'));b.classList.add('on');curAcOn=true;applyAcUI();acSend({mode:b.dataset.m},b.textContent.trim())});
 document.querySelectorAll('#acFan button').forEach(b=>b.onclick=()=>{document.querySelectorAll('#acFan button').forEach(x=>x.classList.remove('on'));b.classList.add('on');acSend({fanSpeed:b.dataset.f},'바람 '+b.textContent.trim())});
 document.getElementById('tUp').onclick=()=>{if(acTemp<30){acTemp++;showAcTemp();acSend({temperature:acTemp},acTemp+'℃')}};
 document.getElementById('tDown').onclick=()=>{if(acTemp>16){acTemp--;showAcTemp();acSend({temperature:acTemp},acTemp+'℃')}};
@@ -639,7 +642,7 @@ function friendly(p,enabled){
 }
 async function load(){
   const [s,pv,hist]=await Promise.all([fetch(q('/api/status')).then(r=>r.json()),fetch(q('/api/preview')).then(r=>r.json()).catch(()=>null),fetch(q('/api/history')).then(r=>r.json()).catch(()=>[])]);
-  lastPv=pv;drawSpark(hist);
+  lastPv=pv;drawSpark(hist);curAcOn=(s.acOn===false)?false:true;applyAcUI();
   const c=s.config;
   // 설정값 채우기
   document.getElementById('title').textContent=c.storeName||'우리 매장';
