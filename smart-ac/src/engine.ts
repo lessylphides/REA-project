@@ -13,6 +13,8 @@ export interface Decision {
   desired?: DesiredAcState;
   seasonMode: 'cooling' | 'heating' | 'neutral';
   reason: string;
+  /** 목표 도달 후 송풍 순환 유지 중(영업시간) */
+  maintaining?: boolean;
 }
 
 /** 바람세기: 목표와의 온도차가 클수록 강하게 */
@@ -74,13 +76,21 @@ export function scheduleState(now: Date, cfg: Config): { state: 'open' | 'prehea
   return { state: 'closed', comfort: false };
 }
 
-export function decide(reading: Reading, cfg: Config): Decision {
+export function decide(reading: Reading, cfg: Config, comfort = true): Decision {
   const now = reading.now ?? new Date();
   const month = now.getMonth() + 1;
   const season = decideSeason(reading.outdoorTemp, month);
   const indoor = reading.indoorTemp;
   const bias = cfg.acBias ?? 5;
   const clamp = (v: number) => Math.max(16, Math.min(30, Math.round(v)));
+  const target = season === 'cooling' ? cfg.summerTarget : cfg.winterTarget;
+  // 목표 도달 시: 영업중이면 송풍 순환(유지), 비영업이면 완전 OFF(절전)
+  const reached = (): Decision => comfort
+    ? { action: 'set', seasonMode: season as any, maintaining: true,
+        desired: { power: true, mode: 'fan', temperature: target, fanSpeed: 'low' },
+        reason: `실내 ${indoor.toFixed(1)}℃ 목표 ${target}℃ 도달 → 송풍 순환(유지)` }
+    : { action: 'off', seasonMode: season as any,
+        reason: `실내 ${indoor.toFixed(1)}℃ 목표 ${target}℃ 도달 → 에어컨 OFF(절전)` };
 
   // room-follow: 에어컨은 (목표±보정)으로 '강하게' 틀어 송풍 전환을 막고,
   // 켜고 끄는 판단은 우리 온습도계(매장 중앙)가 목표에 닿는 시점으로.
@@ -95,10 +105,7 @@ export function decide(reading: Reading, cfg: Config): Decision {
         reason: `냉방철 · 실내 ${indoor.toFixed(1)}℃ → 냉방(에어컨 ${acSet}℃로 강하게, 실내 ${target}℃까지)/${fan}`,
       };
     }
-    if (indoor <= target) {                              // 매장이 목표 도달 → 끔
-      return { action: 'off', seasonMode: 'cooling',
-        reason: `냉방철 · 실내 ${indoor.toFixed(1)}℃ ≤ 목표 ${target}℃ → 에어컨 OFF` };
-    }
+    if (indoor <= target) return reached();              // 매장이 목표 도달
     return { action: 'hold', seasonMode: 'cooling',
       reason: `냉방철 · 실내 ${indoor.toFixed(1)}℃ (목표 ${target}℃ 근처) → 유지` };
   }
@@ -114,10 +121,7 @@ export function decide(reading: Reading, cfg: Config): Decision {
         reason: `난방철 · 실내 ${indoor.toFixed(1)}℃ → 난방(에어컨 ${acSet}℃로 강하게, 실내 ${target}℃까지)/${fan}`,
       };
     }
-    if (indoor >= target) {                              // 매장이 목표 도달 → 끔
-      return { action: 'off', seasonMode: 'heating',
-        reason: `난방철 · 실내 ${indoor.toFixed(1)}℃ ≥ 목표 ${target}℃ → 에어컨 OFF` };
-    }
+    if (indoor >= target) return reached();              // 매장이 목표 도달
     return { action: 'hold', seasonMode: 'heating',
       reason: `난방철 · 실내 ${indoor.toFixed(1)}℃ (목표 ${target}℃ 근처) → 유지` };
   }

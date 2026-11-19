@@ -90,6 +90,7 @@ interface RunStatus {
   alert?: { type: 'hot' | 'cold'; temp: number; threshold: number } | null;
   scheduleState?: string;
   targetTemp?: number | null;
+  maintaining?: boolean;
   weather?: Weather | null;
   error?: string;
 }
@@ -150,10 +151,11 @@ async function runOnce(env: Env, opts: { force?: boolean; preview?: boolean; log
     const sched = scheduleState(new Date(), cfg);
     status.scheduleState = sched.state;
     const effCfg = sched.comfort ? cfg : { ...cfg, winterTarget: cfg.alertCold, summerTarget: cfg.alertHot };
-    const decision = decide(reading, effCfg);
+    const decision = decide(reading, effCfg, sched.comfort);
     status.seasonMode = decision.seasonMode;
     status.action = decision.action;
     status.reason = decision.reason;
+    status.maintaining = decision.maintaining ?? false;
     status.targetTemp = decision.seasonMode === 'cooling' ? effCfg.summerTarget
                       : decision.seasonMode === 'heating' ? effCfg.winterTarget : null;
 
@@ -567,6 +569,7 @@ function friendly(p,enabled){
     if(cooling)return{em:'❄️',t:'냉방이 필요해요',sub:'자동을 켜면 시원하게 맞춰줘요',c:'blue',ac:'수동'};
     return{em:'😌',t:'지금 알맞아요',sub:'냉난방 필요 없는 상태',c:'green',ac:'수동'};
   }
+  if(p.maintaining)return{em:'🍃',t:'적정 유지 중',sub:'목표 도달 · 송풍으로 순환',c:'green',ac:'송풍'};
   if(cooling)return{em:'❄️',t:'시원하게 트는 중',sub:p.reason,c:'blue',ac:'냉방'};
   if(heating)return{em:'🔥',t:'따뜻하게 트는 중',sub:p.reason,c:'orange',ac:'난방'};
   if(p.action==='off')return{em:'⏹️',t:'에어컨 끄는 중',sub:p.reason,c:'gray',ac:'끄기'};
