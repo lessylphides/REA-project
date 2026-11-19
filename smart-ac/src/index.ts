@@ -375,10 +375,10 @@ function renderUI(token: string): string {
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
   body{margin:0;background:var(--bg);color:var(--label);
     font-family:-apple-system,BlinkMacSystemFont,'SF Pro Display','SF Pro Text',system-ui,sans-serif;
-    padding:max(16px,env(safe-area-inset-top)) 16px calc(32px + env(safe-area-inset-bottom));
+    padding:max(10px,env(safe-area-inset-top)) 16px calc(16px + env(safe-area-inset-bottom));
     max-width:480px;margin:0 auto;-webkit-font-smoothing:antialiased}
-  h1{font-size:28px;font-weight:700;letter-spacing:-.02em;margin:8px 2px 16px}
-  .hero{background:var(--card);border-radius:22px;padding:28px 20px 22px;text-align:center;margin-bottom:16px;
+  h1{font-size:28px;font-weight:700;letter-spacing:-.02em;margin:6px 2px 12px}
+  .hero{background:var(--card);border-radius:22px;padding:22px 20px 18px;text-align:center;margin-bottom:12px;
     box-shadow:0 1px 3px rgba(0,0,0,.04)}
   .temp{font-size:72px;font-weight:600;letter-spacing:-.04em;line-height:1;margin:2px 0}
   .temp span{font-size:32px;font-weight:500;color:var(--sec)}
@@ -456,7 +456,7 @@ function renderUI(token: string): string {
   .actemp button:active{opacity:.55}
   .actemp span{font-size:30px;font-weight:700;min-width:84px;text-align:center}
   .actemp.off{opacity:.35;pointer-events:none}
-  .tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:16px}
+  .tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:12px}
   .tile{background:var(--card);border-radius:16px;padding:12px 6px;text-align:center;box-shadow:0 1px 3px rgba(0,0,0,.04)}
   .tile .v{font-size:19px;font-weight:600;letter-spacing:-.01em} .tile .k{font-size:11px;color:var(--sec);margin-top:3px}
   .switch{display:flex;align-items:center;justify-content:space-between;background:var(--card);
@@ -493,7 +493,7 @@ function renderUI(token: string): string {
   <div><h1 id="title" style="margin:8px 0 2px">우리 매장</h1><div style="color:var(--sec);font-size:14px">실내 환경 자동관리 <span id="sched" class="schedpill"></span></div></div>
   <button id="gear" class="gearbtn" aria-label="설정"><svg viewBox="0 0 24 24" width="23" height="23" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button>
 </div>
-<div style="height:16px"></div>
+<div style="height:8px"></div>
 
 <div class="dash"><div class="cL">
 <div class="hero">
@@ -514,7 +514,7 @@ function renderUI(token: string): string {
   <div class="tile" id="acTile" style="cursor:pointer"><div class="v" id="t_ac">–</div><div class="k">에어컨 ›</div></div>
 </div>
 
-<div class="card" id="sparkCard" style="cursor:pointer;padding:14px 16px;margin-bottom:16px">
+<div class="card" id="sparkCard" style="cursor:pointer;padding:12px 16px;margin-bottom:12px">
   <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--sec);margin-bottom:4px"><span>최근 24시간 추이 📈</span><span id="sparkMeta"></span></div>
   <div id="sparkBox"></div>
 </div>
