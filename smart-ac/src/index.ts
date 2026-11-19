@@ -89,6 +89,7 @@ interface RunStatus {
   sent?: string[];
   alert?: { type: 'hot' | 'cold'; temp: number; threshold: number } | null;
   scheduleState?: string;
+  targetTemp?: number | null;
   error?: string;
 }
 
@@ -133,6 +134,8 @@ async function runOnce(env: Env, opts: { force?: boolean; preview?: boolean; log
     status.seasonMode = decision.seasonMode;
     status.action = decision.action;
     status.reason = decision.reason;
+    status.targetTemp = decision.seasonMode === 'cooling' ? effCfg.summerTarget
+                      : decision.seasonMode === 'heating' ? effCfg.winterTarget : null;
 
     if (opts.log && temp !== null) await appendHistory(env, { t: Date.now(), temp, hum: humidity, out: weather?.outdoorTemp ?? null });
 
@@ -353,6 +356,7 @@ function renderUI(): string {
   <label class="tg"><input type="checkbox" id="auto"><span class="sl"></span></label>
 </div>
 <button class="btn" id="run">지금 한 번 실행</button>
+<div class="mini" style="text-align:center;margin:-4px 2px 2px">자동을 기다리지 않고, 지금 상태를 바로 확인해 필요하면 에어컨을 한 번 맞춰요</div>
 
 <div class="sec-h">설정</div>
 <details id="dLogin"><summary><span><span class="dot" id="cDot" style="background:var(--sec)"></span>헤이홈 로그인</span></summary>
@@ -492,8 +496,7 @@ async function load(){
     document.getElementById('humid').textContent='습도 '+(pv.indoorHumidity!=null?pv.indoorHumidity+'%':'–');
     document.getElementById('t_season').textContent=pv.seasonMode==='cooling'?'냉방철':pv.seasonMode==='heating'?'난방철':'간절기';
     document.getElementById('t_out').textContent=pv.outdoorTemp!=null?Math.round(pv.outdoorTemp)+'℃':'–';
-    const tgt=pv.seasonMode==='cooling'?c.summerTarget:pv.seasonMode==='heating'?c.winterTarget:null;
-    document.getElementById('t_target').textContent=tgt!=null?tgt+'℃':'–';
+    document.getElementById('t_target').textContent=pv.targetTemp!=null?pv.targetTemp+'℃':'–';
   }
   const chip=document.getElementById('chip');chip.className='chip '+f.c;
   chip.querySelector('.em').textContent=f.em;document.getElementById('chipt').textContent=f.t;
