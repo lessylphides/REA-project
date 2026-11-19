@@ -1,7 +1,6 @@
 // Cloudflare Worker 엔트리
 //  - scheduled(cron): 주기적으로 센서 읽고 에어컨 자동 제어
 //  - fetch(http):     상태 확인 + on/off + 설정 UI/API
-import { runJob } from './scan';
 import { Config, DEFAULT_CONFIG, Env, DesiredAcState, MODE_CODES, FAN_CODES } from './config';
 import * as hej from './hej';
 import { getWeather, Weather } from './weather';
@@ -249,8 +248,7 @@ function authed(req: Request, env: Env): boolean {
 
 // ---------- HTTP 핸들러 ----------
 export default {
-  async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> {
-    if (event.cron === '* * * * *') { ctx.waitUntil(runJob(env, getSession)); return; } // 조사용 작업 통로
+  async scheduled(_event: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> {
     ctx.waitUntil(runOnce(env, { log: true }));
   },
 
