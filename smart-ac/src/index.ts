@@ -127,8 +127,8 @@ async function manualControl(env: Env, action: string): Promise<{ ok: boolean; s
     const last = await env.KV.get('lastCommand', 'json') as DesiredAcState | null;
     let desired: DesiredAcState;
     if (action === 'off') desired = { power: false, mode: last?.mode ?? 'heat', temperature: last?.temperature ?? 22, fanSpeed: last?.fanSpeed ?? 'auto' };
-    else if (action === 'heat') desired = { power: true, mode: 'heat', temperature: cfg.winterTarget, fanSpeed: 'auto' };
-    else if (action === 'cool') desired = { power: true, mode: 'cool', temperature: cfg.summerTarget, fanSpeed: 'auto' };
+    else if (action === 'heat') desired = { power: true, mode: 'heat', temperature: cfg.winterTarget, fanSpeed: 'medium' };
+    else if (action === 'cool') desired = { power: true, mode: 'cool', temperature: cfg.summerTarget, fanSpeed: 'medium' };
     else return { ok: false, error: '알 수 없는 동작' };
     const sent = await applyDesired(s, cfg.acDeviceId, desired, last);
     await env.KV.put('lastCommand', JSON.stringify(desired));
@@ -600,8 +600,8 @@ function renderUI(token: string): string {
     <div class="aclabel">온도</div>
     <div class="actemp" id="acTempBox"><button id="tDown">−</button><span id="tVal">24℃</span><button id="tUp">＋</button></div>
     <div class="aclabel">바람세기</div>
-    <div class="acseg" id="acFan"><button data-c="1">1단</button><button data-c="2">2단</button><button data-c="3">3단</button><button data-c="4">4단</button></div>
-    <div class="mini" style="margin-top:14px">풍향(상하/좌우)은 헤이홈 기본 에어컨 제어로는 지원되지 않아요. 앱에서 쓰려면 DIY 리모컨 등록이 필요해요(사장님과 상의).</div>
+    <div class="acseg" id="acFan"><button data-c="1">약</button><button data-c="2">중</button><button data-c="3">강</button></div>
+    <div class="mini" style="margin-top:14px">4단·파워·상하/좌우 풍향은 헤이홈 기본 에어컨엔 없어요. DIY 리모컨으로 학습하면 앱에 추가할 수 있어요.</div>
     <div class="mini" id="acMsg" style="margin-top:10px;min-height:16px"></div>
   </div>
 </div>
