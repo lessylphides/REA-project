@@ -604,7 +604,7 @@ function renderUI(token: string): string {
 <div class="hero">
   <div style="color:var(--sec);font-size:13px;font-weight:500;margin-bottom:2px">실내 온도 <span style="opacity:.6">· 탭하면 그래프 📈</span></div>
   <div class="temp" id="temp" style="cursor:pointer">–<span>℃</span></div>
-  <div class="humid" id="humid">습도 –</div>
+  <div class="humid" id="humid" style="cursor:pointer">습도 –</div>
   <div class="chip gray" id="chip"><span class="em">⏳</span><span id="chipt">불러오는 중…</span></div>
   <div class="chipsub" id="chipsub"></div>
   <div class="chipsub" id="acwarn" style="color:var(--red);font-weight:600"></div>
@@ -720,6 +720,15 @@ function renderUI(token: string): string {
   </div>
 </div>
 
+<div id="humModal" class="modal" style="display:none">
+  <div class="sheet">
+    <div class="sheet-h"><b>💧 가습기</b><button id="humClose" class="x">✕</button></div>
+    <div class="mini" id="humNow" style="margin-bottom:10px"></div>
+    <div class="scgrid" id="humBtns"><div class="mini">불러오는 중…</div></div>
+    <div class="mini" id="humMsg" style="margin-top:10px;min-height:16px"></div>
+    <div class="mini" style="margin-top:6px">헤이홈 앱 간편 레시피 중 이름에 "가습"이 들어간 것이 여기 버튼으로 나와요.</div>
+  </div>
+</div>
 <div id="wxModal" class="modal" style="display:none">
   <div class="sheet">
     <div class="sheet-h"><b>🌤️ 바깥 날씨</b><button id="wxClose" class="x">✕</button></div>
@@ -810,7 +819,7 @@ var DIY_KEYS={updown:/상하/,leftright:/좌우/,fan:/세기/,power:/파워|powe
 var diyMap={};
 async function runScene(id,label){const m=document.getElementById('acMsg');m.textContent='전송 중…';let r;try{r=await(await fetch(q('/api/scene'),{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({sceneId:id})})).json();}catch(e){r={ok:false,error:'전송 실패'}}m.textContent=r.ok?('✓ '+label):('✗ '+(r.error||''));}
 async function loadScenes(){let j;try{j=await(await fetch(q('/api/scenes'))).json();}catch(e){j={ok:false}}
-  diyMap={};(j.ok?j.scenes:[]).forEach(function(sc){for(var k in DIY_KEYS){if(!diyMap[k]&&DIY_KEYS[k].test(sc.name))diyMap[k]=sc;}});
+  diyMap={};(j.ok?j.scenes:[]).forEach(function(sc){if(/가습/.test(sc.name))return;for(var k in DIY_KEYS){if(!diyMap[k]&&DIY_KEYS[k].test(sc.name))diyMap[k]=sc;}});
   var missing=[];
   document.querySelectorAll('#acDiy button').forEach(function(b){var sc=diyMap[b.dataset.k];b.disabled=!sc;if(!sc)missing.push(b.textContent.split(' ').slice(1).join(' '));
     b.onclick=function(){if(sc)runScene(sc.sceneId,b.textContent.split(' ').slice(1).join(' '));};});
@@ -823,6 +832,15 @@ document.querySelectorAll('#acMode button').forEach(b=>b.onclick=()=>{document.q
 document.getElementById('tUp').onclick=()=>{if(acTemp<30){acTemp++;showAcTemp();acSend({temperature:acTemp},acTemp+'℃')}};
 document.getElementById('tDown').onclick=()=>{if(acTemp>16){acTemp--;showAcTemp();acSend({temperature:acTemp},acTemp+'℃')}};
 document.getElementById('wxClose').onclick=()=>document.getElementById('wxModal').style.display='none';
+document.getElementById('humid').onclick=function(e){e.stopPropagation();document.getElementById('humModal').style.display='flex';document.getElementById('humMsg').textContent='';var h=lastPv&&lastPv.indoorHumidity;document.getElementById('humNow').textContent='지금 실내 습도 '+(h!=null?h+'%':'–');loadHum();};
+document.getElementById('humClose').onclick=()=>document.getElementById('humModal').style.display='none';
+async function loadHum(){const box=document.getElementById('humBtns');let j;try{j=await(await fetch(q('/api/scenes'))).json();}catch(e){j={ok:false}}
+  if(!j.ok){box.innerHTML='<div class="mini">레시피를 불러오지 못했어요</div>';return}
+  const list=j.scenes.filter(function(sc){return /가습/.test(sc.name)});
+  if(!list.length){box.innerHTML='<div class="mini">이름에 "가습"이 들어간 레시피가 없어요</div>';return}
+  box.innerHTML='';list.forEach(function(sc){const b=document.createElement('button');b.className='scbtn';b.textContent=sc.name;
+    b.onclick=async function(){const m=document.getElementById('humMsg');b.disabled=true;m.textContent='전송 중…';let r;try{r=await(await fetch(q('/api/scene'),{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({sceneId:sc.sceneId})})).json();}catch(e){r={ok:false,error:'전송 실패'}}m.textContent=r.ok?('✓ '+sc.name):('✗ '+(r.error||''));b.disabled=false;};
+    box.appendChild(b);});}
 document.getElementById('wxModal').onclick=e=>{if(e.target.id==='wxModal')e.target.style.display='none'};
 document.getElementById('chartClose').onclick=()=>document.getElementById('chartModal').style.display='none';
 document.getElementById('chartModal').onclick=e=>{if(e.target.id==='chartModal')e.target.style.display='none'};
@@ -878,7 +896,7 @@ async function load(){
   const f=friendly(pv,c.enabled);
   if(pv&&typeof pv.indoorTemp==='number'){
     document.getElementById('temp').innerHTML=pv.indoorTemp.toFixed(1)+'<span>℃</span>';
-    document.getElementById('humid').textContent='습도 '+(pv.indoorHumidity!=null?pv.indoorHumidity+'%':'–');
+    document.getElementById('humid').textContent='습도 '+(pv.indoorHumidity!=null?pv.indoorHumidity+'%':'–')+' · 가습기 ›';
     document.getElementById('t_season').textContent=pv.seasonMode==='cooling'?'냉방철':pv.seasonMode==='heating'?'난방철':'간절기';
     document.getElementById('t_out').textContent=pv.outdoorTemp!=null?((pv.weather&&pv.weather.emoji?pv.weather.emoji+' ':'')+Math.round(pv.outdoorTemp)+'℃'):'–';
     document.getElementById('t_target').textContent=pv.targetTemp!=null?pv.targetTemp+'℃':'–';
@@ -941,7 +959,7 @@ function updateClock(){
 }
 updateClock();setInterval(updateClock,1000);
 // 상시표시용 5분 자동 새로고침 (설정/리모컨 창 열려있으면 입력 보호 위해 건너뜀)
-function anyOpen(){return ['settingsModal','acModal','wxModal','chartModal'].some(function(id){var e=document.getElementById(id);return e&&e.style.display&&e.style.display!=='none'});}
+function anyOpen(){return ['settingsModal','acModal','wxModal','chartModal','humModal'].some(function(id){var e=document.getElementById(id);return e&&e.style.display&&e.style.display!=='none'});}
 setInterval(function(){if(!anyOpen())load().catch(function(){})},300000);
 load();
 </script></body></html>`;
