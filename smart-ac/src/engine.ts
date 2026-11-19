@@ -8,13 +8,22 @@ export interface Reading {
   now?: Date;
 }
 
+/** 영업 중 3단계: 가동(boost) → 완만 유지(soft) → 쉬기(rest) */
+export type Stage = 'boost' | 'soft' | 'rest';
+/** 단계 상태(실행 사이에 KV에 저장) */
+export interface Ctl { stage: Stage; since: number; season: 'cooling' | 'heating'; }
+
 export interface Decision {
   action: 'set' | 'off' | 'hold';
   desired?: DesiredAcState;
   seasonMode: 'cooling' | 'heating' | 'neutral';
   reason: string;
-  /** 목표 도달 후 송풍 순환 유지 중(영업시간) */
+  /** 목표 도달 후 유지 중(완만 유지/쉬기) */
   maintaining?: boolean;
+  /** 영업 중 단계 */
+  stage?: Stage;
+  /** 다음 실행에 넘길 단계 상태 (null = 초기화) */
+  ctl?: Ctl | null;
 }
 
 /**
@@ -83,67 +92,70 @@ export function nextTransition(now: Date, cfg: Config): { opensNext: boolean; at
   return null;
 }
 
-export function decide(reading: Reading, cfg: Config, comfort = true): Decision {
+export function decide(reading: Reading, cfg: Config, comfort = true, prevCtl: Ctl | null = null): Decision {
   const now = reading.now ?? new Date();
   const month = now.getMonth() + 1;
   const season = decideSeason(reading.outdoorTemp, month);
   const indoor = reading.indoorTemp;
   const bias = cfg.acBias ?? 5;
-  const fan: HvacFanSpeed = cfg.fanSpeed ?? 'medium'; // 고정 — 매 명령마다 바꾸지 않아 풍향 리셋 방지
+  const fanBoost: HvacFanSpeed = cfg.fanSpeed ?? 'medium';
   const clamp = (v: number) => Math.max(AC_TEMP_MIN, Math.min(AC_TEMP_MAX, Math.round(v)));
-
-  // 핵심: 영업 중엔 '모드'를 절대 바꾸지 않는다(송풍 모드로 전환하면 상/하·좌/우 풍향이 리셋됨).
-  //  - 가동: 같은 모드에서 설정온도를 (목표±보정)으로 강하게
-  //  - 도달(유지): 모드/바람세기 그대로 두고 설정온도만 끝값으로 → 에어컨이 알아서 공회전(송풍처럼)
-  //    → 바뀌는 건 '설정온도'뿐이라 풍향이 안 풀린다.
-  //  - 비영업: 절전을 위해 완전 OFF (하루 1회 전원 토글이라 리셋돼도 영향 적음)
-  if (season === 'cooling') {
-    const target = cfg.summerTarget;
-    if (indoor >= target + cfg.deadband) {               // 덥다 → 냉방 가동
-      const acSet = clamp(target - bias);
-      return {
-        action: 'set', seasonMode: 'cooling',
-        desired: { power: true, mode: 'cool', temperature: acSet, fanSpeed: fan },
-        reason: `냉방철 · 실내 ${indoor.toFixed(1)}℃ → 냉방(에어컨 ${acSet}℃로 강하게, 실내 ${target}℃까지)`,
-      };
-    }
-    if (indoor <= target) {                              // 매장이 목표 도달
-      if (comfort) return {
-        action: 'set', seasonMode: 'cooling', maintaining: true,
-        desired: { power: true, mode: 'cool', temperature: AC_TEMP_MAX, fanSpeed: fan },
-        reason: `실내 ${indoor.toFixed(1)}℃ 목표 ${target}℃ 도달 → 냉방 공회전(설정 ${AC_TEMP_MAX}℃·모드/풍향 유지)`,
-      };
-      return { action: 'off', seasonMode: 'cooling',
-        reason: `실내 ${indoor.toFixed(1)}℃ 목표 ${target}℃ 도달 → 에어컨 OFF(절전)` };
-    }
-    return { action: 'hold', seasonMode: 'cooling',
-      reason: `냉방철 · 실내 ${indoor.toFixed(1)}℃ (목표 ${target}℃ 근처) → 유지` };
-  }
-
-  if (season === 'heating') {
-    const target = cfg.winterTarget;
-    if (indoor <= target - cfg.deadband) {               // 춥다 → 난방 가동
-      const acSet = clamp(target + bias);
-      return {
-        action: 'set', seasonMode: 'heating',
-        desired: { power: true, mode: 'heat', temperature: acSet, fanSpeed: fan },
-        reason: `난방철 · 실내 ${indoor.toFixed(1)}℃ → 난방(에어컨 ${acSet}℃로 강하게, 실내 ${target}℃까지)`,
-      };
-    }
-    if (indoor >= target) {                              // 매장이 목표 도달
-      if (comfort) return {
-        action: 'set', seasonMode: 'heating', maintaining: true,
-        desired: { power: true, mode: 'heat', temperature: AC_TEMP_MIN, fanSpeed: fan },
-        reason: `실내 ${indoor.toFixed(1)}℃ 목표 ${target}℃ 도달 → 난방 공회전(설정 ${AC_TEMP_MIN}℃·모드/풍향 유지)`,
-      };
-      return { action: 'off', seasonMode: 'heating',
-        reason: `실내 ${indoor.toFixed(1)}℃ 목표 ${target}℃ 도달 → 에어컨 OFF(절전)` };
-    }
-    return { action: 'hold', seasonMode: 'heating',
-      reason: `난방철 · 실내 ${indoor.toFixed(1)}℃ (목표 ${target}℃ 근처) → 유지` };
-  }
+  const t1 = (v: number) => v.toFixed(1);
 
   // 간절기: 적극 제어 안 함
-  return { action: 'hold', seasonMode: 'neutral',
-    reason: `간절기(냉난방 불필요 판단) · 실내 ${indoor.toFixed(1)}℃ → 유지` };
+  if (season === 'neutral') return { action: 'hold', seasonMode: 'neutral', ctl: null,
+    reason: `간절기(냉난방 불필요 판단) · 실내 ${t1(indoor)}℃ → 유지` };
+
+  const heating = season === 'heating';
+  const mode = heating ? 'heat' : 'cool';
+  const target = heating ? cfg.winterTarget : cfg.summerTarget;
+  const label = heating ? '난방' : '냉방';
+  // over: 목표를 '넘어선' 정도 (난방은 더 따뜻할수록 +, 냉방은 더 시원할수록 +)
+  const over = heating ? indoor - target : target - indoor;
+
+  // 비영업(세트백): 최저/최고 기준만 지키고, 닿으면 완전 OFF(절전)
+  if (!comfort) {
+    if (over <= -cfg.deadband) return { action: 'set', seasonMode: season, ctl: null,
+      desired: { power: true, mode, temperature: clamp(heating ? target + bias : target - bias), fanSpeed: fanBoost },
+      reason: `비영업 · 실내 ${t1(indoor)}℃ → 기준 ${target}℃ 지키려고 ${label}` };
+    if (over >= 0) return { action: 'off', seasonMode: season, ctl: null,
+      reason: `비영업 · 실내 ${t1(indoor)}℃ 기준 ${target}℃ 도달 → 에어컨 OFF(절전)` };
+    return { action: 'hold', seasonMode: season, ctl: null, reason: `비영업 · 실내 ${t1(indoor)}℃ → 유지` };
+  }
+
+  // 영업 중: 모드는 그대로 두고 설정온도·바람세기만 바꿔 부드럽게 (풍향 유지)
+  const prev = prevCtl && prevCtl.season === season ? prevCtl.stage : null;
+  const observeMs = (cfg.observeMinutes ?? 30) * 60000;
+  const restAbove = cfg.restAbove ?? 1;
+  const elapsed = prevCtl && prev ? now.getTime() - prevCtl.since : 0;
+
+  let stage: Stage;
+  if (over <= -cfg.deadband) stage = 'boost';                       // 목표보다 확실히 춥/덥다
+  else if (prev === 'rest') stage = over < 0 ? 'soft' : 'rest';     // 쉬다가 목표 아래로 → 살살 다시
+  else if (prev === 'soft') {
+    if (over >= restAbove + 1) stage = 'rest';                      // 많이 넘침 → 바로 쉬기(안전)
+    else if (over >= restAbove && elapsed >= observeMs) stage = 'rest'; // 지켜봤는데도 계속 넘침
+    else stage = 'soft';
+  } else if (prev === 'boost') stage = over >= 0 ? 'soft' : 'boost'; // 목표 도달 → 완만 유지
+  else stage = 'soft';                                               // 상태 없음 + 목표 근처 → 부드럽게 시작
+
+  const since = prevCtl && prev === stage ? prevCtl.since : now.getTime();
+  const ctl: Ctl = { stage, since, season };
+
+  if (stage === 'boost') {
+    const acSet = clamp(heating ? target + bias : target - bias);
+    return { action: 'set', seasonMode: season, stage, ctl,
+      desired: { power: true, mode, temperature: acSet, fanSpeed: fanBoost },
+      reason: `${label} 가동 · 실내 ${t1(indoor)}℃ → 에어컨 ${acSet}℃로 세게 (목표 ${target}℃)` };
+  }
+  if (stage === 'soft') {
+    const mins = Math.max(0, Math.round((observeMs - (now.getTime() - since)) / 60000));
+    return { action: 'set', seasonMode: season, stage, ctl, maintaining: true,
+      desired: { power: true, mode, temperature: clamp(target), fanSpeed: 'low' },
+      reason: `완만 유지 · 실내 ${t1(indoor)}℃ → 설정 ${clamp(target)}℃·바람 약으로 살살` + (mins > 0 ? ` (추이 관찰 ${mins}분 남음)` : '') };
+  }
+  const restSet = heating ? AC_TEMP_MIN : AC_TEMP_MAX;
+  return { action: 'set', seasonMode: season, stage, ctl, maintaining: true,
+    desired: { power: true, mode, temperature: restSet, fanSpeed: 'low' },
+    reason: `쉬기 · 실내 ${t1(indoor)}℃ (목표 ${target}℃보다 ${heating ? '따뜻함' : '시원함'}) → 설정 ${restSet}℃·바람 약으로 쉬며 관찰, 목표 ${heating ? '아래로 내려가면' : '위로 올라가면'} 다시 살살` };
 }

@@ -32,6 +32,10 @@ export interface Config {
   /** 바람세기 고정값. 영업 중엔 모드/풍향을 안 건드리고 설정온도만 조절하므로
    *  바람세기도 한 값으로 고정(매번 바꾸면 풍향 리셋 위험). 기본 '중' */
   fanSpeed?: HvacFanSpeed;
+  /** 완만 유지 단계에서 온도 추이를 지켜볼 시간(분). 이 시간 뒤에도 계속 넘치면 '쉬기'로 */
+  observeMinutes?: number;
+  /** 목표를 이만큼(℃) 넘어 계속 오르면(냉방은 내려가면) '쉬기'로 전환 */
+  restAbove?: number;
   /** 여름 경고: 실내가 이 온도 이상이면 '너무 더움' 경고 */
   alertHot: number;
   /** 겨울 최저기준: 실내가 이 온도 이하면 '너무 추움' 경고 + 비영업 세트백 바닥 */
@@ -63,6 +67,8 @@ export const DEFAULT_CONFIG: Config = {
   deadband: 1.5,
   acBias: 5,
   fanSpeed: 'medium',
+  observeMinutes: 30,
+  restAbove: 1,
   alertHot: 30,
   alertCold: 15,
   useSchedule: true,
