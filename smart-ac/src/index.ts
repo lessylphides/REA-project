@@ -291,12 +291,12 @@ function renderUI(): string {
   .seg button{flex:1;border:0;background:var(--field);color:var(--sec);padding:9px;border-radius:9px;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit}
   .seg button.on{background:var(--blue);color:#fff}
   #chartBox svg{width:100%;height:auto;display:block}
-  .dayrow{display:flex;align-items:center;gap:6px;padding:7px 0;border-top:1px solid var(--sep)}
+  .dayrow{display:flex;align-items:center;gap:5px;padding:7px 0;border-top:1px solid var(--sep)}
   .dayrow:first-child{border-top:0}
-  .dname{width:18px;font-weight:600;font-size:15px}
-  .dayrow input[type=time]{flex:1;min-width:0;background:var(--field);border:0;border-radius:8px;padding:7px 8px;color:var(--label);font-family:inherit;font-size:14px}
-  .dayrow .tilde{color:var(--sec)}
-  .offbox{font-size:12px;color:var(--sec);display:flex;align-items:center;gap:3px;white-space:nowrap}
+  .dname{width:16px;font-weight:600;font-size:15px;flex:0 0 auto}
+  .dayrow input[type=time]{flex:1 1 0;min-width:0;background:var(--field);border:0;border-radius:8px;padding:7px 4px;color:var(--label);font-family:inherit;font-size:13px}
+  .dayrow .tilde{color:var(--sec);flex:0 0 auto}
+  .offbox{flex:0 0 auto;font-size:12px;color:var(--sec);display:flex;align-items:center;gap:3px;white-space:nowrap}
   .dayrow.off input[type=time]{opacity:.35}
   .tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:16px}
   .tile{background:var(--card);border-radius:16px;padding:12px 6px;text-align:center;box-shadow:0 1px 3px rgba(0,0,0,.04)}
@@ -502,7 +502,7 @@ async function load(){
   document.getElementById('useSchedule').checked=c.useSchedule!==false;
   document.getElementById('preheatMinutes').value=c.preheatMinutes!=null?c.preheatMinutes:60;
   const DAYS=[['월',1],['화',2],['수',3],['목',4],['금',5],['토',6],['일',0]];
-  document.getElementById('daysBox').innerHTML=DAYS.map(function(e){var nm=e[0],ix=e[1];var h=(c.hours&&c.hours[ix])||{closed:false,open:'09:00',close:'00:00'};return '<div class="dayrow'+(h.closed?' off':'')+'" data-d="'+ix+'"><span class="dname">'+nm+'</span><input type="time" class="dOpen" value="'+(h.open||'09:00')+'"><span class="tilde">~</span><input type="time" class="dClose" value="'+(h.close||'00:00')+'"><label class="offbox"><input type="checkbox" class="dClosed"'+(h.closed?' checked':'')+'>휴무</label></div>';}).join('');
+  document.getElementById('daysBox').innerHTML=DAYS.map(function(e){var nm=e[0],ix=e[1];var h=(c.hours&&c.hours[ix])||{closed:false,open:'09:00',close:'00:00'};return '<div class="dayrow'+(h.closed?' off':'')+'" data-d="'+ix+'"><span class="dname">'+nm+'</span><label class="offbox"><input type="checkbox" class="dClosed"'+(h.closed?' checked':'')+'>휴무</label><input type="time" class="dOpen" value="'+(h.open||'09:00')+'"><span class="tilde">~</span><input type="time" class="dClose" value="'+(h.close||'00:00')+'"></div>';}).join('');
   document.querySelectorAll('#daysBox .dClosed').forEach(function(cb){cb.onchange=function(){cb.closest('.dayrow').classList.toggle('off',cb.checked)};});
   let sub=f.sub||'';
   if(pv&&!pv.alert){if(pv.scheduleState==='closed')sub='비영업 · 최저 '+c.alertCold+'℃만 유지 (절전)';else if(pv.scheduleState==='preheat')sub='영업 준비 — 미리 데우는 중';}
