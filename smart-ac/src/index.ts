@@ -137,7 +137,7 @@ async function manualControl(env: Env, action: string): Promise<{ ok: boolean; s
 }
 
 // ---------- 에어컨 리모컨 (세밀 제어) ----------
-async function sendAc(env: Env, cmd: { power?: boolean; mode?: string; temperature?: number; fanSpeed?: string; swing?: boolean; raw?: Record<string, unknown> }): Promise<{ ok: boolean; sent?: string[]; error?: string }> {
+async function sendAc(env: Env, cmd: { power?: boolean; mode?: string; temperature?: number; fanSpeed?: string; fanSpeedCode?: string; swing?: boolean; raw?: Record<string, unknown> }): Promise<{ ok: boolean; sent?: string[]; error?: string }> {
   try {
     const cfg = await loadConfig(env);
     if (!cfg.acDeviceId) return { ok: false, error: '에어컨이 설정되지 않았어요' };
@@ -148,6 +148,7 @@ async function sendAc(env: Env, cmd: { power?: boolean; mode?: string; temperatu
     if (cmd.mode && MODE_CODES[cmd.mode as keyof typeof MODE_CODES] !== undefined) { await hej.control(s, id, { mode: MODE_CODES[cmd.mode as keyof typeof MODE_CODES] }); sent.push('모드'); await sleep(400); }
     if (typeof cmd.temperature === 'number') { const t = Math.max(16, Math.min(30, Math.round(cmd.temperature))); await hej.control(s, id, { temperature: t }); sent.push('온도'); await sleep(400); }
     if (cmd.fanSpeed && FAN_CODES[cmd.fanSpeed as keyof typeof FAN_CODES] !== undefined) { await hej.control(s, id, { fanSpeed: FAN_CODES[cmd.fanSpeed as keyof typeof FAN_CODES] }); sent.push('바람'); await sleep(400); }
+    if (typeof cmd.fanSpeedCode === 'string' && cmd.fanSpeedCode) { await hej.control(s, id, { fanSpeed: cmd.fanSpeedCode }); sent.push('바람'); await sleep(400); }
     if (cmd.swing) { await hej.control(s, id, { swing: true }); sent.push('풍향'); await sleep(400); }
     if (cmd.raw && typeof cmd.raw === 'object') { await hej.control(s, id, cmd.raw); sent.push('raw'); }
     return { ok: true, sent };
@@ -300,7 +301,7 @@ export default {
     }
     // 에어컨 리모컨 — 전원/모드/온도/바람세기/풍향 세밀 제어
     if (url.pathname === '/api/ac' && req.method === 'POST') {
-      const cmd = await req.json<{ power?: boolean; mode?: string; temperature?: number; fanSpeed?: string; swing?: boolean; raw?: Record<string, unknown> }>();
+      const cmd = await req.json<{ power?: boolean; mode?: string; temperature?: number; fanSpeed?: string; fanSpeedCode?: string; swing?: boolean; raw?: Record<string, unknown> }>();
       return json(await sendAc(env, cmd));
     }
     // 미리보기(현재 온도/판단만, 에어컨에 전송 안 함) — 화면 표시용
@@ -598,10 +599,10 @@ function renderUI(token: string): string {
     <div class="acseg" id="acMode"><button data-m="cool">❄️ 냉방</button><button data-m="heat">🔥 난방</button><button data-m="fan">💨 송풍</button><button data-m="auto">자동</button></div>
     <div class="aclabel">온도</div>
     <div class="actemp" id="acTempBox"><button id="tDown">−</button><span id="tVal">24℃</span><button id="tUp">＋</button></div>
-    <div class="aclabel">바람세기</div>
-    <div class="acseg" id="acFan"><button data-f="auto">자동</button><button data-f="low">약</button><button data-f="medium">중</button><button data-f="high">강</button></div>
-    <div class="aclabel">풍향 스윙 (탭 = 움직임 ⟷ 정지)</div>
-    <div class="acseg"><button id="swLR">↔ 좌우</button><button id="swUD">↕ 상하</button></div>
+    <div class="aclabel">바람세기 (4단계)</div>
+    <div class="acseg" id="acFan"><button data-c="1">약</button><button data-c="2">중</button><button data-c="3">강</button><button data-c="4">파워</button></div>
+    <div class="aclabel">풍향 바람 (탭 = 움직임 ⟷ 정지)</div>
+    <div class="acseg"><button id="swUD">↕ 상하바람</button><button id="swLR">↔ 좌우바람</button></div>
     <div class="mini">⚠️ 정확한 명령 확인 전이라 안 먹을 수 있어요. 매장에서 눌러보고 되는지/안 되는지 알려주세요 — 안 되면 실제 명령을 알아내 정확히 연결할게요.</div>
     <div class="mini" id="acMsg" style="margin-top:10px;min-height:16px"></div>
   </div>
@@ -696,7 +697,7 @@ document.getElementById('acClose').onclick=()=>document.getElementById('acModal'
 document.getElementById('acModal').onclick=e=>{if(e.target.id==='acModal')e.target.style.display='none'};
 document.querySelectorAll('#acPower button').forEach(b=>b.onclick=()=>{const on=b.dataset.p==='on';curAcOn=on;applyAcUI();acSend({power:on},on?'켜기':'끄기')});
 document.querySelectorAll('#acMode button').forEach(b=>b.onclick=()=>{document.querySelectorAll('#acMode button').forEach(x=>x.classList.remove('on'));b.classList.add('on');curAcOn=true;applyAcUI();acSend({mode:b.dataset.m},b.textContent.trim())});
-document.querySelectorAll('#acFan button').forEach(b=>b.onclick=()=>{document.querySelectorAll('#acFan button').forEach(x=>x.classList.remove('on'));b.classList.add('on');acSend({fanSpeed:b.dataset.f},'바람 '+b.textContent.trim())});
+document.querySelectorAll('#acFan button').forEach(b=>b.onclick=()=>{document.querySelectorAll('#acFan button').forEach(x=>x.classList.remove('on'));b.classList.add('on');acSend({fanSpeedCode:b.dataset.c},'바람 '+b.textContent.trim())});
 document.getElementById('tUp').onclick=()=>{if(acTemp<30){acTemp++;showAcTemp();acSend({temperature:acTemp},acTemp+'℃')}};
 document.getElementById('tDown').onclick=()=>{if(acTemp>16){acTemp--;showAcTemp();acSend({temperature:acTemp},acTemp+'℃')}};
 let swLR=false,swUD=false;
