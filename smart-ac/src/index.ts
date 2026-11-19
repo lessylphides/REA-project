@@ -293,11 +293,12 @@ function renderUI(): string {
   .modal2{position:fixed;inset:0;background:var(--bg);z-index:60;overflow:auto}
   .modal2 .inner{max-width:480px;margin:0 auto;padding:max(16px,env(safe-area-inset-top)) 16px calc(32px + env(safe-area-inset-bottom))}
   .topbar{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
-  .gearbtn{flex:0 0 auto;border:0;background:var(--card);width:42px;height:42px;border-radius:50%;font-size:20px;cursor:pointer;box-shadow:0 1px 3px rgba(0,0,0,.06);margin-top:10px}
+  .gearbtn{flex:0 0 auto;border:0;background:var(--card);color:var(--label);width:44px;height:44px;border-radius:50%;cursor:pointer;box-shadow:0 1px 3px rgba(0,0,0,.06);margin-top:8px;display:flex;align-items:center;justify-content:center}
   .gearbtn:active{opacity:.6}
   .sheet{background:var(--bg);width:100%;max-width:480px;margin:0 auto;border-radius:20px 20px 0 0;padding:16px 16px calc(20px + env(safe-area-inset-bottom));max-height:86vh;overflow:auto}
   .sheet-h{display:flex;justify-content:space-between;align-items:center;font-size:18px;margin-bottom:14px}
-  .x{border:0;background:var(--field);color:var(--label);width:30px;height:30px;border-radius:50%;font-size:14px;cursor:pointer}
+  .x{border:0;background:var(--field);color:var(--label);width:38px;height:38px;border-radius:50%;font-size:20px;line-height:1;cursor:pointer}
+  .x:active{opacity:.6}
   .seg{display:flex;gap:6px;margin-bottom:14px}
   .seg button{flex:1;border:0;background:var(--field);color:var(--sec);padding:9px;border-radius:9px;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit}
   .seg button.on{background:var(--blue);color:#fff}
@@ -346,7 +347,7 @@ function renderUI(): string {
 </style></head><body>
 <div class="topbar">
   <div><h1 id="title" style="margin:8px 0 2px">우리 매장</h1><div style="color:var(--sec);font-size:14px">실내 환경 자동관리 <span id="sched" class="schedpill"></span></div></div>
-  <button id="gear" class="gearbtn" aria-label="설정">⚙️</button>
+  <button id="gear" class="gearbtn" aria-label="설정"><svg viewBox="0 0 24 24" width="23" height="23" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button>
 </div>
 <div style="height:16px"></div>
 
