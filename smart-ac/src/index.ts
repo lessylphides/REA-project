@@ -401,6 +401,9 @@ function renderUI(token: string): string {
   .qbtn.cool{color:var(--blue)}.qbtn.heat{color:var(--orange)}.qbtn.off{color:var(--sec)}
   .linkbtn{display:block;width:100%;background:none;border:0;color:var(--sec);font-size:14px;padding:8px;cursor:pointer;font-family:inherit}
   .linkbtn:active{opacity:.6}
+  .clock{display:none;text-align:center;color:var(--label)}
+  .ctime{font-weight:600;letter-spacing:-.02em;font-variant-numeric:tabular-nums;line-height:1}
+  .cdate{color:var(--sec);margin-top:6px}
   /* 가로(태블릿 상시표시) — 2열 대시보드 */
   @media (min-width:880px){
     body{max-width:1040px}
@@ -412,6 +415,9 @@ function renderUI(token: string): string {
     .chip{font-size:20px;padding:13px 22px}
     .chipsub{font-size:15px}
     h1{font-size:34px}
+    .clock{display:block;margin-top:32px}
+    .ctime{font-size:76px}
+    .cdate{font-size:20px;margin-top:4px}
   }
   .sheet{background:var(--bg);width:100%;max-width:480px;margin:0 auto;border-radius:20px 20px 0 0;padding:16px 16px calc(20px + env(safe-area-inset-bottom));max-height:86vh;overflow:auto}
   .sheet-h{display:flex;justify-content:space-between;align-items:center;font-size:18px;margin-bottom:14px}
@@ -487,6 +493,7 @@ function renderUI(token: string): string {
   <div class="chipsub" id="chipsub"></div>
   <div class="chipsub" id="acwarn" style="color:var(--red);font-weight:600"></div>
 </div>
+<div class="clock"><div class="ctime" id="ctime">--:--</div><div class="cdate" id="cdate"></div></div>
 </div><div class="cR">
 
 <div class="tiles">
@@ -770,6 +777,9 @@ async function loadDevices(){
 document.getElementById('refreshDev').onclick=loadDevices;
 document.getElementById('dAdv').addEventListener('toggle',function(){if(this.open&&!document.getElementById('sensorSel').options.length)loadDevices();});
 document.getElementById('saveDev').onclick=async()=>{const b={sensorDeviceId:document.getElementById('sensorSel').value,acDeviceId:document.getElementById('acSel').value};if(!b.sensorDeviceId||!b.acDeviceId){alert('먼저 기기를 불러와 선택하세요');return}await fetch(q('/api/config'),{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(b)});alert('기기 저장됨');load()};
+// 시계(가로 태블릿 표시)
+function updateClock(){var d=new Date();var days=['일','월','화','수','목','금','토'];var t=document.getElementById('ctime'),dt=document.getElementById('cdate');if(t)t.textContent=String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');if(dt)dt.textContent=(d.getMonth()+1)+'월 '+d.getDate()+'일 '+days[d.getDay()]+'요일';}
+updateClock();setInterval(updateClock,1000);
 // 상시표시용 5분 자동 새로고침 (설정/리모컨 창 열려있으면 입력 보호 위해 건너뜀)
 function anyOpen(){return ['settingsModal','acModal','wxModal','chartModal'].some(function(id){var e=document.getElementById(id);return e&&e.style.display&&e.style.display!=='none'});}
 setInterval(function(){if(!anyOpen())load().catch(function(){})},300000);
