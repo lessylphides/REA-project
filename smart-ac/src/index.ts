@@ -344,7 +344,7 @@ export default {
       await saveConfig(env, cfg);
       return json({ ...cfg, owmKey: undefined });
     }
-    // 진단: DIY/IR 리모컨이 어느 경로에 있는지 여러 후보 엔드포인트를 한 번에 탐색
+    // 진단: DIY/IR 리모컨의 버튼 목록·제어 경로 탐색
     if (url.pathname === '/api/debug') {
       try {
         const s = await getSession(env);
@@ -352,22 +352,30 @@ export default {
         const out: any[] = [];
         for (const f of fams) {
           const fid = f.familyId;
-          // family별 후보 경로들 — 상태없는 버튼 리모컨(DIY)이 어디서 보이는지 확인
-          const paths = [
-            `dashboard/${fid}/devices-state?scope=shop`,
-            `dashboard/${fid}/devices-state?scope=home`,
-            `dashboard/${fid}/devices-state`,
-            `dashboard/${fid}/devices?scope=shop`,
-            `dashboard/${fid}/devices`,
-            `dashboard/${fid}/rooms/?scope=shop`,
-            `dashboard/${fid}/rooms/`,
-            `dashboard/${fid}/ir`,
-            `dashboard/${fid}/remote`,
-            `dashboard/${fid}/remotes`,
-            `dashboard/scene?family=${fid}`,
-          ];
-          const probes = await Promise.all(paths.map((p) => hej.rawProbe(s, p)));
-          out.push({ familyId: fid, name: (f as any).name ?? null, probes });
+          // 1) 기기 목록(DIY 포함)
+          const list = await hej.rawProbe(s, `dashboard/${fid}/devices?scope=shop`);
+          // 2) IrDiy 기기 찾기
+          const diy: any[] = Array.isArray(list.body) ? (list.body as any[]).filter((d) => d?.deviceType === 'IrDiy' || d?.category === 'infrared_diy') : [];
+          const diyProbes: any[] = [];
+          for (const d of diy) {
+            const did = d.id;
+            // DIY 기기의 '버튼 목록/세부정보'가 어느 경로에 있는지 탐색 (GET)
+            const paths = [
+              `dashboard/${fid}/devices/${did}?scope=shop`,
+              `dashboard/${fid}/device/${did}?scope=shop`,
+              `dashboard/${fid}/${did}/devices-state?scope=shop`,
+              `dashboard/device/${did}?scope=shop`,
+              `dashboard/${did}?scope=shop`,
+              `dashboard/${did}/keys?scope=shop`,
+              `dashboard/${fid}/devices/${did}/keys?scope=shop`,
+              `dashboard/${fid}/diy/${did}?scope=shop`,
+              `dashboard/control/${did}?scope=shop`,
+              `dashboard/${fid}/devices/${did}/functions?scope=shop`,
+            ];
+            const probes = await Promise.all(paths.map((p) => hej.rawProbe(s, p)));
+            diyProbes.push({ id: did, name: d.name, deviceType: d.deviceType, probes });
+          }
+          out.push({ familyId: fid, name: (f as any).name ?? null, devicesList: list, diyFound: diy.length, diyProbes });
         }
         return json({ familyCount: fams.length, families: out });
       } catch (e: any) { return json({ error: String(e?.message ?? e) }, 500); }
