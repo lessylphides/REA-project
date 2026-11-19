@@ -410,19 +410,24 @@ function renderUI(): string {
 const T=new URLSearchParams(location.search).get('t');const q=p=>p+(T?('?t='+T):'');
 let histRange=24;
 function svgChart(d,col){
-  const W=440,H=240,pl=34,pr=12,pt=14,pb=26;
-  const temps=d.map(p=>p.temp);const outs=d.filter(p=>p.out!=null).map(p=>p.out);
+  const W=440,H=240,pl=32,pr=30,pt=22,pb=26;
+  const temps=d.map(p=>p.temp);const outs=d.filter(p=>p.out!=null).map(p=>p.out);const hums=d.filter(p=>p.hum!=null).map(p=>p.hum);
   let lo=Math.min.apply(null,temps.concat(outs));let hi=Math.max.apply(null,temps.concat(outs));
   lo=Math.floor(lo-1);hi=Math.ceil(hi+1);if(hi-lo<4)hi=lo+4;
+  let hlo=hums.length?Math.min.apply(null,hums):0,hhi=hums.length?Math.max.apply(null,hums):100;
+  hlo=Math.floor(hlo-2);hhi=Math.ceil(hhi+2);if(hlo<0)hlo=0;if(hhi-hlo<8)hhi=hlo+8;
   const t0=d[0].t,t1=d[d.length-1].t;
   const X=t=>pl+(t1===t0?0:(t-t0)/(t1-t0))*(W-pl-pr);
   const Y=v=>pt+(1-(v-lo)/(hi-lo))*(H-pt-pb);
-  const line=(arr,key)=>arr.filter(p=>p[key]!=null).map((p,i)=>(i?'L':'M')+X(p.t).toFixed(1)+' '+Y(p[key]).toFixed(1)).join(' ');
-  let grid='';for(let i=0;i<=4;i++){const v=lo+(hi-lo)*i/4;const y=Y(v);grid+='<line x1="'+pl+'" y1="'+y.toFixed(1)+'" x2="'+(W-pr)+'" y2="'+y.toFixed(1)+'" stroke="'+col.sep+'"/><text x="'+(pl-6)+'" y="'+(y+4).toFixed(1)+'" font-size="11" fill="'+col.sec+'" text-anchor="end">'+v.toFixed(0)+'</text>';}
+  const YH=v=>pt+(1-(v-hlo)/(hhi-hlo))*(H-pt-pb);
+  const line=(arr,key,yf)=>arr.filter(p=>p[key]!=null).map((p,i)=>(i?'L':'M')+X(p.t).toFixed(1)+' '+yf(p[key]).toFixed(1)).join(' ');
+  let grid='';for(let i=0;i<=4;i++){const y=Y(lo+(hi-lo)*i/4);const tv=lo+(hi-lo)*i/4,hv=hlo+(hhi-hlo)*i/4;grid+='<line x1="'+pl+'" y1="'+y.toFixed(1)+'" x2="'+(W-pr)+'" y2="'+y.toFixed(1)+'" stroke="'+col.sep+'"/><text x="'+(pl-5)+'" y="'+(y+4).toFixed(1)+'" font-size="11" fill="'+col.blue+'" text-anchor="end">'+tv.toFixed(0)+'</text>'+(hums.length?'<text x="'+(W-pr+5)+'" y="'+(y+4).toFixed(1)+'" font-size="11" fill="'+col.green+'" text-anchor="start">'+hv.toFixed(0)+'</text>':'');}
   const fmt=t=>{const dt=new Date(t);return (dt.getMonth()+1)+'/'+dt.getDate()+' '+String(dt.getHours()).padStart(2,'0')+'시'};
   let xl='';[0,Math.floor(d.length/2),d.length-1].forEach((idx,i)=>{const p=d[idx];xl+='<text x="'+X(p.t).toFixed(1)+'" y="'+(H-8)+'" font-size="10" fill="'+col.sec+'" text-anchor="'+(i===0?'start':i===2?'end':'middle')+'">'+fmt(p.t)+'</text>';});
-  const outPath=outs.length?'<path d="'+line(d,'out')+'" fill="none" stroke="'+col.sec+'" stroke-width="1.5" stroke-dasharray="3 3" opacity="0.6"/>':'';
-  return '<svg viewBox="0 0 '+W+' '+H+'">'+grid+outPath+'<path d="'+line(d,'temp')+'" fill="none" stroke="'+col.blue+'" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>'+xl+'<text x="'+(W-pr)+'" y="'+(pt+2)+'" font-size="10" fill="'+col.sec+'" text-anchor="end">실선 실내 · 점선 바깥</text></svg>';
+  const outPath=outs.length?'<path d="'+line(d,'out',Y)+'" fill="none" stroke="'+col.sec+'" stroke-width="1.5" stroke-dasharray="3 3" opacity="0.55"/>':'';
+  const humPath=hums.length?'<path d="'+line(d,'hum',YH)+'" fill="none" stroke="'+col.green+'" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>':'';
+  const legend='<text x="'+pl+'" y="12" font-size="10"><tspan fill="'+col.blue+'">■ 실내℃</tspan>  <tspan fill="'+col.sec+'">┈ 바깥℃</tspan>  <tspan fill="'+col.green+'">■ 습도%</tspan></text>';
+  return '<svg viewBox="0 0 '+W+' '+H+'">'+grid+outPath+humPath+'<path d="'+line(d,'temp',Y)+'" fill="none" stroke="'+col.blue+'" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>'+xl+legend+'</svg>';
 }
 async function drawChart(){
   const box=document.getElementById('chartBox');box.textContent='불러오는 중…';
@@ -430,9 +435,9 @@ async function drawChart(){
   const cut=Date.now()-histRange*3600*1000;const d=(all||[]).filter(p=>p.t>=cut);
   if(d.length<2){box.innerHTML='';document.getElementById('chartNote').textContent='아직 기록이 부족해요. 10분마다 쌓여서 곧 보여요.';return}
   const cs=getComputedStyle(document.documentElement);
-  const col={blue:cs.getPropertyValue('--blue').trim()||'#0a84ff',sec:cs.getPropertyValue('--sec').trim()||'#8e8e93',sep:cs.getPropertyValue('--sep').trim()||'#555'};
+  const col={blue:cs.getPropertyValue('--blue').trim()||'#0a84ff',green:cs.getPropertyValue('--green').trim()||'#34c759',sec:cs.getPropertyValue('--sec').trim()||'#8e8e93',sep:cs.getPropertyValue('--sep').trim()||'#555'};
   box.innerHTML=svgChart(d,col);
-  const last=d[d.length-1];document.getElementById('chartNote').textContent='최근 '+histRange+'시간 · '+d.length+'개 기록 · 지금 '+last.temp.toFixed(1)+'℃';
+  const last=d[d.length-1];document.getElementById('chartNote').textContent='최근 '+histRange+'시간 · '+d.length+'개 기록 · 지금 '+last.temp.toFixed(1)+'℃'+(last.hum!=null?' · 습도 '+last.hum+'%':'');
 }
 function openChart(){document.getElementById('chartModal').style.display='flex';drawChart()}
 document.getElementById('temp').onclick=openChart;
