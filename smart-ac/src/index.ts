@@ -91,15 +91,28 @@ interface RunStatus {
   scheduleState?: string;
   targetTemp?: number | null;
   maintaining?: boolean;
+  acWarn?: { type: 'noheat' | 'nocool'; dT: number } | null;
   weather?: Weather | null;
   error?: string;
 }
 
 // ---------- 온도 기록(히스토리) ----------
-async function appendHistory(env: Env, point: { t: number; temp: number; hum: number | null; out: number | null }): Promise<void> {
+async function appendHistory(env: Env, point: { t: number; temp: number; hum: number | null; out: number | null; cmd?: string }): Promise<void> {
   const arr = (await env.KV.get('history', 'json') as any[]) || [];
   arr.push(point);
   await env.KV.put('history', JSON.stringify(arr.slice(-1008))); // 최근 ~7일(10분 간격)
+}
+
+// 반응 감지: 난방/냉방을 계속 보냈는데 온도가 반대로 움직이면 '에어컨 미반응'으로 판단
+function analyzeResponse(hist: Array<{ temp: number; cmd?: string }>): { type: 'noheat' | 'nocool'; dT: number } | null {
+  if (!Array.isArray(hist) || hist.length < 4) return null;
+  const last = hist.slice(-4); // 최근 ~30~40분
+  const dT = last[last.length - 1].temp - last[0].temp;
+  const heat = last.filter((p) => p.cmd === 'heat').length;
+  const cool = last.filter((p) => p.cmd === 'cool').length;
+  if (heat >= 3 && dT <= -0.5) return { type: 'noheat', dT };   // 난방 중인데 계속 떨어짐
+  if (cool >= 3 && dT >= 0.5) return { type: 'nocool', dT };    // 냉방 중인데 계속 오름
+  return null;
 }
 
 // ---------- 수동 제어 (사용자가 버튼으로 즉시) ----------
@@ -177,7 +190,14 @@ async function runOnce(env: Env, opts: { force?: boolean; preview?: boolean; log
     status.targetTemp = decision.seasonMode === 'cooling' ? effCfg.summerTarget
                       : decision.seasonMode === 'heating' ? effCfg.winterTarget : null;
 
-    if (opts.log && temp !== null) await appendHistory(env, { t: Date.now(), temp, hum: humidity, out: weather?.outdoorTemp ?? null });
+    // 지금 실제로 보낼 명령(반응 감지용 기록): 자동 꺼짐이면 idle
+    const activeCmd = !cfg.enabled ? 'idle'
+      : decision.action === 'set' ? (decision.desired?.mode ?? 'set')
+      : decision.action; // off / hold
+    // 반응 감지(저장된 이력 기준) → 경고
+    const prevHist = (await env.KV.get('history', 'json')) as Array<{ temp: number; cmd?: string }> || [];
+    status.acWarn = analyzeResponse(prevHist);
+    if (opts.log && temp !== null) await appendHistory(env, { t: Date.now(), temp, hum: humidity, out: weather?.outdoorTemp ?? null, cmd: activeCmd });
 
     if (opts.preview) { status.sent = []; status.ok = true; return status; } // 미리보기: 전송/저장 없음
     if (!cfg.enabled && !opts.force) { status.sent = []; status.ok = true; status.reason = '자동 꺼짐 — 온도 기록만 함'; await env.KV.put('status', JSON.stringify(status)); return status; } // 꺼짐: 기록만
@@ -424,6 +444,7 @@ function renderUI(): string {
   <div class="humid" id="humid">습도 –</div>
   <div class="chip gray" id="chip"><span class="em">⏳</span><span id="chipt">불러오는 중…</span></div>
   <div class="chipsub" id="chipsub"></div>
+  <div class="chipsub" id="acwarn" style="color:var(--red);font-weight:600"></div>
 </div>
 
 <div class="tiles">
@@ -679,6 +700,8 @@ async function load(){
   let sub=f.sub||'';
   if(pv&&!pv.alert){if(pv.scheduleState==='closed')sub='비영업 · 최저 '+c.alertCold+'℃만 유지 (절전)';else if(pv.scheduleState==='preheat')sub='영업 준비 — 미리 데우는 중';}
   document.getElementById('chipsub').textContent=sub;
+  const aw=pv&&pv.acWarn;
+  document.getElementById('acwarn').textContent=aw?(aw.type==='noheat'?'⚠️ 난방 신호를 보냈는데 온도가 안 올라요 — 에어컨/리모컨 확인':'⚠️ 냉방 신호를 보냈는데 온도가 안 내려가요 — 에어컨/리모컨 확인'):'';
   document.getElementById('t_ac').textContent=f.ac;
   const warn=!!(pv&&pv.alert);
   const tc=getComputedStyle(document.documentElement).getPropertyValue(f.c==='blue'?'--blue':f.c==='orange'?'--orange':f.c==='red'?'--red':'--label');
