@@ -134,6 +134,11 @@ export async function getDevices(s: HejSession, familyId: number): Promise<HejDe
   return get<HejDevice[]>(s, `dashboard/${familyId}/devices-state?scope=shop`);
 }
 
+/** 임의 경로 GET (진단용) */
+export async function rawGet<T>(s: HejSession, path: string): Promise<T> {
+  return get<T>(s, path);
+}
+
 /** 기기 제어. requirments 는 한 번에 하나의 키만 권장(IR은 명령 1개/요청) */
 export async function control(s: HejSession, deviceId: string, requirments: Record<string, unknown>): Promise<void> {
   const res = await fetch(`${SQUARE_ORIGIN}/dashboard/control/${deviceId}`, {

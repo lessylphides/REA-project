@@ -335,6 +335,22 @@ export default {
       await saveConfig(env, cfg);
       return json({ ...cfg, owmKey: undefined });
     }
+    // 진단: 모든 집(family)의 모든 기기 (scope shop/전체) — DIY 기기 찾기용
+    if (url.pathname === '/api/debug') {
+      try {
+        const s = await getSession(env);
+        const fams = await hej.getFamilies(s);
+        const out: any[] = [];
+        for (const f of fams) {
+          const fid = f.familyId;
+          let shop: any, all: any;
+          try { shop = await hej.rawGet(s, `dashboard/${fid}/devices-state?scope=shop`); } catch (e: any) { shop = { error: String(e?.message ?? e) }; }
+          try { all = await hej.rawGet(s, `dashboard/${fid}/devices-state`); } catch (e: any) { all = { error: String(e?.message ?? e) }; }
+          out.push({ familyId: fid, name: (f as any).name ?? null, scope_shop: shop, no_scope: all });
+        }
+        return json({ familyCount: fams.length, families: out });
+      } catch (e: any) { return json({ error: String(e?.message ?? e) }, 500); }
+    }
     // 기기 목록(센서/에어컨 ID 찾기 + deviceState 확인용)
     if (url.pathname === '/api/devices') {
       try {
