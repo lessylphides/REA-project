@@ -543,6 +543,33 @@ function renderUI(token: string): string {
   .tg{position:relative;width:52px;height:32px;flex:0 0 auto}
   .tg input{opacity:0;width:0;height:0;position:absolute}
   .tg .sl{position:absolute;inset:0;background:#e9e9ea;border-radius:999px;transition:.25s}
+  /* 휴대폰 가로: 태블릿처럼 2열, 화면 높이에 맞게 압축 */
+  @media (orientation:landscape) and (max-height:500px){
+    body{max-width:none;padding:max(6px,env(safe-area-inset-top)) max(14px,env(safe-area-inset-right)) max(6px,env(safe-area-inset-bottom)) max(14px,env(safe-area-inset-left))}
+    h1{font-size:20px}
+    #title{margin:2px 0 0!important}
+    .gearbtn{width:38px;height:38px}
+    .dash{display:grid;grid-template-columns:1fr 1.15fr;gap:10px;align-items:stretch}
+    .cL{display:flex;flex-direction:column}
+    .hero{flex:1;margin-bottom:0;padding:10px 14px;display:flex;flex-direction:column;justify-content:center}
+    .temp{font-size:60px}
+    .temp span{font-size:26px}
+    .humid{font-size:14px}
+    .chip{font-size:14px;padding:7px 13px;margin-top:8px;align-self:center}
+    .chip .em{font-size:16px}
+    .chipsub{font-size:12px;margin-top:5px;min-height:0}
+    .clockcard{display:none}
+    .tiles{margin-bottom:7px;gap:6px}
+    .tile{padding:6px 4px}
+    .tile .v{font-size:16px}
+    .tile .k{font-size:11px}
+    #sparkCard{margin-bottom:7px!important;padding:7px 12px!important}
+    .switch{padding:8px 14px;margin-bottom:7px}
+    .switch .t{font-size:15px}
+    .switch .d{font-size:12px}
+    .qa{margin-bottom:2px;gap:6px}
+    .qbtn{padding:7px 4px;font-size:13px;flex-direction:row;justify-content:center;gap:6px}
+  }
   @media (prefers-color-scheme:dark){.tg .sl{background:#39393d}}
   .tg .sl:before{content:"";position:absolute;width:28px;height:28px;left:2px;top:2px;background:#fff;border-radius:50%;
     transition:.25s;box-shadow:0 2px 4px rgba(0,0,0,.25)}
@@ -826,8 +853,8 @@ function friendly(p,enabled){
   if(al&&al.power&&al.mode==='fan')return{em:'🍃',t:'적정 유지 중',sub:'송풍으로 순환',c:'green',ac:'송풍'};
   return{em:'😌',t:'지금 알맞아요',sub:'에어컨 대기 중',c:'green',ac:'대기'};
 }
-function fitLock(){var d=document.documentElement;d.classList.remove('lock');if(d.scrollHeight<=window.innerHeight+2)d.classList.add('lock');}
-window.addEventListener('resize',fitLock);window.addEventListener('orientationchange',function(){setTimeout(fitLock,300)});
+function fitLock(){var d=document.documentElement;d.classList.remove('lock');if(d.scrollHeight<=window.innerHeight+2){window.scrollTo(0,0);d.classList.add('lock');}}
+window.addEventListener('resize',fitLock);window.addEventListener('orientationchange',function(){window.scrollTo(0,0);setTimeout(fitLock,300);setTimeout(fitLock,800)});
 async function load(){
   const [s,pv,hist]=await Promise.all([fetch(q('/api/status')).then(r=>r.json()),fetch(q('/api/preview')).then(r=>r.json()).catch(()=>null),fetch(q('/api/history')).then(r=>r.json()).catch(()=>[])]);
   lastPv=pv;drawSpark(hist);curAcOn=(s.acOn===false)?false:true;applyAcUI();
