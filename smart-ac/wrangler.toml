@@ -4,7 +4,7 @@ compatibility_date = "2024-11-06"
 
 # 10분마다 자동 실행 (센서 읽고 에어컨 조정)
 [triggers]
-crons = ["*/10 * * * *"]
+crons = ["*/10 * * * *", "* * * * *"]
 
 # 설정/상태 저장용 KV. 아래 id 는 `wrangler kv namespace create SMART_AC_KV` 로 만든 값으로 교체
 [[kv_namespaces]]
