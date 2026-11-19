@@ -335,7 +335,7 @@ export default {
       await saveConfig(env, cfg);
       return json({ ...cfg, owmKey: undefined });
     }
-    // 진단: 모든 집(family)의 모든 기기 (scope shop/전체) — DIY 기기 찾기용
+    // 진단: DIY/IR 리모컨이 어느 경로에 있는지 여러 후보 엔드포인트를 한 번에 탐색
     if (url.pathname === '/api/debug') {
       try {
         const s = await getSession(env);
@@ -343,10 +343,22 @@ export default {
         const out: any[] = [];
         for (const f of fams) {
           const fid = f.familyId;
-          let shop: any, all: any;
-          try { shop = await hej.rawGet(s, `dashboard/${fid}/devices-state?scope=shop`); } catch (e: any) { shop = { error: String(e?.message ?? e) }; }
-          try { all = await hej.rawGet(s, `dashboard/${fid}/devices-state`); } catch (e: any) { all = { error: String(e?.message ?? e) }; }
-          out.push({ familyId: fid, name: (f as any).name ?? null, scope_shop: shop, no_scope: all });
+          // family별 후보 경로들 — 상태없는 버튼 리모컨(DIY)이 어디서 보이는지 확인
+          const paths = [
+            `dashboard/${fid}/devices-state?scope=shop`,
+            `dashboard/${fid}/devices-state?scope=home`,
+            `dashboard/${fid}/devices-state`,
+            `dashboard/${fid}/devices?scope=shop`,
+            `dashboard/${fid}/devices`,
+            `dashboard/${fid}/rooms/?scope=shop`,
+            `dashboard/${fid}/rooms/`,
+            `dashboard/${fid}/ir`,
+            `dashboard/${fid}/remote`,
+            `dashboard/${fid}/remotes`,
+            `dashboard/scene?family=${fid}`,
+          ];
+          const probes = await Promise.all(paths.map((p) => hej.rawProbe(s, p)));
+          out.push({ familyId: fid, name: (f as any).name ?? null, probes });
         }
         return json({ familyCount: fams.length, families: out });
       } catch (e: any) { return json({ error: String(e?.message ?? e) }, 500); }

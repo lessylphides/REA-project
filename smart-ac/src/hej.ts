@@ -139,6 +139,19 @@ export async function rawGet<T>(s: HejSession, path: string): Promise<T> {
   return get<T>(s, path);
 }
 
+/** 임의 경로 GET — 실패해도 status/본문을 돌려줌(진단용, DIY 기기 탐색) */
+export async function rawProbe(s: HejSession, path: string): Promise<{ path: string; status: number; body: unknown }> {
+  try {
+    const res = await fetch(`${SQUARE_ORIGIN}/${path}`, { method: 'GET', headers: authHeaders(s) });
+    const text = await res.text();
+    let body: unknown;
+    try { body = JSON.parse(text || 'null'); } catch { body = text.slice(0, 500); }
+    return { path, status: res.status, body };
+  } catch (e: any) {
+    return { path, status: -1, body: String(e?.message ?? e) };
+  }
+}
+
 /** 기기 제어. requirments 는 한 번에 하나의 키만 권장(IR은 명령 1개/요청) */
 export async function control(s: HejSession, deviceId: string, requirments: Record<string, unknown>): Promise<void> {
   const res = await fetch(`${SQUARE_ORIGIN}/dashboard/control/${deviceId}`, {
