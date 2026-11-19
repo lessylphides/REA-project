@@ -290,6 +290,11 @@ function renderUI(): string {
   .chipsub{color:var(--sec);font-size:13px;margin-top:10px;min-height:16px}
   .schedpill{font-size:12px;padding:3px 10px;border-radius:999px;background:var(--field);font-weight:600;white-space:nowrap}
   .modal{position:fixed;inset:0;background:rgba(0,0,0,.5);display:flex;align-items:flex-end;z-index:50}
+  .modal2{position:fixed;inset:0;background:var(--bg);z-index:60;overflow:auto}
+  .modal2 .inner{max-width:480px;margin:0 auto;padding:max(16px,env(safe-area-inset-top)) 16px calc(32px + env(safe-area-inset-bottom))}
+  .topbar{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
+  .gearbtn{flex:0 0 auto;border:0;background:var(--card);width:42px;height:42px;border-radius:50%;font-size:20px;cursor:pointer;box-shadow:0 1px 3px rgba(0,0,0,.06);margin-top:10px}
+  .gearbtn:active{opacity:.6}
   .sheet{background:var(--bg);width:100%;max-width:480px;margin:0 auto;border-radius:20px 20px 0 0;padding:16px 16px calc(20px + env(safe-area-inset-bottom));max-height:86vh;overflow:auto}
   .sheet-h{display:flex;justify-content:space-between;align-items:center;font-size:18px;margin-bottom:14px}
   .x{border:0;background:var(--field);color:var(--label);width:30px;height:30px;border-radius:50%;font-size:14px;cursor:pointer}
@@ -339,8 +344,11 @@ function renderUI(): string {
   .dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:5px;vertical-align:1px}
   pre{white-space:pre-wrap;word-break:break-all;font-size:11px;color:var(--sec);background:var(--field);border-radius:12px;padding:12px;margin:8px 0 0}
 </style></head><body>
-<h1 id="title">우리 매장</h1>
-<div style="color:var(--sec);font-size:14px;margin:-10px 2px 16px">실내 환경 자동관리 <span id="sched" class="schedpill"></span></div>
+<div class="topbar">
+  <div><h1 id="title" style="margin:8px 0 2px">우리 매장</h1><div style="color:var(--sec);font-size:14px">실내 환경 자동관리 <span id="sched" class="schedpill"></span></div></div>
+  <button id="gear" class="gearbtn" aria-label="설정">⚙️</button>
+</div>
+<div style="height:16px"></div>
 
 <div class="hero">
   <div style="color:var(--sec);font-size:13px;font-weight:500;margin-bottom:2px">실내 온도 <span style="opacity:.6">· 탭하면 그래프 📈</span></div>
@@ -364,7 +372,8 @@ function renderUI(): string {
 <button class="btn" id="run">지금 한 번 실행</button>
 <div class="mini" style="text-align:center;margin:-4px 2px 2px">자동을 기다리지 않고, 지금 상태를 바로 확인해 필요하면 에어컨을 한 번 맞춰요</div>
 
-<div class="sec-h">설정</div>
+<div id="settingsModal" class="modal2" style="display:none"><div class="inner">
+  <div class="sheet-h" style="margin-bottom:14px"><b>⚙️ 설정</b><button id="setClose" class="x">✕</button></div>
 <details id="dLogin"><summary><span><span class="dot" id="cDot" style="background:var(--sec)"></span>헤이홈 로그인</span></summary>
   <div class="grp">
     <div class="fld"><label>이메일</label><input id="email" type="email" autocomplete="username"></div>
@@ -414,6 +423,7 @@ function renderUI(): string {
     <div style="display:flex;gap:8px"><button class="btn" id="refreshDev" style="flex:1">다시 불러오기</button><button class="btn save" id="saveDev" style="flex:1">기기 저장</button></div>
     <div class="mini" id="devNote">헤이홈 앱에 등록된 기기가 자동으로 여기 나와요. 이름으로 고르기만 하면 돼요.</div>
   </div></details>
+</div></div>
 
 <div id="wxModal" class="modal" style="display:none">
   <div class="sheet">
@@ -470,6 +480,8 @@ async function drawChart(){
 }
 function openChart(){document.getElementById('chartModal').style.display='flex';drawChart()}
 document.getElementById('temp').onclick=openChart;
+document.getElementById('gear').onclick=()=>{document.getElementById('settingsModal').style.display='block';document.getElementById('settingsModal').scrollTop=0};
+document.getElementById('setClose').onclick=()=>{document.getElementById('settingsModal').style.display='none'};
 function openWeather(){const w=lastPv&&lastPv.weather;const b=document.getElementById('wxBody');
   if(!w){b.innerHTML='<div class="mini" style="padding:12px 2px">날씨 정보가 아직 없어요. (키 활성화에 1~2시간, 또는 날씨 키 미설정)</div>';}
   else{const rows=[['체감온도',w.feelsLike!=null?Math.round(w.feelsLike)+'℃':'–'],['오늘 최저 / 최고',(w.tempMin!=null?Math.round(w.tempMin):'–')+' / '+(w.tempMax!=null?Math.round(w.tempMax)+'℃':'–')],['바깥 습도',w.humidity!=null?w.humidity+'%':'–'],['바람',w.windSpeed!=null?w.windSpeed.toFixed(1)+' m/s':'–']];
