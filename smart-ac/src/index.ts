@@ -5,6 +5,7 @@ import { Config, DEFAULT_CONFIG, Env, DesiredAcState, MODE_CODES, FAN_CODES } fr
 import * as hej from './hej';
 import { getWeather, Weather } from './weather';
 import { decide, scheduleState, Reading } from './engine';
+import { ICON_192, ICON_512 } from './icons';
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -240,7 +241,28 @@ export default {
     const url = new URL(req.url);
     const json = (o: unknown, code = 200) => new Response(JSON.stringify(o, null, 2), { status: code, headers: { 'content-type': 'application/json; charset=utf-8' } });
 
+    // 공개 리소스(앱 아이콘) — 인증 전
+    if (url.pathname === '/icon-192.png' || url.pathname === '/icon-512.png') {
+      const b64 = url.pathname.indexOf('512') >= 0 ? ICON_512 : ICON_192;
+      const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+      return new Response(bytes, { headers: { 'content-type': 'image/png', 'cache-control': 'public, max-age=86400' } });
+    }
+
     if (!authed(req, env)) return json({ error: '인증 필요 (?t=관리자토큰)' }, 401);
+
+    // PWA 매니페스트 (설치용) — 토큰 유지해서 설치앱이 인증된 채로 열리게
+    if (url.pathname === '/manifest.webmanifest') {
+      const tok = url.searchParams.get('t');
+      return new Response(JSON.stringify({
+        name: '매장 에어컨 자동관리', short_name: '매장에어컨',
+        start_url: '/' + (tok ? '?t=' + tok : ''), scope: '/', display: 'standalone',
+        orientation: 'any', background_color: '#f2f2f7', theme_color: '#f2f2f7',
+        icons: [
+          { src: '/icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any maskable' },
+          { src: '/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any maskable' },
+        ],
+      }), { headers: { 'content-type': 'application/manifest+json; charset=utf-8' } });
+    }
 
     // 상태
     if (url.pathname === '/api/status') {
@@ -317,17 +339,23 @@ export default {
       } catch (e: any) { return json({ error: String(e?.message ?? e) }, 500); }
     }
 
-    // 기본: 간단 UI
-    return new Response(renderUI(), { headers: { 'content-type': 'text/html; charset=utf-8' } });
+    // 기본: UI
+    return new Response(renderUI(url.searchParams.get('t') || ''), { headers: { 'content-type': 'text/html; charset=utf-8' } });
   },
 };
 
 
 // ---------- 웹 UI (iOS 스타일) ----------
-function renderUI(): string {
+function renderUI(token: string): string {
+  const mani = '/manifest.webmanifest' + (token ? '?t=' + token : '');
   return `<!doctype html><html lang="ko"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="manifest" href="${mani}">
+<link rel="apple-touch-icon" href="/icon-192.png">
+<link rel="icon" type="image/png" href="/icon-192.png">
 <meta name="theme-color" content="#f2f2f7" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
 <title>매장 에어컨</title>
