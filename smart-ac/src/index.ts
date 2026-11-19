@@ -151,6 +151,15 @@ async function sendAc(env: Env, cmd: { power?: boolean; mode?: string; temperatu
     if (typeof cmd.fanSpeedCode === 'string' && cmd.fanSpeedCode) { await hej.control(s, id, { fanSpeed: cmd.fanSpeedCode }); sent.push('바람'); await sleep(400); }
     if (cmd.swing) { await hej.control(s, id, { swing: true }); sent.push('풍향'); await sleep(400); }
     if (cmd.raw && typeof cmd.raw === 'object') { await hej.control(s, id, cmd.raw); sent.push('raw'); }
+    // 수동 리모컨으로 바꾼 내용을 '마지막 명령' 기억에 반영 → 화면·자동화가 최신 상태를 앎
+    const prev = (await env.KV.get('lastCommand', 'json')) as DesiredAcState | null;
+    const merged: DesiredAcState = {
+      power: cmd.power !== undefined ? cmd.power : (prev?.power ?? true),
+      mode: (cmd.mode && MODE_CODES[cmd.mode as keyof typeof MODE_CODES] !== undefined ? cmd.mode : prev?.mode ?? 'heat') as DesiredAcState['mode'],
+      temperature: typeof cmd.temperature === 'number' ? Math.max(16, Math.min(30, Math.round(cmd.temperature))) : (prev?.temperature ?? 22),
+      fanSpeed: (cmd.fanSpeed && FAN_CODES[cmd.fanSpeed as keyof typeof FAN_CODES] !== undefined ? cmd.fanSpeed : prev?.fanSpeed ?? 'medium') as DesiredAcState['fanSpeed'],
+    };
+    await env.KV.put('lastCommand', JSON.stringify(merged));
     return { ok: true, sent };
   } catch (e: any) { return { ok: false, error: String(e?.message ?? e) }; }
 }
