@@ -1,6 +1,7 @@
 // Cloudflare Worker 엔트리
 //  - scheduled(cron): 주기적으로 센서 읽고 에어컨 자동 제어
 //  - fetch(http):     상태 확인 + on/off + 설정 UI/API
+import { HumState, HUM_DEFAULT, humDecide, findHumPowerScene } from './hum';
 import { Config, DEFAULT_CONFIG, Env, DesiredAcState, MODE_CODES, FAN_CODES } from './config';
 import * as hej from './hej';
 import { getWeather, Weather } from './weather';
@@ -94,6 +95,7 @@ interface RunStatus {
   targetTemp?: number | null;
   maintaining?: boolean;
   stage?: Stage;
+  hum?: { on: boolean; warn: boolean; auto: boolean; reason: string; low: number; high: number } | null;
   acLast?: { power: boolean; mode?: string; temperature?: number } | null;
   acWarn?: { type: 'noheat' | 'nocool'; dT: number } | null;
   weather?: Weather | null;
@@ -218,6 +220,11 @@ async function runOnce(env: Env, opts: { force?: boolean; preview?: boolean; log
     status.acWarn = analyzeResponse(prevHist);
     if (opts.log && temp !== null) await appendHistory(env, { t: Date.now(), temp, hum: humidity, out: weather?.outdoorTemp ?? null, cmd: activeCmd });
 
+    // 가습기: 앱이 기억한 상태 + 이번 판단
+    const humSt = (await env.KV.get('hum', 'json') as HumState | null) ?? HUM_DEFAULT;
+    const humDec = humDecide(cfg, humidity ?? null, sched.state, humSt, Date.now());
+    status.hum = { on: humSt.on, warn: !!(humDec.next.warn), auto: !!cfg.humAuto, reason: cfg.humAuto ? humDec.reason : '자동 가습 꺼짐', low: cfg.humLow ?? 40, high: cfg.humHigh ?? 55 };
+
     if (opts.preview) { status.sent = []; status.ok = true; return status; } // 미리보기: 전송/저장 없음
     if (!cfg.enabled && !opts.force) { status.sent = []; status.ok = true; status.reason = '자동 꺼짐 — 온도 기록만 함'; await env.KV.put('status', JSON.stringify(status)); return status; } // 꺼짐: 기록만
 
@@ -233,6 +240,18 @@ async function runOnce(env: Env, opts: { force?: boolean; preview?: boolean; log
       await env.KV.put('lastCommand', JSON.stringify(offState));
     } else {
       status.sent = []; // hold: 아무것도 안 보냄
+    }
+    // 자동 가습 (레시피 토글)
+    if (cfg.humAuto) {
+      if (humDec.toggle) {
+        const sc = findHumPowerScene(await hej.getScenes(s, families[0].familyId));
+        if (sc) {
+          await hej.runScene(s, families[0].familyId, sc.sceneId);
+          await env.KV.put('hum', JSON.stringify(humDec.next));
+          status.sent = [...(status.sent ?? []), `가습기 ${humDec.next.on ? '켜기' : '끄기'}`];
+          status.hum = { ...status.hum!, on: humDec.next.on };
+        } else status.hum = { ...status.hum!, reason: '가습기 전원 레시피를 못 찾음 (이름에 "가습"+"전원")' };
+      } else if (humDec.next.warn && !humSt.warn) await env.KV.put('hum', JSON.stringify(humDec.next));
     }
     status.ok = true;
     await env.KV.put('status', JSON.stringify(status));
@@ -322,6 +341,20 @@ export default {
         return json({ ok: true, scenes: await hej.getScenes(s, fams[0].familyId) });
       } catch (e: any) { return json({ ok: false, error: String(e?.message ?? e) }, 500); }
     }
+    // 가습기 상태: 조회 / 실제 상태로 바로잡기(신호 안 보냄)
+    if (url.pathname === '/api/hum') {
+      if (req.method === 'POST') {
+        const b = await req.json<{ on?: boolean }>();
+        const last = await env.KV.get('status', 'json') as { indoorHumidity?: number } | null;
+        const next: HumState = { on: !!b.on, since: Date.now(), startHum: b.on ? (last?.indoorHumidity ?? null) : null, warn: false };
+        await env.KV.put('hum', JSON.stringify(next));
+        return json({ ok: true, hum: next });
+      }
+      const st = (await env.KV.get('hum', 'json') as HumState | null) ?? HUM_DEFAULT;
+      let power: string | null = null;
+      try { const s = await getSession(env); const fams = await hej.getFamilies(s); power = findHumPowerScene(await hej.getScenes(s, fams[0].familyId))?.sceneId ?? null; } catch {}
+      return json({ ok: true, hum: st, powerSceneId: power });
+    }
     if (url.pathname === '/api/scene' && req.method === 'POST') {
       try {
         const b = await req.json<{ sceneId?: string }>();
@@ -329,6 +362,15 @@ export default {
         const s = await getSession(env);
         const fams = await hej.getFamilies(s);
         await hej.runScene(s, fams[0].familyId, b.sceneId);
+        // 가습기 전원 레시피면 기억한 상태를 뒤집음
+        const pw = findHumPowerScene(await hej.getScenes(s, fams[0].familyId));
+        if (pw && pw.sceneId === b.sceneId) {
+          const st = (await env.KV.get('hum', 'json') as HumState | null) ?? HUM_DEFAULT;
+          const last = await env.KV.get('status', 'json') as { indoorHumidity?: number } | null;
+          const next: HumState = { on: !st.on, since: Date.now(), startHum: last?.indoorHumidity ?? null, warn: false };
+          await env.KV.put('hum', JSON.stringify(next));
+          return json({ ok: true, hum: next });
+        }
         return json({ ok: true });
       } catch (e: any) { return json({ ok: false, error: String(e?.message ?? e) }, 500); }
     }
@@ -662,6 +704,17 @@ function renderUI(token: string): string {
       <div><label>추이 관찰(분)</label><input id="observeMinutes" type="number" inputmode="numeric"></div>
       <div><label>쉬기 기준(목표+℃)</label><input id="restAbove" type="number" inputmode="decimal"></div></div>
       <div class="mini">목표에 닿으면 바람을 약하게 바꾸고 이 시간 동안 지켜봐요. 그래도 목표+기준℃ 넘게 계속 오르면(냉방은 내려가면) 잠시 쉬어요.</div></div>
+    <div class="fld" style="display:flex;align-items:center;justify-content:space-between">
+      <div><div style="font-size:16px">💧 자동 가습</div><div class="mini">습도가 낮으면 가습기를 켜고, 충분하면 꺼요</div></div>
+      <label class="tg"><input type="checkbox" id="humAuto"><span class="sl"></span></label>
+    </div>
+    <div class="fld"><div class="row2">
+      <div><label>켜기: 습도 아래(%)</label><input id="humLow" type="number" inputmode="numeric"></div>
+      <div><label>끄기: 습도 이상(%)</label><input id="humHigh" type="number" inputmode="numeric"></div></div></div>
+    <div class="fld" style="display:flex;align-items:center;justify-content:space-between">
+      <div><div style="font-size:16px">영업시간에만 가습</div><div class="mini">비영업엔 가습기를 꺼요 (물 부족·밤샘 방지)</div></div>
+      <label class="tg"><input type="checkbox" id="humBizOnly"><span class="sl"></span></label>
+    </div>
     <div class="fld"><div class="row2">
       <div><label>여름 경고 ℃이상</label><input id="alertHot" type="number" inputmode="decimal"></div>
       <div><label>최저기준 ℃이하</label><input id="alertCold" type="number" inputmode="decimal"></div>
@@ -723,10 +776,14 @@ function renderUI(token: string): string {
 <div id="humModal" class="modal" style="display:none">
   <div class="sheet">
     <div class="sheet-h"><b>💧 가습기</b><button id="humClose" class="x">✕</button></div>
-    <div class="mini" id="humNow" style="margin-bottom:10px"></div>
+    <div class="mini" id="humNow" style="margin-bottom:4px"></div>
+    <div id="humState" style="font-size:16px;font-weight:600;margin-bottom:4px"></div>
+    <div class="mini" id="humWarn" style="color:var(--red);font-weight:600;margin-bottom:8px"></div>
     <div class="scgrid" id="humBtns"><div class="mini">불러오는 중…</div></div>
     <div class="mini" id="humMsg" style="margin-top:10px;min-height:16px"></div>
-    <div class="mini" style="margin-top:6px">헤이홈 앱 간편 레시피 중 이름에 "가습"이 들어간 것이 여기 버튼으로 나와요.</div>
+    <div class="aclabel" style="margin-top:12px">실제 상태가 다르면 (신호 안 보내고 기억만 고쳐요)</div>
+    <div class="acseg"><button id="humSetOn">지금 켜져 있어요</button><button id="humSetOff">지금 꺼져 있어요</button></div>
+    <div class="mini" style="margin-top:8px">헤이홈 간편 레시피 중 이름에 "가습"이 들어간 것이 버튼으로 나와요. 전원 레시피는 이름에 "전원"을 넣어주세요(가습 레시피가 하나뿐이면 그게 전원).</div>
   </div>
 </div>
 <div id="wxModal" class="modal" style="display:none">
@@ -832,14 +889,19 @@ document.querySelectorAll('#acMode button').forEach(b=>b.onclick=()=>{document.q
 document.getElementById('tUp').onclick=()=>{if(acTemp<30){acTemp++;showAcTemp();acSend({temperature:acTemp},acTemp+'℃')}};
 document.getElementById('tDown').onclick=()=>{if(acTemp>16){acTemp--;showAcTemp();acSend({temperature:acTemp},acTemp+'℃')}};
 document.getElementById('wxClose').onclick=()=>document.getElementById('wxModal').style.display='none';
-document.getElementById('humid').onclick=function(e){e.stopPropagation();document.getElementById('humModal').style.display='flex';document.getElementById('humMsg').textContent='';var h=lastPv&&lastPv.indoorHumidity;document.getElementById('humNow').textContent='지금 실내 습도 '+(h!=null?h+'%':'–');loadHum();};
+document.getElementById('humid').onclick=function(e){e.stopPropagation();document.getElementById('humModal').style.display='flex';document.getElementById('humMsg').textContent='';var h=lastPv&&lastPv.indoorHumidity;document.getElementById('humNow').textContent='지금 실내 습도 '+(h!=null?h+'%':'–');showHum(null);refreshHum();loadHum();};
 document.getElementById('humClose').onclick=()=>document.getElementById('humModal').style.display='none';
+function showHum(st){var h=document.getElementById('humState'),w=document.getElementById('humWarn');if(!st){h.textContent='';w.textContent='';return}
+  h.textContent='가습기: '+(st.on?'💧 켜짐':'꺼짐')+' (앱이 기억한 상태)';w.textContent=st.warn?'⚠️ 켰는데 습도가 안 올라요. 물이 있는지, 실제로 켜져 있는지 확인하고 아래에서 상태를 바로잡아 주세요. (그 전까지 자동 가습 멈춤)':'';}
+async function refreshHum(){try{var j=await(await fetch(q('/api/hum'))).json();showHum(j.hum);}catch(e){}}
+async function setHum(on){var m=document.getElementById('humMsg');try{var j=await(await fetch(q('/api/hum'),{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({on:on})})).json();showHum(j.hum);m.textContent='✓ 상태를 "'+(on?'켜짐':'꺼짐')+'"으로 바로잡았어요';}catch(e){m.textContent='✗ 실패'}}
+document.getElementById('humSetOn').onclick=function(){setHum(true)};document.getElementById('humSetOff').onclick=function(){setHum(false)};
 async function loadHum(){const box=document.getElementById('humBtns');let j;try{j=await(await fetch(q('/api/scenes'))).json();}catch(e){j={ok:false}}
   if(!j.ok){box.innerHTML='<div class="mini">레시피를 불러오지 못했어요</div>';return}
   const list=j.scenes.filter(function(sc){return /가습/.test(sc.name)});
   if(!list.length){box.innerHTML='<div class="mini">이름에 "가습"이 들어간 레시피가 없어요</div>';return}
   box.innerHTML='';list.forEach(function(sc){const b=document.createElement('button');b.className='scbtn';b.textContent=sc.name;
-    b.onclick=async function(){const m=document.getElementById('humMsg');b.disabled=true;m.textContent='전송 중…';let r;try{r=await(await fetch(q('/api/scene'),{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({sceneId:sc.sceneId})})).json();}catch(e){r={ok:false,error:'전송 실패'}}m.textContent=r.ok?('✓ '+sc.name):('✗ '+(r.error||''));b.disabled=false;};
+    b.onclick=async function(){const m=document.getElementById('humMsg');b.disabled=true;m.textContent='전송 중…';let r;try{r=await(await fetch(q('/api/scene'),{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({sceneId:sc.sceneId})})).json();}catch(e){r={ok:false,error:'전송 실패'}}m.textContent=r.ok?('✓ '+sc.name):('✗ '+(r.error||''));if(r.hum)showHum(r.hum);b.disabled=false;};
     box.appendChild(b);});}
 document.getElementById('wxModal').onclick=e=>{if(e.target.id==='wxModal')e.target.style.display='none'};
 document.getElementById('chartClose').onclick=()=>document.getElementById('chartModal').style.display='none';
@@ -881,7 +943,7 @@ async function load(){
   // 설정값 채우기
   document.getElementById('title').textContent=c.storeName||'우리 매장';
   document.getElementById('storeName').value=c.storeName||'';
-  for(const k of ['summerTarget','winterTarget','deadband','acBias','observeMinutes','restAbove','alertHot','alertCold'])document.getElementById(k).value=c[k];
+  for(const k of ['summerTarget','winterTarget','deadband','acBias','observeMinutes','restAbove','humLow','humHigh','alertHot','alertCold'])document.getElementById(k).value=c[k];
   curSensor=c.sensorDeviceId||'';curAc=c.acDeviceId||'';
   document.getElementById('address').value=c.address||'';
   document.getElementById('loc').textContent=c.address?('현재 위치: '+c.address):('좌표 '+(c.lat||'-')+', '+(c.lon||'-'));
@@ -896,7 +958,7 @@ async function load(){
   const f=friendly(pv,c.enabled);
   if(pv&&typeof pv.indoorTemp==='number'){
     document.getElementById('temp').innerHTML=pv.indoorTemp.toFixed(1)+'<span>℃</span>';
-    document.getElementById('humid').textContent='습도 '+(pv.indoorHumidity!=null?pv.indoorHumidity+'%':'–')+' · 가습기 ›';
+    document.getElementById('humid').textContent='습도 '+(pv.indoorHumidity!=null?pv.indoorHumidity+'%':'–')+' · '+(pv.hum&&pv.hum.warn?'⚠️ 가습기 확인':(pv.hum&&pv.hum.on?'💧 가습 중':'가습기'))+' ›';
     document.getElementById('t_season').textContent=pv.seasonMode==='cooling'?'냉방철':pv.seasonMode==='heating'?'난방철':'간절기';
     document.getElementById('t_out').textContent=pv.outdoorTemp!=null?((pv.weather&&pv.weather.emoji?pv.weather.emoji+' ':'')+Math.round(pv.outdoorTemp)+'℃'):'–';
     document.getElementById('t_target').textContent=pv.targetTemp!=null?pv.targetTemp+'℃':'–';
@@ -906,6 +968,7 @@ async function load(){
   const SM={open:'🟢 영업중',preheat:'🟡 예열중',closed:'⚪ 비영업'};
   document.getElementById('sched').textContent=pv&&pv.scheduleState?SM[pv.scheduleState]||'':'';
   document.getElementById('useSchedule').checked=c.useSchedule!==false;
+  document.getElementById('humAuto').checked=!!c.humAuto;document.getElementById('humBizOnly').checked=c.humBizOnly!==false;
   document.getElementById('preheatMinutes').value=c.preheatMinutes!=null?c.preheatMinutes:60;
   const DAYS=[['월',1],['화',2],['수',3],['목',4],['금',5],['토',6],['일',0]];
   document.getElementById('daysBox').innerHTML=DAYS.map(function(e){var nm=e[0],ix=e[1];var h=(c.hours&&c.hours[ix])||{closed:false,open:'09:00',close:'00:00'};return '<div class="dayrow'+(h.closed?' off':'')+'" data-d="'+ix+'"><span class="dname">'+nm+'</span><label class="offbox"><input type="checkbox" class="dClosed"'+(h.closed?' checked':'')+'>휴무</label><input type="time" class="dOpen" value="'+(h.open||'09:00')+'"><span class="tilde">~</span><input type="time" class="dClose" value="'+(h.close||'00:00')+'"></div>';}).join('');
@@ -924,7 +987,7 @@ async function load(){
 document.getElementById('auto').onchange=async()=>{await fetch(q('/api/toggle'),{method:'POST'});load()};
 document.getElementById('run').onclick=async(e)=>{e.target.textContent='실행 중…';await fetch(q('/api/run'),{method:'POST'});e.target.textContent='지금 한 번 실행';load()};
 document.getElementById('login').onclick=async()=>{const email=document.getElementById('email').value,password=document.getElementById('password').value;if(!email||!password){alert('이메일/비번을 입력하세요');return}const r=await fetch(q('/api/login'),{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({email,password})});const j=await r.json();if(j.ok){document.getElementById('password').value='';document.getElementById('dLogin').open=false;alert('로그인 성공!')}else alert('로그인 실패: '+(j.error||''));load()};
-document.getElementById('save').onclick=async()=>{const b={};for(const k of ['summerTarget','winterTarget','deadband','acBias','observeMinutes','restAbove','alertHot','alertCold']){b[k]=Number(document.getElementById(k).value)}b.storeName=document.getElementById('storeName').value||'우리 매장';const ow=document.getElementById('owmKey').value;if(ow)b.owmKey=ow;await fetch(q('/api/config'),{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(b)});document.getElementById('owmKey').value='';alert('저장됨');load()};
+document.getElementById('save').onclick=async()=>{const b={};for(const k of ['summerTarget','winterTarget','deadband','acBias','observeMinutes','restAbove','humLow','humHigh','alertHot','alertCold']){b[k]=Number(document.getElementById(k).value)}b.humAuto=document.getElementById('humAuto').checked;b.humBizOnly=document.getElementById('humBizOnly').checked;b.storeName=document.getElementById('storeName').value||'우리 매장';const ow=document.getElementById('owmKey').value;if(ow)b.owmKey=ow;await fetch(q('/api/config'),{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(b)});document.getElementById('owmKey').value='';alert('저장됨');load()};
 document.getElementById('geocode').onclick=async()=>{const a=document.getElementById('address').value.trim();if(!a){alert('주소를 입력하세요');return}const loc=document.getElementById('loc');loc.textContent='위치 찾는 중…';const url='/api/geocode?q='+encodeURIComponent(a)+(T?'&t='+T:'');const j=await(await fetch(url)).json();if(j.ok){await fetch(q('/api/config'),{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({address:a,lat:j.lat,lon:j.lon})});loc.textContent='✓ 설정됨: '+j.name;load()}else{loc.textContent='✗ '+(j.error||'주소를 못 찾음')}};
 document.getElementById('saveSched').onclick=async()=>{const hours=[];document.querySelectorAll('#daysBox .dayrow').forEach(function(row){var d=+row.dataset.d;hours[d]={closed:row.querySelector('.dClosed').checked,open:row.querySelector('.dOpen').value||'09:00',close:row.querySelector('.dClose').value||'00:00'};});const b={useSchedule:document.getElementById('useSchedule').checked,preheatMinutes:Number(document.getElementById('preheatMinutes').value)||60,hours:hours};await fetch(q('/api/config'),{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(b)});alert('영업시간 저장됨');load()};
 function typeLabel(t){const m={SensorTh:'온습도계',SensorTh2:'온습도계',IrAirconditioner:'에어컨(IR)',IrFan:'선풍기(IR)',IrTv:'TV(IR)',Plug:'플러그',SmartPlug:'플러그',Curtain:'커튼',Lightbulb:'전구',IrDIY:'IR리모컨'};return t?(' · '+(m[t]||t)):'';}

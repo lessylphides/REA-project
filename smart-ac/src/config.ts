@@ -36,6 +36,14 @@ export interface Config {
   observeMinutes?: number;
   /** 목표를 이만큼(℃) 넘어 계속 오르면(냉방은 내려가면) '쉬기'로 전환 */
   restAbove?: number;
+  /** 자동 가습 on/off (가습기 = 헤이홈 레시피 토글) */
+  humAuto?: boolean;
+  /** 이 습도(%) 아래면 가습기 켜기 */
+  humLow?: number;
+  /** 이 습도(%) 이상이면 가습기 끄기 */
+  humHigh?: number;
+  /** 영업시간에만 가습 (비영업엔 끔) */
+  humBizOnly?: boolean;
   /** 여름 경고: 실내가 이 온도 이상이면 '너무 더움' 경고 */
   alertHot: number;
   /** 겨울 최저기준: 실내가 이 온도 이하면 '너무 추움' 경고 + 비영업 세트백 바닥 */
@@ -69,6 +77,10 @@ export const DEFAULT_CONFIG: Config = {
   fanSpeed: 'medium',
   observeMinutes: 30,
   restAbove: 1,
+  humAuto: false,
+  humLow: 40,
+  humHigh: 55,
+  humBizOnly: true,
   alertHot: 30,
   alertCold: 15,
   useSchedule: true,
