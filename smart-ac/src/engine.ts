@@ -79,41 +79,47 @@ export function decide(reading: Reading, cfg: Config): Decision {
   const month = now.getMonth() + 1;
   const season = decideSeason(reading.outdoorTemp, month);
   const indoor = reading.indoorTemp;
+  const bias = cfg.acBias ?? 5;
+  const clamp = (v: number) => Math.max(16, Math.min(30, Math.round(v)));
 
+  // room-follow: 에어컨은 (목표±보정)으로 '강하게' 틀어 송풍 전환을 막고,
+  // 켜고 끄는 판단은 우리 온습도계(매장 중앙)가 목표에 닿는 시점으로.
   if (season === 'cooling') {
     const target = cfg.summerTarget;
-    if (indoor >= target + cfg.deadband) {
+    if (indoor >= target + cfg.deadband) {               // 덥다 → 냉방 가동
       const fan = fanByGap(indoor - target);
+      const acSet = clamp(target - bias);
       return {
         action: 'set', seasonMode: 'cooling',
-        desired: { power: true, mode: 'cool', temperature: target, fanSpeed: fan },
-        reason: `냉방철 · 실내 ${indoor.toFixed(1)}℃ ≥ 목표 ${target}℃+${cfg.deadband} → 냉방 ${target}℃/${fan}`,
+        desired: { power: true, mode: 'cool', temperature: acSet, fanSpeed: fan },
+        reason: `냉방철 · 실내 ${indoor.toFixed(1)}℃ → 냉방(에어컨 ${acSet}℃로 강하게, 실내 ${target}℃까지)/${fan}`,
       };
     }
-    if (indoor <= target - cfg.deadband) {
+    if (indoor <= target) {                              // 매장이 목표 도달 → 끔
       return { action: 'off', seasonMode: 'cooling',
-        reason: `냉방철 · 실내 ${indoor.toFixed(1)}℃ 가 이미 시원함 → 에어컨 OFF` };
+        reason: `냉방철 · 실내 ${indoor.toFixed(1)}℃ ≤ 목표 ${target}℃ → 에어컨 OFF` };
     }
     return { action: 'hold', seasonMode: 'cooling',
-      reason: `냉방철 · 실내 ${indoor.toFixed(1)}℃ 쾌적 범위 → 유지` };
+      reason: `냉방철 · 실내 ${indoor.toFixed(1)}℃ (목표 ${target}℃ 근처) → 유지` };
   }
 
   if (season === 'heating') {
     const target = cfg.winterTarget;
-    if (indoor <= target - cfg.deadband) {
+    if (indoor <= target - cfg.deadband) {               // 춥다 → 난방 가동
       const fan = fanByGap(target - indoor);
+      const acSet = clamp(target + bias);
       return {
         action: 'set', seasonMode: 'heating',
-        desired: { power: true, mode: 'heat', temperature: target, fanSpeed: fan },
-        reason: `난방철 · 실내 ${indoor.toFixed(1)}℃ ≤ 목표 ${target}℃-${cfg.deadband} → 난방 ${target}℃/${fan}`,
+        desired: { power: true, mode: 'heat', temperature: acSet, fanSpeed: fan },
+        reason: `난방철 · 실내 ${indoor.toFixed(1)}℃ → 난방(에어컨 ${acSet}℃로 강하게, 실내 ${target}℃까지)/${fan}`,
       };
     }
-    if (indoor >= target + cfg.deadband) {
+    if (indoor >= target) {                              // 매장이 목표 도달 → 끔
       return { action: 'off', seasonMode: 'heating',
-        reason: `난방철 · 실내 ${indoor.toFixed(1)}℃ 가 이미 따뜻함 → 에어컨 OFF` };
+        reason: `난방철 · 실내 ${indoor.toFixed(1)}℃ ≥ 목표 ${target}℃ → 에어컨 OFF` };
     }
     return { action: 'hold', seasonMode: 'heating',
-      reason: `난방철 · 실내 ${indoor.toFixed(1)}℃ 쾌적 범위 → 유지` };
+      reason: `난방철 · 실내 ${indoor.toFixed(1)}℃ (목표 ${target}℃ 근처) → 유지` };
   }
 
   // 간절기: 적극 제어 안 함
