@@ -29,6 +29,9 @@ export interface Config {
   /** 에어컨 설정 보정(℃): 에어컨 센서가 빨리 도달해 송풍 전환되는 것 방지.
    *  난방은 목표+보정, 냉방은 목표−보정으로 '강하게' 틀고 끄는 건 우리 센서로 판단 */
   acBias?: number;
+  /** 바람세기 고정값. 영업 중엔 모드/풍향을 안 건드리고 설정온도만 조절하므로
+   *  바람세기도 한 값으로 고정(매번 바꾸면 풍향 리셋 위험). 기본 '중' */
+  fanSpeed?: HvacFanSpeed;
   /** 여름 경고: 실내가 이 온도 이상이면 '너무 더움' 경고 */
   alertHot: number;
   /** 겨울 최저기준: 실내가 이 온도 이하면 '너무 추움' 경고 + 비영업 세트백 바닥 */
@@ -59,6 +62,7 @@ export const DEFAULT_CONFIG: Config = {
   winterTarget: 22,
   deadband: 1.5,
   acBias: 5,
+  fanSpeed: 'medium',
   alertHot: 30,
   alertCold: 15,
   useSchedule: true,

@@ -1,5 +1,5 @@
 // 자동화 결정 로직: 실내온도 + 계절/바깥날씨 → 에어컨을 어떻게 할지 결정
-import { Config, DesiredAcState, HvacFanSpeed, DEFAULT_HOURS } from './config';
+import { Config, DesiredAcState, HvacFanSpeed, DEFAULT_HOURS, AC_TEMP_MIN, AC_TEMP_MAX } from './config';
 
 export interface Reading {
   indoorTemp: number;        // ℃ (온습도계)
@@ -15,13 +15,6 @@ export interface Decision {
   reason: string;
   /** 목표 도달 후 송풍 순환 유지 중(영업시간) */
   maintaining?: boolean;
-}
-
-/** 바람세기: 목표와의 온도차가 클수록 강하게 */
-function fanByGap(gap: number): HvacFanSpeed {
-  if (gap >= 3) return 'high';
-  if (gap >= 1.5) return 'medium';
-  return 'low';
 }
 
 /**
@@ -96,30 +89,33 @@ export function decide(reading: Reading, cfg: Config, comfort = true): Decision 
   const season = decideSeason(reading.outdoorTemp, month);
   const indoor = reading.indoorTemp;
   const bias = cfg.acBias ?? 5;
-  const clamp = (v: number) => Math.max(16, Math.min(30, Math.round(v)));
-  const target = season === 'cooling' ? cfg.summerTarget : cfg.winterTarget;
-  // 목표 도달 시: 영업중이면 송풍 순환(유지), 비영업이면 완전 OFF(절전)
-  const reached = (): Decision => comfort
-    ? { action: 'set', seasonMode: season as any, maintaining: true,
-        desired: { power: true, mode: 'fan', temperature: target, fanSpeed: 'low' },
-        reason: `실내 ${indoor.toFixed(1)}℃ 목표 ${target}℃ 도달 → 송풍 순환(유지)` }
-    : { action: 'off', seasonMode: season as any,
-        reason: `실내 ${indoor.toFixed(1)}℃ 목표 ${target}℃ 도달 → 에어컨 OFF(절전)` };
+  const fan: HvacFanSpeed = cfg.fanSpeed ?? 'medium'; // 고정 — 매 명령마다 바꾸지 않아 풍향 리셋 방지
+  const clamp = (v: number) => Math.max(AC_TEMP_MIN, Math.min(AC_TEMP_MAX, Math.round(v)));
 
-  // room-follow: 에어컨은 (목표±보정)으로 '강하게' 틀어 송풍 전환을 막고,
-  // 켜고 끄는 판단은 우리 온습도계(매장 중앙)가 목표에 닿는 시점으로.
+  // 핵심: 영업 중엔 '모드'를 절대 바꾸지 않는다(송풍 모드로 전환하면 상/하·좌/우 풍향이 리셋됨).
+  //  - 가동: 같은 모드에서 설정온도를 (목표±보정)으로 강하게
+  //  - 도달(유지): 모드/바람세기 그대로 두고 설정온도만 끝값으로 → 에어컨이 알아서 공회전(송풍처럼)
+  //    → 바뀌는 건 '설정온도'뿐이라 풍향이 안 풀린다.
+  //  - 비영업: 절전을 위해 완전 OFF (하루 1회 전원 토글이라 리셋돼도 영향 적음)
   if (season === 'cooling') {
     const target = cfg.summerTarget;
     if (indoor >= target + cfg.deadband) {               // 덥다 → 냉방 가동
-      const fan = fanByGap(indoor - target);
       const acSet = clamp(target - bias);
       return {
         action: 'set', seasonMode: 'cooling',
         desired: { power: true, mode: 'cool', temperature: acSet, fanSpeed: fan },
-        reason: `냉방철 · 실내 ${indoor.toFixed(1)}℃ → 냉방(에어컨 ${acSet}℃로 강하게, 실내 ${target}℃까지)/${fan}`,
+        reason: `냉방철 · 실내 ${indoor.toFixed(1)}℃ → 냉방(에어컨 ${acSet}℃로 강하게, 실내 ${target}℃까지)`,
       };
     }
-    if (indoor <= target) return reached();              // 매장이 목표 도달
+    if (indoor <= target) {                              // 매장이 목표 도달
+      if (comfort) return {
+        action: 'set', seasonMode: 'cooling', maintaining: true,
+        desired: { power: true, mode: 'cool', temperature: AC_TEMP_MAX, fanSpeed: fan },
+        reason: `실내 ${indoor.toFixed(1)}℃ 목표 ${target}℃ 도달 → 냉방 공회전(설정 ${AC_TEMP_MAX}℃·모드/풍향 유지)`,
+      };
+      return { action: 'off', seasonMode: 'cooling',
+        reason: `실내 ${indoor.toFixed(1)}℃ 목표 ${target}℃ 도달 → 에어컨 OFF(절전)` };
+    }
     return { action: 'hold', seasonMode: 'cooling',
       reason: `냉방철 · 실내 ${indoor.toFixed(1)}℃ (목표 ${target}℃ 근처) → 유지` };
   }
@@ -127,15 +123,22 @@ export function decide(reading: Reading, cfg: Config, comfort = true): Decision 
   if (season === 'heating') {
     const target = cfg.winterTarget;
     if (indoor <= target - cfg.deadband) {               // 춥다 → 난방 가동
-      const fan = fanByGap(target - indoor);
       const acSet = clamp(target + bias);
       return {
         action: 'set', seasonMode: 'heating',
         desired: { power: true, mode: 'heat', temperature: acSet, fanSpeed: fan },
-        reason: `난방철 · 실내 ${indoor.toFixed(1)}℃ → 난방(에어컨 ${acSet}℃로 강하게, 실내 ${target}℃까지)/${fan}`,
+        reason: `난방철 · 실내 ${indoor.toFixed(1)}℃ → 난방(에어컨 ${acSet}℃로 강하게, 실내 ${target}℃까지)`,
       };
     }
-    if (indoor >= target) return reached();              // 매장이 목표 도달
+    if (indoor >= target) {                              // 매장이 목표 도달
+      if (comfort) return {
+        action: 'set', seasonMode: 'heating', maintaining: true,
+        desired: { power: true, mode: 'heat', temperature: AC_TEMP_MIN, fanSpeed: fan },
+        reason: `실내 ${indoor.toFixed(1)}℃ 목표 ${target}℃ 도달 → 난방 공회전(설정 ${AC_TEMP_MIN}℃·모드/풍향 유지)`,
+      };
+      return { action: 'off', seasonMode: 'heating',
+        reason: `실내 ${indoor.toFixed(1)}℃ 목표 ${target}℃ 도달 → 에어컨 OFF(절전)` };
+    }
     return { action: 'hold', seasonMode: 'heating',
       reason: `난방철 · 실내 ${indoor.toFixed(1)}℃ (목표 ${target}℃ 근처) → 유지` };
   }
