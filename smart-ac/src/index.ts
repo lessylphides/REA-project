@@ -93,6 +93,7 @@ interface RunStatus {
   nextTransition?: { opensNext: boolean; at: number } | null;
   targetTemp?: number | null;
   maintaining?: boolean;
+  acLast?: { power: boolean; mode?: string } | null;
   acWarn?: { type: 'noheat' | 'nocool'; dT: number } | null;
   weather?: Weather | null;
   error?: string;
@@ -190,6 +191,8 @@ async function runOnce(env: Env, opts: { force?: boolean; preview?: boolean; log
     status.action = decision.action;
     status.reason = decision.reason;
     status.maintaining = decision.maintaining ?? false;
+    const lastCmd = await env.KV.get('lastCommand', 'json') as DesiredAcState | null;
+    status.acLast = lastCmd ? { power: !!lastCmd.power, mode: lastCmd.mode } : null;
     status.targetTemp = decision.seasonMode === 'cooling' ? effCfg.summerTarget
                       : decision.seasonMode === 'heating' ? effCfg.winterTarget : null;
 
@@ -720,6 +723,10 @@ function friendly(p,enabled){
   if(cooling)return{em:'❄️',t:'시원하게 트는 중',sub:p.reason,c:'blue',ac:'냉방'};
   if(heating)return{em:'🔥',t:'따뜻하게 트는 중',sub:p.reason,c:'orange',ac:'난방'};
   if(p.action==='off')return{em:'⏹️',t:'에어컨 끄는 중',sub:p.reason,c:'gray',ac:'끄기'};
+  // 유지(hold): 새 명령은 없지만 에어컨은 마지막 명령대로 계속 작동 중
+  if(p.acLast&&p.acLast.power&&p.acLast.mode==='heat')return{em:'🔥',t:'난방 중',sub:'목표까지 데우는 중',c:'orange',ac:'난방'};
+  if(p.acLast&&p.acLast.power&&p.acLast.mode==='cool')return{em:'❄️',t:'냉방 중',sub:'목표까지 식히는 중',c:'blue',ac:'냉방'};
+  if(p.acLast&&p.acLast.power&&p.acLast.mode==='fan')return{em:'🍃',t:'적정 유지 중',sub:'송풍으로 순환',c:'green',ac:'송풍'};
   return{em:'😌',t:'지금 알맞아요',sub:'에어컨 대기 중',c:'green',ac:'대기'};
 }
 async function load(){
