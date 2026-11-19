@@ -26,16 +26,23 @@ export function humDecide(cfg: Config, hum: number | null, schedState: string | 
   if (hum == null) return { toggle: false, next: st, reason: '습도 값을 못 읽어 대기' };
   const active = cfg.humBizOnly === false ? true : schedState !== 'closed';
 
-  // 반응 없음: 켠 지 1시간 지났는데 습도가 1%p도 안 올랐으면 → 자동 멈춤
-  if (st.warn) return { toggle: false, next: st, reason: '가습기 반응 없음 — 물/전원을 확인하고 상태를 바로잡아 주세요' };
-  if (st.on && st.startHum != null && now - st.since >= 60 * MIN && hum < high && hum - st.startHum < 1) {
-    return { toggle: false, next: { ...st, warn: true }, reason: `켠 지 1시간이 지나도 습도가 안 올라요(${st.startHum}%→${hum}%) — 물/전원 확인 필요` };
-  }
-
   let want = st.on;
   if (!active) want = false;
   else if (hum < low) want = true;
   else if (hum >= high) want = false;
+
+  // 반응 없음 경고: 켠 지 1시간 지났는데 습도가 1%p도 안 올랐으면.
+  // 경고 중에도 '끄기'(마감/습도 충분)는 그대로 보낸다 — 켜는 쪽만 멈춤(헛돌기 방지)
+  const noRise = st.on && st.startHum != null && now - st.since >= 60 * MIN && hum < high && hum - st.startHum < 1;
+  if (st.warn || noRise) {
+    const warned: HumState = { ...st, warn: true };
+    if (st.on && !want && now - st.since >= 20 * MIN) {
+      return { toggle: true, next: { on: false, since: now, startHum: null, warn: false },
+        reason: active ? `습도 ${hum}% ≥ ${high}% → 가습기 끄기` : '비영업 → 가습기 끄기' };
+    }
+    return { toggle: false, next: warned,
+      reason: `가습기를 켰는데 습도가 안 올라요(${st.startHum ?? '?'}%→${hum}%) — 물/전원 확인, 매장이 넓으면 천천히 오를 수 있어요` };
+  }
 
   if (want === st.on) {
     return { toggle: false, next: st, reason: st.on ? `가습 중 · 습도 ${hum}% (목표 ${high}%까지)` : (active ? `습도 ${hum}% · 가습 필요 없음` : '비영업 · 가습 쉼') };
