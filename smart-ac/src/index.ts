@@ -676,9 +676,9 @@ function renderUI(token: string): string {
     <div class="actemp" id="acTempBox"><button id="tDown">−</button><span id="tVal">24℃</span><button id="tUp">＋</button></div>
     <div class="aclabel">바람세기</div>
     <div class="acseg" id="acFan"><button data-c="1">약</button><button data-c="2">중</button><button data-c="3">강</button></div>
-    <div class="aclabel">레시피 (DIY 버튼)</div>
-    <div class="scgrid" id="acScenes"><div class="mini">불러오는 중…</div></div>
-    <div class="mini" style="margin-top:8px">헤이홈 앱 → 레시피 → 간편 레시피에 DIY 버튼(상하/좌우바람·파워·바람 1~4단)을 담아 만들면 여기 자동으로 나타나요.</div>
+    <div class="aclabel">풍향 · 파워 <span style="font-weight:400">(누를 때마다 켜짐/꺼짐)</span></div>
+    <div class="acseg" id="acDiy"><button data-k="updown">↕️ 상하바람</button><button data-k="leftright">↔️ 좌우바람</button><button data-k="power">⚡ 파워</button></div>
+    <div class="mini" id="acDiyNote" style="margin-top:6px"></div>
     <div class="mini" id="acMsg" style="margin-top:10px;min-height:16px"></div>
   </div>
 </div>
@@ -768,12 +768,21 @@ let acTemp=24;function showAcTemp(){document.getElementById('tVal').textContent=
 function applyAcUI(){var b=document.getElementById('acTempBox');if(b)b.classList.toggle('off',curAcOn===false);}
 async function acSend(cmd,label){const m=document.getElementById('acMsg');m.textContent='전송 중…';let j;try{j=await(await fetch(q('/api/ac'),{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(cmd)})).json();}catch(e){j={ok:false,error:'전송 실패'}}m.textContent=j.ok?('✓ '+(label||'전송됨')):('✗ '+(j.error||''));}
 document.getElementById('acTile').onclick=()=>{document.getElementById('acModal').style.display='flex';showAcTemp();applyAcUI();document.getElementById('acMsg').textContent='';loadScenes()};
-async function loadScenes(){const box=document.getElementById('acScenes');let j;try{j=await(await fetch(q('/api/scenes'))).json();}catch(e){j={ok:false}}
-  if(!j.ok){box.innerHTML='<div class="mini">레시피를 불러오지 못했어요</div>';return}
-  if(!j.scenes.length){box.innerHTML='<div class="mini">아직 만든 레시피가 없어요</div>';return}
-  box.innerHTML='';j.scenes.forEach(function(sc){const b=document.createElement('button');b.className='scbtn';b.textContent=sc.name;
-    b.onclick=async function(){const m=document.getElementById('acMsg');b.disabled=true;m.textContent='실행 중…';let r;try{r=await(await fetch(q('/api/scene'),{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({sceneId:sc.sceneId})})).json();}catch(e){r={ok:false,error:'전송 실패'}}m.textContent=r.ok?('✓ '+sc.name):('✗ '+(r.error||''));b.disabled=false;};
-    box.appendChild(b);});}
+// DIY 버튼 = 헤이홈 '간편 레시피'를 이름으로 찾아 실행 (이름에 상하/좌우/파워/1~4단 포함)
+var DIY_KEYS={updown:/상하/,leftright:/좌우/,power:/파워|power/i,f1:/1 *단/,f2:/2 *단/,f3:/3 *단/,f4:/4 *단/};
+var diyMap={};
+async function runScene(id,label){const m=document.getElementById('acMsg');m.textContent='전송 중…';let r;try{r=await(await fetch(q('/api/scene'),{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({sceneId:id})})).json();}catch(e){r={ok:false,error:'전송 실패'}}m.textContent=r.ok?('✓ '+label):('✗ '+(r.error||''));}
+async function loadScenes(){let j;try{j=await(await fetch(q('/api/scenes'))).json();}catch(e){j={ok:false}}
+  diyMap={};(j.ok?j.scenes:[]).forEach(function(sc){for(var k in DIY_KEYS){if(!diyMap[k]&&DIY_KEYS[k].test(sc.name))diyMap[k]=sc;}});
+  var missing=[];
+  document.querySelectorAll('#acDiy button').forEach(function(b){var sc=diyMap[b.dataset.k];b.disabled=!sc;if(!sc)missing.push(b.textContent.split(' ').slice(1).join(' '));
+    b.onclick=function(){if(sc)runScene(sc.sceneId,b.textContent.split(' ').slice(1).join(' '));};});
+  // 바람세기: 1~4단 레시피가 모두 있으면 4단 버튼으로, 아니면 기존 약/중/강
+  var fan=document.getElementById('acFan');
+  if(diyMap.f1&&diyMap.f2&&diyMap.f3&&diyMap.f4){fan.innerHTML='';[1,2,3,4].forEach(function(n){var b=document.createElement('button');b.textContent=n+'단';var sc=diyMap['f'+n];
+    b.onclick=function(){fan.querySelectorAll('button').forEach(function(x){x.classList.remove('on')});b.classList.add('on');runScene(sc.sceneId,'바람 '+n+'단');};fan.appendChild(b);});}
+  document.getElementById('acDiyNote').textContent=!j.ok?'레시피를 불러오지 못했어요':missing.length?('헤이홈 간편 레시피 필요: '+missing.join(', ')+' (이름에 그 단어를 넣어주세요)'):'';
+}
 document.getElementById('acClose').onclick=()=>document.getElementById('acModal').style.display='none';
 document.getElementById('acModal').onclick=e=>{if(e.target.id==='acModal')e.target.style.display='none'};
 document.querySelectorAll('#acPower button').forEach(b=>b.onclick=()=>{const on=b.dataset.p==='on';curAcOn=on;applyAcUI();acSend({power:on},on?'켜기':'끄기')});
