@@ -120,6 +120,23 @@ async function manualControl(env: Env, action: string): Promise<{ ok: boolean; s
   } catch (e: any) { return { ok: false, error: String(e?.message ?? e) }; }
 }
 
+// ---------- 에어컨 리모컨 (세밀 제어) ----------
+async function sendAc(env: Env, cmd: { power?: boolean; mode?: string; temperature?: number; fanSpeed?: string; swing?: boolean }): Promise<{ ok: boolean; sent?: string[]; error?: string }> {
+  try {
+    const cfg = await loadConfig(env);
+    if (!cfg.acDeviceId) return { ok: false, error: '에어컨이 설정되지 않았어요' };
+    const s = await getSession(env);
+    const id = cfg.acDeviceId;
+    const sent: string[] = [];
+    if (cmd.power !== undefined) { await hej.control(s, id, { power: cmd.power }); sent.push('전원'); await sleep(400); }
+    if (cmd.mode && MODE_CODES[cmd.mode as keyof typeof MODE_CODES] !== undefined) { await hej.control(s, id, { mode: MODE_CODES[cmd.mode as keyof typeof MODE_CODES] }); sent.push('모드'); await sleep(400); }
+    if (typeof cmd.temperature === 'number') { const t = Math.max(16, Math.min(30, Math.round(cmd.temperature))); await hej.control(s, id, { temperature: t }); sent.push('온도'); await sleep(400); }
+    if (cmd.fanSpeed && FAN_CODES[cmd.fanSpeed as keyof typeof FAN_CODES] !== undefined) { await hej.control(s, id, { fanSpeed: FAN_CODES[cmd.fanSpeed as keyof typeof FAN_CODES] }); sent.push('바람'); await sleep(400); }
+    if (cmd.swing) { await hej.control(s, id, { swing: true }); sent.push('풍향'); }
+    return { ok: true, sent };
+  } catch (e: any) { return { ok: false, error: String(e?.message ?? e) }; }
+}
+
 // ---------- 자동화 1회 실행 ----------
 async function runOnce(env: Env, opts: { force?: boolean; preview?: boolean; log?: boolean } = {}): Promise<RunStatus> {
   const status: RunStatus = { ts: new Date().toISOString(), ok: false, enabled: false };
@@ -231,6 +248,11 @@ export default {
     if (url.pathname === '/api/manual' && req.method === 'POST') {
       const b = await req.json<{ action?: string }>();
       return json(await manualControl(env, b.action ?? ''));
+    }
+    // 에어컨 리모컨 — 전원/모드/온도/바람세기/풍향 세밀 제어
+    if (url.pathname === '/api/ac' && req.method === 'POST') {
+      const cmd = await req.json<{ power?: boolean; mode?: string; temperature?: number; fanSpeed?: string; swing?: boolean }>();
+      return json(await sendAc(env, cmd));
     }
     // 미리보기(현재 온도/판단만, 에어컨에 전송 안 함) — 화면 표시용
     if (url.pathname === '/api/preview') {
@@ -346,6 +368,14 @@ function renderUI(): string {
   .dayrow.off input[type=time]{opacity:.35}
   .wxrow{display:flex;justify-content:space-between;align-items:center;padding:13px 2px;border-top:1px solid var(--sep);font-size:15px}
   .wxrow span{color:var(--sec)}
+  .aclabel{font-size:13px;color:var(--sec);margin:16px 2px 7px}
+  .acseg{display:flex;gap:6px;flex-wrap:wrap}
+  .acseg button{flex:1 1 auto;min-width:56px;border:0;background:var(--field);color:var(--label);border-radius:11px;padding:12px 6px;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit}
+  .acseg button:active{opacity:.55}.acseg button.on{background:var(--blue);color:#fff}
+  .actemp{display:flex;align-items:center;justify-content:center;gap:24px;margin-top:4px}
+  .actemp button{width:50px;height:50px;border-radius:50%;border:0;background:var(--field);color:var(--label);font-size:26px;cursor:pointer;font-family:inherit}
+  .actemp button:active{opacity:.55}
+  .actemp span{font-size:30px;font-weight:700;min-width:84px;text-align:center}
   .tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:16px}
   .tile{background:var(--card);border-radius:16px;padding:12px 6px;text-align:center;box-shadow:0 1px 3px rgba(0,0,0,.04)}
   .tile .v{font-size:19px;font-weight:600;letter-spacing:-.01em} .tile .k{font-size:11px;color:var(--sec);margin-top:3px}
@@ -397,7 +427,7 @@ function renderUI(): string {
   <div class="tile"><div class="v" id="t_season">–</div><div class="k">계절</div></div>
   <div class="tile"><div class="v" id="t_target">–</div><div class="k">목표</div></div>
   <div class="tile" id="outTile" style="cursor:pointer"><div class="v" id="t_out">–</div><div class="k">바깥 ›</div></div>
-  <div class="tile"><div class="v" id="t_ac">–</div><div class="k">에어컨</div></div>
+  <div class="tile" id="acTile" style="cursor:pointer"><div class="v" id="t_ac">–</div><div class="k">에어컨 ›</div></div>
 </div>
 
 <div class="card" id="sparkCard" style="cursor:pointer;padding:14px 16px;margin-bottom:16px">
@@ -471,6 +501,23 @@ function renderUI(): string {
     <div class="mini" id="devNote">헤이홈 앱에 등록된 기기가 자동으로 여기 나와요. 이름으로 고르기만 하면 돼요.</div>
   </div></details>
 </div></div>
+
+<div id="acModal" class="modal" style="display:none">
+  <div class="sheet">
+    <div class="sheet-h"><b>🎛️ 에어컨 리모컨</b><button id="acClose" class="x">✕</button></div>
+    <div class="acseg" id="acPower"><button data-p="on">전원 켜기</button><button data-p="off">전원 끄기</button></div>
+    <div class="aclabel">모드</div>
+    <div class="acseg" id="acMode"><button data-m="cool">❄️ 냉방</button><button data-m="heat">🔥 난방</button><button data-m="fan">💨 송풍</button><button data-m="dry">💧 제습</button><button data-m="auto">자동</button></div>
+    <div class="aclabel">온도</div>
+    <div class="actemp"><button id="tDown">−</button><span id="tVal">24℃</span><button id="tUp">＋</button></div>
+    <div class="aclabel">바람세기</div>
+    <div class="acseg" id="acFan"><button data-f="auto">자동</button><button data-f="low">약</button><button data-f="medium">중</button><button data-f="high">강</button></div>
+    <div class="aclabel">풍향</div>
+    <button class="btn" id="acSwing">🔄 회전(스윙) 전환</button>
+    <div class="mini">풍향은 에어컨 모델에 따라 안 될 수 있어요. 매장에서 눌러보고 반응 없으면 알려주세요.</div>
+    <div class="mini" id="acMsg" style="margin-top:10px;min-height:16px"></div>
+  </div>
+</div>
 
 <div id="wxModal" class="modal" style="display:none">
   <div class="sheet">
@@ -552,6 +599,18 @@ function openWeather(){const w=lastPv&&lastPv.weather;const b=document.getElemen
     b.innerHTML='<div style="text-align:center;padding:6px 0 14px"><div style="font-size:54px;line-height:1">'+w.emoji+'</div><div style="font-size:32px;font-weight:600;margin-top:6px">'+Math.round(w.outdoorTemp)+'℃</div><div style="color:var(--sec);margin-top:2px">'+(w.description||'')+'</div></div>'+rows.map(r=>'<div class="wxrow"><span>'+r[0]+'</span><b>'+r[1]+'</b></div>').join('');}
   document.getElementById('wxModal').style.display='flex';}
 document.getElementById('outTile').onclick=openWeather;
+// 에어컨 리모컨
+let acTemp=24;function showAcTemp(){document.getElementById('tVal').textContent=acTemp+'℃';}
+async function acSend(cmd,label){const m=document.getElementById('acMsg');m.textContent='전송 중…';let j;try{j=await(await fetch(q('/api/ac'),{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(cmd)})).json();}catch(e){j={ok:false,error:'전송 실패'}}m.textContent=j.ok?('✓ '+(label||'전송됨')):('✗ '+(j.error||''));}
+document.getElementById('acTile').onclick=()=>{document.getElementById('acModal').style.display='flex';showAcTemp();document.getElementById('acMsg').textContent=''};
+document.getElementById('acClose').onclick=()=>document.getElementById('acModal').style.display='none';
+document.getElementById('acModal').onclick=e=>{if(e.target.id==='acModal')e.target.style.display='none'};
+document.querySelectorAll('#acPower button').forEach(b=>b.onclick=()=>acSend({power:b.dataset.p==='on'},b.dataset.p==='on'?'켜기':'끄기'));
+document.querySelectorAll('#acMode button').forEach(b=>b.onclick=()=>{document.querySelectorAll('#acMode button').forEach(x=>x.classList.remove('on'));b.classList.add('on');acSend({mode:b.dataset.m},b.textContent.trim())});
+document.querySelectorAll('#acFan button').forEach(b=>b.onclick=()=>{document.querySelectorAll('#acFan button').forEach(x=>x.classList.remove('on'));b.classList.add('on');acSend({fanSpeed:b.dataset.f},'바람 '+b.textContent.trim())});
+document.getElementById('tUp').onclick=()=>{if(acTemp<30){acTemp++;showAcTemp();acSend({temperature:acTemp},acTemp+'℃')}};
+document.getElementById('tDown').onclick=()=>{if(acTemp>16){acTemp--;showAcTemp();acSend({temperature:acTemp},acTemp+'℃')}};
+document.getElementById('acSwing').onclick=()=>acSend({swing:true},'풍향 회전');
 document.getElementById('wxClose').onclick=()=>document.getElementById('wxModal').style.display='none';
 document.getElementById('wxModal').onclick=e=>{if(e.target.id==='wxModal')e.target.style.display='none'};
 document.getElementById('chartClose').onclick=()=>document.getElementById('chartModal').style.display='none';
