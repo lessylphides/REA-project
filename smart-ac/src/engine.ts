@@ -1,5 +1,5 @@
 // 자동화 결정 로직: 실내온도 + 계절/바깥날씨 → 에어컨을 어떻게 할지 결정
-import { Config, DesiredAcState, HvacFanSpeed } from './config';
+import { Config, DesiredAcState, HvacFanSpeed, DEFAULT_HOURS } from './config';
 
 export interface Reading {
   indoorTemp: number;        // ℃ (온습도계)
@@ -41,24 +41,36 @@ function decideSeason(outdoorTemp: number | null | undefined, month: number): 'c
   return 'neutral';
 }
 
+/** "HH:MM" → 분. "24:00"=1440 */
+function hm(s: string): number { const [h, m] = String(s || '0:0').split(':').map(Number); return (h || 0) * 60 + (m || 0); }
+
+/** 요일(day 0=일)·분(minutes)이 영업시간 안인가 (자정 넘김 처리 포함) */
+function isOpenAt(hours: Config['hours'], day: number, minutes: number): boolean {
+  const H = hours && hours.length === 7 ? hours : DEFAULT_HOURS;
+  const today = H[day];
+  if (today && !today.closed) {
+    const o = hm(today.open), c = hm(today.close);
+    if (c > o) { if (minutes >= o && minutes < c) return true; }        // 같은 날 영업
+    else { if (minutes >= o) return true; }                            // 자정 넘김: 당일 open~24시
+  }
+  const prev = H[(day + 6) % 7]; // 전날
+  if (prev && !prev.closed) {
+    const o = hm(prev.open), c = hm(prev.close);
+    if (c <= o && minutes < c) return true;                            // 전날이 자정 넘겨 오늘 0~c시까지
+  }
+  return false;
+}
+
 /**
- * 영업시간 판단 (한국시간 기준).
- *  화·수·목·금 17:00~익일 02:00 / 토·일 13:00~24:00 / 월 휴무.
+ * 영업시간 판단 (한국시간 기준, cfg.hours 사용).
  * comfort=true면 쾌적 목표(22/25), false면 비영업 세트백.
  */
 export function scheduleState(now: Date, cfg: Config): { state: 'open' | 'preheat' | 'closed'; comfort: boolean } {
   if (cfg.useSchedule === false) return { state: 'open', comfort: true };
   const kst = (d: Date) => new Date(d.getTime() + 9 * 3600 * 1000); // UTC→KST(+9), getUTC*로 읽음
-  const isOpen = (d: Date) => {
-    const day = d.getUTCDay(), h = d.getUTCHours(); // 0=일 … 6=토
-    if ((day === 3 || day === 4 || day === 5 || day === 6) && h < 2) return true; // 수~토 새벽(화~금 영업 연장)
-    if ((day === 2 || day === 3 || day === 4 || day === 5) && h >= 17) return true; // 화~금 저녁
-    if ((day === 6 || day === 0) && h >= 13) return true; // 토·일 오후
-    return false;
-  };
-  if (isOpen(kst(now))) return { state: 'open', comfort: true };
-  const soon = kst(new Date(now.getTime() + (cfg.preheatMinutes ?? 60) * 60000));
-  if (isOpen(soon)) return { state: 'preheat', comfort: true };
+  const at = (d: Date) => { const k = kst(d); return isOpenAt(cfg.hours, k.getUTCDay(), k.getUTCHours() * 60 + k.getUTCMinutes()); };
+  if (at(now)) return { state: 'open', comfort: true };
+  if (at(new Date(now.getTime() + (cfg.preheatMinutes ?? 60) * 60000))) return { state: 'preheat', comfort: true };
   return { state: 'closed', comfort: false };
 }
 

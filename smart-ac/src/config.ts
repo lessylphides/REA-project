@@ -1,6 +1,20 @@
 // 공용 타입 + 기본 설정값
 // 헤이홈 온습도계 + IR 에어컨 자동제어 (여름=냉방 / 겨울=난방)
 
+/** 하루 영업시간. close "HH:MM"가 open보다 작거나 같으면 자정을 넘겨 다음날 close까지 */
+export interface DayHours { closed: boolean; open: string; close: string; }
+
+/** 기본 영업시간: 화~금 17:00~익일02:00 / 토·일 13:00~자정 / 월 휴무 */
+export const DEFAULT_HOURS: DayHours[] = [
+  { closed: false, open: '13:00', close: '00:00' }, // 0 일
+  { closed: true,  open: '17:00', close: '02:00' }, // 1 월 (휴무)
+  { closed: false, open: '17:00', close: '02:00' }, // 2 화
+  { closed: false, open: '17:00', close: '02:00' }, // 3 수
+  { closed: false, open: '17:00', close: '02:00' }, // 4 목
+  { closed: false, open: '17:00', close: '02:00' }, // 5 금
+  { closed: false, open: '13:00', close: '00:00' }, // 6 토
+];
+
 export interface Config {
   /** 화면 상단에 표시할 매장 이름 */
   storeName?: string;
@@ -20,6 +34,8 @@ export interface Config {
   useSchedule?: boolean;
   /** 영업 시작 몇 분 전부터 미리 데울지(예열) */
   preheatMinutes?: number;
+  /** 요일별 영업시간 (index 0=일 … 6=토). close가 open보다 작으면 자정 넘김 */
+  hours?: DayHours[];
   /** 온습도계(센서) 기기 ID */
   sensorDeviceId: string;
   /** IR 에어컨 기기 ID */
@@ -43,6 +59,7 @@ export const DEFAULT_CONFIG: Config = {
   alertCold: 15,
   useSchedule: true,
   preheatMinutes: 60,
+  hours: DEFAULT_HOURS,
   sensorDeviceId: '',
   acDeviceId: '',
   lat: 37.5665, // 기본값: 서울 (배포 후 매장 위치로 변경)

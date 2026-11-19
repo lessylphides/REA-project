@@ -291,6 +291,13 @@ function renderUI(): string {
   .seg button{flex:1;border:0;background:var(--field);color:var(--sec);padding:9px;border-radius:9px;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit}
   .seg button.on{background:var(--blue);color:#fff}
   #chartBox svg{width:100%;height:auto;display:block}
+  .dayrow{display:flex;align-items:center;gap:6px;padding:7px 0;border-top:1px solid var(--sep)}
+  .dayrow:first-child{border-top:0}
+  .dname{width:18px;font-weight:600;font-size:15px}
+  .dayrow input[type=time]{flex:1;min-width:0;background:var(--field);border:0;border-radius:8px;padding:7px 8px;color:var(--label);font-family:inherit;font-size:14px}
+  .dayrow .tilde{color:var(--sec)}
+  .offbox{font-size:12px;color:var(--sec);display:flex;align-items:center;gap:3px;white-space:nowrap}
+  .dayrow.off input[type=time]{opacity:.35}
   .tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:16px}
   .tile{background:var(--card);border-radius:16px;padding:12px 6px;text-align:center;box-shadow:0 1px 3px rgba(0,0,0,.04)}
   .tile .v{font-size:19px;font-weight:600;letter-spacing:-.01em} .tile .k{font-size:11px;color:var(--sec);margin-top:3px}
@@ -384,7 +391,8 @@ function renderUI(): string {
       <label class="tg"><input type="checkbox" id="useSchedule"><span class="sl"></span></label>
     </div>
     <div class="fld"><label>영업 시작 몇 분 전부터 미리 데울지</label><input id="preheatMinutes" type="number" inputmode="numeric"></div>
-    <div class="fld"><div class="mini">현재 영업시간 (고정)<br>· 화·수·목·금 — 오후 5시 ~ 익일 새벽 2시<br>· 토·일 — 오후 1시 ~ 자정<br>· 월 — 휴무</div></div>
+    <div class="fld"><label>요일별 영업시간</label><div id="daysBox"></div>
+      <div class="mini" style="margin-top:6px">휴무 체크 시 그 날은 종일 절전. 자정 넘겨 영업하면 종료를 새벽 시간(예: 02:00)으로 넣으세요.</div></div>
     <button class="btn save" id="saveSched">영업시간 설정 저장</button>
   </div></details>
 
@@ -493,6 +501,9 @@ async function load(){
   document.getElementById('sched').textContent=pv&&pv.scheduleState?SM[pv.scheduleState]||'':'';
   document.getElementById('useSchedule').checked=c.useSchedule!==false;
   document.getElementById('preheatMinutes').value=c.preheatMinutes!=null?c.preheatMinutes:60;
+  const DAYS=[['월',1],['화',2],['수',3],['목',4],['금',5],['토',6],['일',0]];
+  document.getElementById('daysBox').innerHTML=DAYS.map(function(e){var nm=e[0],ix=e[1];var h=(c.hours&&c.hours[ix])||{closed:false,open:'09:00',close:'00:00'};return '<div class="dayrow'+(h.closed?' off':'')+'" data-d="'+ix+'"><span class="dname">'+nm+'</span><input type="time" class="dOpen" value="'+(h.open||'09:00')+'"><span class="tilde">~</span><input type="time" class="dClose" value="'+(h.close||'00:00')+'"><label class="offbox"><input type="checkbox" class="dClosed"'+(h.closed?' checked':'')+'>휴무</label></div>';}).join('');
+  document.querySelectorAll('#daysBox .dClosed').forEach(function(cb){cb.onchange=function(){cb.closest('.dayrow').classList.toggle('off',cb.checked)};});
   let sub=f.sub||'';
   if(pv&&!pv.alert){if(pv.scheduleState==='closed')sub='비영업 · 최저 '+c.alertCold+'℃만 유지 (절전)';else if(pv.scheduleState==='preheat')sub='영업 준비 — 미리 데우는 중';}
   document.getElementById('chipsub').textContent=sub;
@@ -506,7 +517,7 @@ document.getElementById('run').onclick=async(e)=>{e.target.textContent='실행 �
 document.getElementById('login').onclick=async()=>{const email=document.getElementById('email').value,password=document.getElementById('password').value;if(!email||!password){alert('이메일/비번을 입력하세요');return}const r=await fetch(q('/api/login'),{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({email,password})});const j=await r.json();if(j.ok){document.getElementById('password').value='';document.getElementById('dLogin').open=false;alert('로그인 성공!')}else alert('로그인 실패: '+(j.error||''));load()};
 document.getElementById('save').onclick=async()=>{const b={};for(const k of ['summerTarget','winterTarget','deadband','alertHot','alertCold','sensorDeviceId','acDeviceId']){const v=document.getElementById(k).value;b[k]=['sensorDeviceId','acDeviceId'].includes(k)?v:Number(v)}b.storeName=document.getElementById('storeName').value||'우리 매장';const ow=document.getElementById('owmKey').value;if(ow)b.owmKey=ow;await fetch(q('/api/config'),{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(b)});document.getElementById('owmKey').value='';alert('저장됨');load()};
 document.getElementById('geocode').onclick=async()=>{const a=document.getElementById('address').value.trim();if(!a){alert('주소를 입력하세요');return}const loc=document.getElementById('loc');loc.textContent='위치 찾는 중…';const url='/api/geocode?q='+encodeURIComponent(a)+(T?'&t='+T:'');const j=await(await fetch(url)).json();if(j.ok){await fetch(q('/api/config'),{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({address:a,lat:j.lat,lon:j.lon})});loc.textContent='✓ 설정됨: '+j.name;load()}else{loc.textContent='✗ '+(j.error||'주소를 못 찾음')}};
-document.getElementById('saveSched').onclick=async()=>{const b={useSchedule:document.getElementById('useSchedule').checked,preheatMinutes:Number(document.getElementById('preheatMinutes').value)||60};await fetch(q('/api/config'),{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(b)});alert('영업시간 설정 저장됨');load()};
+document.getElementById('saveSched').onclick=async()=>{const hours=[];document.querySelectorAll('#daysBox .dayrow').forEach(function(row){var d=+row.dataset.d;hours[d]={closed:row.querySelector('.dClosed').checked,open:row.querySelector('.dOpen').value||'09:00',close:row.querySelector('.dClose').value||'00:00'};});const b={useSchedule:document.getElementById('useSchedule').checked,preheatMinutes:Number(document.getElementById('preheatMinutes').value)||60,hours:hours};await fetch(q('/api/config'),{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(b)});alert('영업시간 저장됨');load()};
 document.getElementById('list').onclick=async()=>{const el=document.getElementById('last');el.style.display='block';el.textContent='불러오는 중…';const r=await fetch(q('/api/devices'));el.textContent=JSON.stringify(await r.json(),null,2)};
 load();
 </script></body></html>`;
