@@ -3,7 +3,7 @@
 //  - fetch(http):     상태 확인 + on/off + 설정 UI/API
 import { Config, DEFAULT_CONFIG, Env, DesiredAcState, MODE_CODES, FAN_CODES } from './config';
 import * as hej from './hej';
-import { getWeather } from './weather';
+import { getWeather, Weather } from './weather';
 import { decide, scheduleState, Reading } from './engine';
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -90,6 +90,7 @@ interface RunStatus {
   alert?: { type: 'hot' | 'cold'; temp: number; threshold: number } | null;
   scheduleState?: string;
   targetTemp?: number | null;
+  weather?: Weather | null;
   error?: string;
 }
 
@@ -124,6 +125,7 @@ async function runOnce(env: Env, opts: { force?: boolean; preview?: boolean; log
 
     const weather = await getWeather(cfg.lat, cfg.lon, cfg.owmKey || env.OWM_API_KEY);
     status.outdoorTemp = weather?.outdoorTemp ?? null;
+    status.weather = weather;
 
     const reading: Reading = { indoorTemp: temp, indoorHumidity: humidity ?? undefined, outdoorTemp: weather?.outdoorTemp ?? null };
     // 영업시간: 쾌적 목표(22/25) / 비영업: 최저기준(12)~여름경고(30)로 세트백해 절전
@@ -255,7 +257,7 @@ export default {
 // ---------- 웹 UI (iOS 스타일) ----------
 function renderUI(): string {
   return `<!doctype html><html lang="ko"><head>
-<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#f2f2f7" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
@@ -269,6 +271,7 @@ function renderUI(): string {
     --bg:#000; --card:#1c1c1e; --label:#fff; --sec:#8e8e93; --sep:rgba(84,84,88,.55);
     --blue:#0a84ff; --green:#30d158; --orange:#ff9f0a; --red:#ff453a; --field:#2c2c2e;
   }}
+  html{touch-action:manipulation;-webkit-text-size-adjust:100%}
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
   body{margin:0;background:var(--bg);color:var(--label);
     font-family:-apple-system,BlinkMacSystemFont,'SF Pro Display','SF Pro Text',system-ui,sans-serif;
@@ -301,6 +304,8 @@ function renderUI(): string {
   .dayrow .tilde{color:var(--sec);flex:0 0 auto}
   .offbox{flex:0 0 auto;font-size:12px;color:var(--sec);display:flex;align-items:center;gap:3px;white-space:nowrap}
   .dayrow.off input[type=time]{opacity:.35}
+  .wxrow{display:flex;justify-content:space-between;align-items:center;padding:13px 2px;border-top:1px solid var(--sep);font-size:15px}
+  .wxrow span{color:var(--sec)}
   .tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:16px}
   .tile{background:var(--card);border-radius:16px;padding:12px 6px;text-align:center;box-shadow:0 1px 3px rgba(0,0,0,.04)}
   .tile .v{font-size:19px;font-weight:600;letter-spacing:-.01em} .tile .k{font-size:11px;color:var(--sec);margin-top:3px}
@@ -347,7 +352,7 @@ function renderUI(): string {
 <div class="tiles">
   <div class="tile"><div class="v" id="t_season">–</div><div class="k">계절</div></div>
   <div class="tile"><div class="v" id="t_target">–</div><div class="k">목표</div></div>
-  <div class="tile"><div class="v" id="t_out">–</div><div class="k">바깥</div></div>
+  <div class="tile" id="outTile" style="cursor:pointer"><div class="v" id="t_out">–</div><div class="k">바깥 ›</div></div>
   <div class="tile"><div class="v" id="t_ac">–</div><div class="k">에어컨</div></div>
 </div>
 
@@ -409,6 +414,13 @@ function renderUI(): string {
     <pre id="last" style="display:none"></pre>
   </div></details>
 
+<div id="wxModal" class="modal" style="display:none">
+  <div class="sheet">
+    <div class="sheet-h"><b>🌤️ 바깥 날씨</b><button id="wxClose" class="x">✕</button></div>
+    <div id="wxBody"></div>
+  </div>
+</div>
+
 <div id="chartModal" class="modal" style="display:none">
   <div class="sheet">
     <div class="sheet-h"><b>📈 온도 변화</b><button id="chartClose" class="x">✕</button></div>
@@ -419,8 +431,12 @@ function renderUI(): string {
 </div>
 
 <script>
+// 핀치 확대/더블탭 확대 막기 (iOS)
+document.addEventListener('gesturestart',e=>e.preventDefault());
+document.addEventListener('gesturechange',e=>e.preventDefault());
+let _lt=0;document.addEventListener('touchend',e=>{const n=Date.now();if(n-_lt<300)e.preventDefault();_lt=n;},{passive:false});
 const T=new URLSearchParams(location.search).get('t');const q=p=>p+(T?('?t='+T):'');
-let histRange=24;
+let histRange=24;let lastPv=null;
 function svgChart(d,col){
   const W=440,H=240,pl=32,pr=30,pt=22,pb=26;
   const temps=d.map(p=>p.temp);const outs=d.filter(p=>p.out!=null).map(p=>p.out);const hums=d.filter(p=>p.hum!=null).map(p=>p.hum);
@@ -453,6 +469,14 @@ async function drawChart(){
 }
 function openChart(){document.getElementById('chartModal').style.display='flex';drawChart()}
 document.getElementById('temp').onclick=openChart;
+function openWeather(){const w=lastPv&&lastPv.weather;const b=document.getElementById('wxBody');
+  if(!w){b.innerHTML='<div class="mini" style="padding:12px 2px">날씨 정보가 아직 없어요. (키 활성화에 1~2시간, 또는 날씨 키 미설정)</div>';}
+  else{const rows=[['체감온도',w.feelsLike!=null?Math.round(w.feelsLike)+'℃':'–'],['오늘 최저 / 최고',(w.tempMin!=null?Math.round(w.tempMin):'–')+' / '+(w.tempMax!=null?Math.round(w.tempMax)+'℃':'–')],['바깥 습도',w.humidity!=null?w.humidity+'%':'–'],['바람',w.windSpeed!=null?w.windSpeed.toFixed(1)+' m/s':'–']];
+    b.innerHTML='<div style="text-align:center;padding:6px 0 14px"><div style="font-size:54px;line-height:1">'+w.emoji+'</div><div style="font-size:32px;font-weight:600;margin-top:6px">'+Math.round(w.outdoorTemp)+'℃</div><div style="color:var(--sec);margin-top:2px">'+(w.description||'')+'</div></div>'+rows.map(r=>'<div class="wxrow"><span>'+r[0]+'</span><b>'+r[1]+'</b></div>').join('');}
+  document.getElementById('wxModal').style.display='flex';}
+document.getElementById('outTile').onclick=openWeather;
+document.getElementById('wxClose').onclick=()=>document.getElementById('wxModal').style.display='none';
+document.getElementById('wxModal').onclick=e=>{if(e.target.id==='wxModal')e.target.style.display='none'};
 document.getElementById('chartClose').onclick=()=>document.getElementById('chartModal').style.display='none';
 document.getElementById('chartModal').onclick=e=>{if(e.target.id==='chartModal')e.target.style.display='none'};
 document.querySelectorAll('.seg button').forEach(b=>b.onclick=()=>{document.querySelectorAll('.seg button').forEach(x=>x.className='');b.className='on';histRange=+b.dataset.h;drawChart()});
@@ -475,6 +499,7 @@ function friendly(p,enabled){
 }
 async function load(){
   const [s,pv]=await Promise.all([fetch(q('/api/status')).then(r=>r.json()),fetch(q('/api/preview')).then(r=>r.json()).catch(()=>null)]);
+  lastPv=pv;
   const c=s.config;
   // 설정값 채우기
   document.getElementById('title').textContent=c.storeName||'우리 매장';
@@ -495,7 +520,7 @@ async function load(){
     document.getElementById('temp').innerHTML=pv.indoorTemp.toFixed(1)+'<span>℃</span>';
     document.getElementById('humid').textContent='습도 '+(pv.indoorHumidity!=null?pv.indoorHumidity+'%':'–');
     document.getElementById('t_season').textContent=pv.seasonMode==='cooling'?'냉방철':pv.seasonMode==='heating'?'난방철':'간절기';
-    document.getElementById('t_out').textContent=pv.outdoorTemp!=null?Math.round(pv.outdoorTemp)+'℃':'–';
+    document.getElementById('t_out').textContent=pv.outdoorTemp!=null?((pv.weather&&pv.weather.emoji?pv.weather.emoji+' ':'')+Math.round(pv.outdoorTemp)+'℃'):'–';
     document.getElementById('t_target').textContent=pv.targetTemp!=null?pv.targetTemp+'℃':'–';
   }
   const chip=document.getElementById('chip');chip.className='chip '+f.c;
