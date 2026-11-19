@@ -92,14 +92,20 @@ interface RunStatus {
   error?: string;
 }
 
+// ---------- 온도 기록(히스토리) ----------
+async function appendHistory(env: Env, point: { t: number; temp: number; hum: number | null; out: number | null }): Promise<void> {
+  const arr = (await env.KV.get('history', 'json') as any[]) || [];
+  arr.push(point);
+  await env.KV.put('history', JSON.stringify(arr.slice(-1008))); // 최근 ~7일(10분 간격)
+}
+
 // ---------- 자동화 1회 실행 ----------
-async function runOnce(env: Env, opts: { force?: boolean; preview?: boolean } = {}): Promise<RunStatus> {
+async function runOnce(env: Env, opts: { force?: boolean; preview?: boolean; log?: boolean } = {}): Promise<RunStatus> {
   const status: RunStatus = { ts: new Date().toISOString(), ok: false, enabled: false };
   try {
     const cfg = await loadConfig(env);
     status.enabled = cfg.enabled;
-    if (!cfg.enabled && !opts.force && !opts.preview) { status.ok = true; status.reason = '자동화 OFF 상태'; await env.KV.put('status', JSON.stringify(status)); return status; }
-    if (!cfg.sensorDeviceId || !cfg.acDeviceId) { status.reason = '센서/에어컨 기기 ID 미설정 (설정에서 지정하세요)'; await env.KV.put('status', JSON.stringify(status)); return status; }
+    if (!cfg.sensorDeviceId || !cfg.acDeviceId) { status.reason = '센서/에어컨 기기 ID 미설정 (설정에서 지정하세요)'; if (!opts.preview) await env.KV.put('status', JSON.stringify(status)); return status; }
 
     const s = await getSession(env);
     const families = await hej.getFamilies(s);
@@ -128,7 +134,10 @@ async function runOnce(env: Env, opts: { force?: boolean; preview?: boolean } = 
     status.action = decision.action;
     status.reason = decision.reason;
 
+    if (opts.log && temp !== null) await appendHistory(env, { t: Date.now(), temp, hum: humidity, out: weather?.outdoorTemp ?? null });
+
     if (opts.preview) { status.sent = []; status.ok = true; return status; } // 미리보기: 전송/저장 없음
+    if (!cfg.enabled && !opts.force) { status.sent = []; status.ok = true; status.reason = '자동 꺼짐 — 온도 기록만 함'; await env.KV.put('status', JSON.stringify(status)); return status; } // 꺼짐: 기록만
 
     const last = await env.KV.get('lastCommand', 'json') as DesiredAcState | null;
     if (decision.action === 'set' && decision.desired) {
@@ -161,7 +170,7 @@ function authed(req: Request, env: Env): boolean {
 // ---------- HTTP 핸들러 ----------
 export default {
   async scheduled(_event: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> {
-    ctx.waitUntil(runOnce(env));
+    ctx.waitUntil(runOnce(env, { log: true }));
   },
 
   async fetch(req: Request, env: Env): Promise<Response> {
@@ -187,7 +196,11 @@ export default {
     }
     // 수동 실행
     if (url.pathname === '/api/run' && req.method === 'POST') {
-      return json(await runOnce(env, { force: true }));
+      return json(await runOnce(env, { force: true, log: true }));
+    }
+    // 온도 기록(그래프용)
+    if (url.pathname === '/api/history') {
+      return json((await env.KV.get('history', 'json')) || []);
     }
     // 미리보기(현재 온도/판단만, 에어컨에 전송 안 함) — 화면 표시용
     if (url.pathname === '/api/preview') {
@@ -270,6 +283,14 @@ function renderUI(): string {
   .chip.blue{color:var(--blue)} .chip.orange{color:var(--orange)} .chip.green{color:var(--green)} .chip.gray{color:var(--sec)} .chip.red{color:var(--red)}
   .chipsub{color:var(--sec);font-size:13px;margin-top:10px;min-height:16px}
   .schedpill{font-size:12px;padding:3px 10px;border-radius:999px;background:var(--field);font-weight:600;white-space:nowrap}
+  .modal{position:fixed;inset:0;background:rgba(0,0,0,.5);display:flex;align-items:flex-end;z-index:50}
+  .sheet{background:var(--bg);width:100%;max-width:480px;margin:0 auto;border-radius:20px 20px 0 0;padding:16px 16px calc(20px + env(safe-area-inset-bottom));max-height:86vh;overflow:auto}
+  .sheet-h{display:flex;justify-content:space-between;align-items:center;font-size:18px;margin-bottom:14px}
+  .x{border:0;background:var(--field);color:var(--label);width:30px;height:30px;border-radius:50%;font-size:14px;cursor:pointer}
+  .seg{display:flex;gap:6px;margin-bottom:14px}
+  .seg button{flex:1;border:0;background:var(--field);color:var(--sec);padding:9px;border-radius:9px;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit}
+  .seg button.on{background:var(--blue);color:#fff}
+  #chartBox svg{width:100%;height:auto;display:block}
   .tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:16px}
   .tile{background:var(--card);border-radius:16px;padding:12px 6px;text-align:center;box-shadow:0 1px 3px rgba(0,0,0,.04)}
   .tile .v{font-size:19px;font-weight:600;letter-spacing:-.01em} .tile .k{font-size:11px;color:var(--sec);margin-top:3px}
@@ -306,8 +327,8 @@ function renderUI(): string {
 <div style="color:var(--sec);font-size:14px;margin:-10px 2px 16px">실내 환경 자동관리 <span id="sched" class="schedpill"></span></div>
 
 <div class="hero">
-  <div style="color:var(--sec);font-size:13px;font-weight:500;margin-bottom:2px">실내 온도</div>
-  <div class="temp" id="temp">–<span>℃</span></div>
+  <div style="color:var(--sec);font-size:13px;font-weight:500;margin-bottom:2px">실내 온도 <span style="opacity:.6">· 탭하면 그래프 📈</span></div>
+  <div class="temp" id="temp" style="cursor:pointer">–<span>℃</span></div>
   <div class="humid" id="humid">습도 –</div>
   <div class="chip gray" id="chip"><span class="em">⏳</span><span id="chipt">불러오는 중…</span></div>
   <div class="chipsub" id="chipsub"></div>
@@ -376,8 +397,48 @@ function renderUI(): string {
     <pre id="last" style="display:none"></pre>
   </div></details>
 
+<div id="chartModal" class="modal" style="display:none">
+  <div class="sheet">
+    <div class="sheet-h"><b>📈 온도 변화</b><button id="chartClose" class="x">✕</button></div>
+    <div class="seg"><button data-h="24" class="on">24시간</button><button data-h="72">3일</button><button data-h="168">7일</button></div>
+    <div id="chartBox"></div>
+    <div class="mini" id="chartNote" style="margin-top:10px"></div>
+  </div>
+</div>
+
 <script>
 const T=new URLSearchParams(location.search).get('t');const q=p=>p+(T?('?t='+T):'');
+let histRange=24;
+function svgChart(d,col){
+  const W=440,H=240,pl=34,pr=12,pt=14,pb=26;
+  const temps=d.map(p=>p.temp);const outs=d.filter(p=>p.out!=null).map(p=>p.out);
+  let lo=Math.min.apply(null,temps.concat(outs));let hi=Math.max.apply(null,temps.concat(outs));
+  lo=Math.floor(lo-1);hi=Math.ceil(hi+1);if(hi-lo<4)hi=lo+4;
+  const t0=d[0].t,t1=d[d.length-1].t;
+  const X=t=>pl+(t1===t0?0:(t-t0)/(t1-t0))*(W-pl-pr);
+  const Y=v=>pt+(1-(v-lo)/(hi-lo))*(H-pt-pb);
+  const line=(arr,key)=>arr.filter(p=>p[key]!=null).map((p,i)=>(i?'L':'M')+X(p.t).toFixed(1)+' '+Y(p[key]).toFixed(1)).join(' ');
+  let grid='';for(let i=0;i<=4;i++){const v=lo+(hi-lo)*i/4;const y=Y(v);grid+='<line x1="'+pl+'" y1="'+y.toFixed(1)+'" x2="'+(W-pr)+'" y2="'+y.toFixed(1)+'" stroke="'+col.sep+'"/><text x="'+(pl-6)+'" y="'+(y+4).toFixed(1)+'" font-size="11" fill="'+col.sec+'" text-anchor="end">'+v.toFixed(0)+'</text>';}
+  const fmt=t=>{const dt=new Date(t);return (dt.getMonth()+1)+'/'+dt.getDate()+' '+String(dt.getHours()).padStart(2,'0')+'시'};
+  let xl='';[0,Math.floor(d.length/2),d.length-1].forEach((idx,i)=>{const p=d[idx];xl+='<text x="'+X(p.t).toFixed(1)+'" y="'+(H-8)+'" font-size="10" fill="'+col.sec+'" text-anchor="'+(i===0?'start':i===2?'end':'middle')+'">'+fmt(p.t)+'</text>';});
+  const outPath=outs.length?'<path d="'+line(d,'out')+'" fill="none" stroke="'+col.sec+'" stroke-width="1.5" stroke-dasharray="3 3" opacity="0.6"/>':'';
+  return '<svg viewBox="0 0 '+W+' '+H+'">'+grid+outPath+'<path d="'+line(d,'temp')+'" fill="none" stroke="'+col.blue+'" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>'+xl+'<text x="'+(W-pr)+'" y="'+(pt+2)+'" font-size="10" fill="'+col.sec+'" text-anchor="end">실선 실내 · 점선 바깥</text></svg>';
+}
+async function drawChart(){
+  const box=document.getElementById('chartBox');box.textContent='불러오는 중…';
+  const all=await(await fetch(q('/api/history'))).json();
+  const cut=Date.now()-histRange*3600*1000;const d=(all||[]).filter(p=>p.t>=cut);
+  if(d.length<2){box.innerHTML='';document.getElementById('chartNote').textContent='아직 기록이 부족해요. 10분마다 쌓여서 곧 보여요.';return}
+  const cs=getComputedStyle(document.documentElement);
+  const col={blue:cs.getPropertyValue('--blue').trim()||'#0a84ff',sec:cs.getPropertyValue('--sec').trim()||'#8e8e93',sep:cs.getPropertyValue('--sep').trim()||'#555'};
+  box.innerHTML=svgChart(d,col);
+  const last=d[d.length-1];document.getElementById('chartNote').textContent='최근 '+histRange+'시간 · '+d.length+'개 기록 · 지금 '+last.temp.toFixed(1)+'℃';
+}
+function openChart(){document.getElementById('chartModal').style.display='flex';drawChart()}
+document.getElementById('temp').onclick=openChart;
+document.getElementById('chartClose').onclick=()=>document.getElementById('chartModal').style.display='none';
+document.getElementById('chartModal').onclick=e=>{if(e.target.id==='chartModal')e.target.style.display='none'};
+document.querySelectorAll('.seg button').forEach(b=>b.onclick=()=>{document.querySelectorAll('.seg button').forEach(x=>x.className='');b.className='on';histRange=+b.dataset.h;drawChart()});
 function friendly(p,enabled){
   if(!p||p.error)return{em:'⚠️',t:'문제가 있어요',sub:(p&&p.error)||'',c:'red',ac:'—'};
   // 경고: 기준 온도 넘으면 문구 자체를 경고로
