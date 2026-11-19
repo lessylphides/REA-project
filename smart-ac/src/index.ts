@@ -332,6 +332,7 @@ function renderUI(): string {
   .fld{padding:12px 0;border-top:1px solid var(--sep)}
   .fld label{display:block;font-size:13px;color:var(--sec);margin-bottom:6px}
   .fld input{width:100%;border:0;background:var(--field);border-radius:10px;padding:11px 12px;font-size:16px;color:var(--label);font-family:inherit}
+  .sel{width:100%;border:0;background:var(--field);border-radius:10px;padding:11px 12px;font-size:16px;color:var(--label);font-family:inherit;-webkit-appearance:none;appearance:none}
   .row2{display:flex;gap:10px}.row2>div{flex:1}
   .save{color:#fff;background:var(--blue);margin-top:12px}
   .mini{font-size:12px;color:var(--sec);margin-top:6px;padding:0 2px}
@@ -406,12 +407,12 @@ function renderUI(): string {
   </div></details>
 
 <div style="height:10px"></div>
-<details id="dAdv"><summary>기기 (고급)</summary>
+<details id="dAdv"><summary>기기 선택</summary>
   <div class="grp">
-    <div class="fld"><label>온습도계 기기ID</label><input id="sensorDeviceId"></div>
-    <div class="fld"><label>에어컨 기기ID</label><input id="acDeviceId"></div>
-    <button class="btn" id="list">기기 목록 보기</button>
-    <pre id="last" style="display:none"></pre>
+    <div class="fld"><label>온습도계</label><select id="sensorSel" class="sel"></select></div>
+    <div class="fld"><label>에어컨</label><select id="acSel" class="sel"></select></div>
+    <div style="display:flex;gap:8px"><button class="btn" id="refreshDev" style="flex:1">다시 불러오기</button><button class="btn save" id="saveDev" style="flex:1">기기 저장</button></div>
+    <div class="mini" id="devNote">헤이홈 앱에 등록된 기기가 자동으로 여기 나와요. 이름으로 고르기만 하면 돼요.</div>
   </div></details>
 
 <div id="wxModal" class="modal" style="display:none">
@@ -436,7 +437,7 @@ document.addEventListener('gesturestart',e=>e.preventDefault());
 document.addEventListener('gesturechange',e=>e.preventDefault());
 let _lt=0;document.addEventListener('touchend',e=>{const n=Date.now();if(n-_lt<300)e.preventDefault();_lt=n;},{passive:false});
 const T=new URLSearchParams(location.search).get('t');const q=p=>p+(T?('?t='+T):'');
-let histRange=24;let lastPv=null;
+let histRange=24;let lastPv=null;let curSensor='',curAc='';
 function svgChart(d,col){
   const W=440,H=240,pl=32,pr=30,pt=22,pb=26;
   const temps=d.map(p=>p.temp);const outs=d.filter(p=>p.out!=null).map(p=>p.out);const hums=d.filter(p=>p.hum!=null).map(p=>p.hum);
@@ -504,7 +505,8 @@ async function load(){
   // 설정값 채우기
   document.getElementById('title').textContent=c.storeName||'우리 매장';
   document.getElementById('storeName').value=c.storeName||'';
-  for(const k of ['summerTarget','winterTarget','deadband','alertHot','alertCold','sensorDeviceId','acDeviceId'])document.getElementById(k).value=c[k];
+  for(const k of ['summerTarget','winterTarget','deadband','alertHot','alertCold'])document.getElementById(k).value=c[k];
+  curSensor=c.sensorDeviceId||'';curAc=c.acDeviceId||'';
   document.getElementById('address').value=c.address||'';
   document.getElementById('loc').textContent=c.address?('현재 위치: '+c.address):('좌표 '+(c.lat||'-')+', '+(c.lon||'-'));
   document.getElementById('auto').checked=!!c.enabled;
@@ -543,10 +545,23 @@ async function load(){
 document.getElementById('auto').onchange=async()=>{await fetch(q('/api/toggle'),{method:'POST'});load()};
 document.getElementById('run').onclick=async(e)=>{e.target.textContent='실행 중…';await fetch(q('/api/run'),{method:'POST'});e.target.textContent='지금 한 번 실행';load()};
 document.getElementById('login').onclick=async()=>{const email=document.getElementById('email').value,password=document.getElementById('password').value;if(!email||!password){alert('이메일/비번을 입력하세요');return}const r=await fetch(q('/api/login'),{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({email,password})});const j=await r.json();if(j.ok){document.getElementById('password').value='';document.getElementById('dLogin').open=false;alert('로그인 성공!')}else alert('로그인 실패: '+(j.error||''));load()};
-document.getElementById('save').onclick=async()=>{const b={};for(const k of ['summerTarget','winterTarget','deadband','alertHot','alertCold','sensorDeviceId','acDeviceId']){const v=document.getElementById(k).value;b[k]=['sensorDeviceId','acDeviceId'].includes(k)?v:Number(v)}b.storeName=document.getElementById('storeName').value||'우리 매장';const ow=document.getElementById('owmKey').value;if(ow)b.owmKey=ow;await fetch(q('/api/config'),{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(b)});document.getElementById('owmKey').value='';alert('저장됨');load()};
+document.getElementById('save').onclick=async()=>{const b={};for(const k of ['summerTarget','winterTarget','deadband','alertHot','alertCold']){b[k]=Number(document.getElementById(k).value)}b.storeName=document.getElementById('storeName').value||'우리 매장';const ow=document.getElementById('owmKey').value;if(ow)b.owmKey=ow;await fetch(q('/api/config'),{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(b)});document.getElementById('owmKey').value='';alert('저장됨');load()};
 document.getElementById('geocode').onclick=async()=>{const a=document.getElementById('address').value.trim();if(!a){alert('주소를 입력하세요');return}const loc=document.getElementById('loc');loc.textContent='위치 찾는 중…';const url='/api/geocode?q='+encodeURIComponent(a)+(T?'&t='+T:'');const j=await(await fetch(url)).json();if(j.ok){await fetch(q('/api/config'),{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({address:a,lat:j.lat,lon:j.lon})});loc.textContent='✓ 설정됨: '+j.name;load()}else{loc.textContent='✗ '+(j.error||'주소를 못 찾음')}};
 document.getElementById('saveSched').onclick=async()=>{const hours=[];document.querySelectorAll('#daysBox .dayrow').forEach(function(row){var d=+row.dataset.d;hours[d]={closed:row.querySelector('.dClosed').checked,open:row.querySelector('.dOpen').value||'09:00',close:row.querySelector('.dClose').value||'00:00'};});const b={useSchedule:document.getElementById('useSchedule').checked,preheatMinutes:Number(document.getElementById('preheatMinutes').value)||60,hours:hours};await fetch(q('/api/config'),{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(b)});alert('영업시간 저장됨');load()};
-document.getElementById('list').onclick=async()=>{const el=document.getElementById('last');el.style.display='block';el.textContent='불러오는 중…';const r=await fetch(q('/api/devices'));el.textContent=JSON.stringify(await r.json(),null,2)};
+function typeLabel(t){const m={SensorTh:'온습도계',SensorTh2:'온습도계',IrAirconditioner:'에어컨(IR)',IrFan:'선풍기(IR)',IrTv:'TV(IR)',Plug:'플러그',SmartPlug:'플러그',Curtain:'커튼',Lightbulb:'전구',IrDIY:'IR리모컨'};return t?(' · '+(m[t]||t)):'';}
+async function loadDevices(){
+  const n=document.getElementById('devNote');n.textContent='불러오는 중…';
+  let devs;try{devs=await (await fetch(q('/api/devices'))).json();}catch(e){n.textContent='불러오기 실패';return}
+  if(!Array.isArray(devs)){n.textContent='오류: '+((devs&&devs.error)||'기기 목록을 못 읽음');return}
+  const opt=d=>'<option value="'+d.id+'">'+(d.name||'(이름없음)')+typeLabel(d.deviceType)+'</option>';
+  const s1=document.getElementById('sensorSel'),s2=document.getElementById('acSel');
+  s1.innerHTML=devs.map(opt).join('');s2.innerHTML=devs.map(opt).join('');
+  if(curSensor)s1.value=curSensor;if(curAc)s2.value=curAc;
+  n.textContent='총 '+devs.length+'개 · 이름으로 고르고 [기기 저장]';
+}
+document.getElementById('refreshDev').onclick=loadDevices;
+document.getElementById('dAdv').addEventListener('toggle',function(){if(this.open&&!document.getElementById('sensorSel').options.length)loadDevices();});
+document.getElementById('saveDev').onclick=async()=>{const b={sensorDeviceId:document.getElementById('sensorSel').value,acDeviceId:document.getElementById('acSel').value};if(!b.sensorDeviceId||!b.acDeviceId){alert('먼저 기기를 불러와 선택하세요');return}await fetch(q('/api/config'),{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(b)});alert('기기 저장됨');load()};
 load();
 </script></body></html>`;
 }
