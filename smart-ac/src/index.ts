@@ -444,6 +444,9 @@ function renderUI(token: string): string {
   }}
   html{touch-action:manipulation;-webkit-text-size-adjust:100%;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
   input,select,textarea{-webkit-user-select:text;user-select:text}
+  html,body{overscroll-behavior:none}
+  html.lock,html.lock body{height:100%;overflow:hidden}
+  .modal2,.sheet{overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
   body{margin:0;background:var(--bg);color:var(--label);
     font-family:-apple-system,BlinkMacSystemFont,'SF Pro Display','SF Pro Text',system-ui,sans-serif;
@@ -664,6 +667,8 @@ function renderUI(token: string): string {
     <div style="display:flex;gap:8px"><button class="btn" id="refreshDev" style="flex:1">다시 불러오기</button><button class="btn save" id="saveDev" style="flex:1">기기 저장</button></div>
     <div class="mini" id="devNote">헤이홈 앱에 등록된 기기가 자동으로 여기 나와요. 이름으로 고르기만 하면 돼요.</div>
   </div></details>
+
+<div style="height:10px"></div>
 <details id="dDiag"><summary>진단 (DIY 리모컨 찾기)</summary>
   <div class="grp">
     <button class="btn" id="diagBtn" style="width:100%">기기 경로 전체 조회</button>
@@ -821,6 +826,8 @@ function friendly(p,enabled){
   if(al&&al.power&&al.mode==='fan')return{em:'🍃',t:'적정 유지 중',sub:'송풍으로 순환',c:'green',ac:'송풍'};
   return{em:'😌',t:'지금 알맞아요',sub:'에어컨 대기 중',c:'green',ac:'대기'};
 }
+function fitLock(){var d=document.documentElement;d.classList.remove('lock');if(d.scrollHeight<=window.innerHeight+2)d.classList.add('lock');}
+window.addEventListener('resize',fitLock);window.addEventListener('orientationchange',function(){setTimeout(fitLock,300)});
 async function load(){
   const [s,pv,hist]=await Promise.all([fetch(q('/api/status')).then(r=>r.json()),fetch(q('/api/preview')).then(r=>r.json()).catch(()=>null),fetch(q('/api/history')).then(r=>r.json()).catch(()=>[])]);
   lastPv=pv;drawSpark(hist);curAcOn=(s.acOn===false)?false:true;applyAcUI();
@@ -861,6 +868,7 @@ async function load(){
   let sub=f.sub||'';
   if(c.enabled&&pv&&!pv.alert){if(pv.scheduleState==='closed')sub='비영업 · 최저 '+c.alertCold+'℃만 유지 (절전)';else if(pv.scheduleState==='preheat')sub='영업 준비 — 미리 데우는 중';}
   document.getElementById('chipsub').textContent=sub;
+  setTimeout(fitLock,50);
   const aw=pv&&pv.acWarn;
   document.getElementById('acwarn').textContent=aw?(aw.type==='noheat'?'⚠️ 난방 신호를 보냈는데 온도가 안 올라요 — 에어컨/리모컨 확인':'⚠️ 냉방 신호를 보냈는데 온도가 안 내려가요 — 에어컨/리모컨 확인'):'';
   document.getElementById('t_ac').textContent=f.ac;
