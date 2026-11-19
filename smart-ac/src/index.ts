@@ -101,6 +101,24 @@ async function appendHistory(env: Env, point: { t: number; temp: number; hum: nu
   await env.KV.put('history', JSON.stringify(arr.slice(-1008))); // 최근 ~7일(10분 간격)
 }
 
+// ---------- 수동 제어 (사용자가 버튼으로 즉시) ----------
+async function manualControl(env: Env, action: string): Promise<{ ok: boolean; sent?: string[]; error?: string }> {
+  try {
+    const cfg = await loadConfig(env);
+    if (!cfg.acDeviceId) return { ok: false, error: '에어컨이 설정되지 않았어요' };
+    const s = await getSession(env);
+    const last = await env.KV.get('lastCommand', 'json') as DesiredAcState | null;
+    let desired: DesiredAcState;
+    if (action === 'off') desired = { power: false, mode: last?.mode ?? 'heat', temperature: last?.temperature ?? 22, fanSpeed: last?.fanSpeed ?? 'auto' };
+    else if (action === 'heat') desired = { power: true, mode: 'heat', temperature: cfg.winterTarget, fanSpeed: 'auto' };
+    else if (action === 'cool') desired = { power: true, mode: 'cool', temperature: cfg.summerTarget, fanSpeed: 'auto' };
+    else return { ok: false, error: '알 수 없는 동작' };
+    const sent = await applyDesired(s, cfg.acDeviceId, desired, last);
+    await env.KV.put('lastCommand', JSON.stringify(desired));
+    return { ok: true, sent };
+  } catch (e: any) { return { ok: false, error: String(e?.message ?? e) }; }
+}
+
 // ---------- 자동화 1회 실행 ----------
 async function runOnce(env: Env, opts: { force?: boolean; preview?: boolean; log?: boolean } = {}): Promise<RunStatus> {
   const status: RunStatus = { ts: new Date().toISOString(), ok: false, enabled: false };
@@ -207,6 +225,11 @@ export default {
     if (url.pathname === '/api/history') {
       return json((await env.KV.get('history', 'json')) || []);
     }
+    // 수동 제어 (냉방/난방/끄기 즉시)
+    if (url.pathname === '/api/manual' && req.method === 'POST') {
+      const b = await req.json<{ action?: string }>();
+      return json(await manualControl(env, b.action ?? ''));
+    }
     // 미리보기(현재 온도/판단만, 에어컨에 전송 안 함) — 화면 표시용
     if (url.pathname === '/api/preview') {
       return json(await runOnce(env, { preview: true }));
@@ -295,6 +318,15 @@ function renderUI(): string {
   .topbar{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
   .gearbtn{flex:0 0 auto;border:0;background:var(--card);color:var(--label);width:44px;height:44px;border-radius:50%;cursor:pointer;box-shadow:0 1px 3px rgba(0,0,0,.06);margin-top:8px;display:flex;align-items:center;justify-content:center}
   .gearbtn:active{opacity:.6}
+  .card{background:var(--card);border-radius:18px;box-shadow:0 1px 3px rgba(0,0,0,.04)}
+  #sparkBox svg{width:100%;height:auto;display:block}
+  .qa{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:8px}
+  .qbtn{border:0;border-radius:16px;background:var(--card);box-shadow:0 1px 3px rgba(0,0,0,.04);padding:14px 4px;font-size:14px;font-weight:600;color:var(--label);cursor:pointer;font-family:inherit;display:flex;flex-direction:column;align-items:center;gap:4px}
+  .qbtn .qi{font-size:22px}
+  .qbtn:active{opacity:.55}
+  .qbtn.cool{color:var(--blue)}.qbtn.heat{color:var(--orange)}.qbtn.off{color:var(--sec)}
+  .linkbtn{display:block;width:100%;background:none;border:0;color:var(--sec);font-size:14px;padding:8px;cursor:pointer;font-family:inherit}
+  .linkbtn:active{opacity:.6}
   .sheet{background:var(--bg);width:100%;max-width:480px;margin:0 auto;border-radius:20px 20px 0 0;padding:16px 16px calc(20px + env(safe-area-inset-bottom));max-height:86vh;overflow:auto}
   .sheet-h{display:flex;justify-content:space-between;align-items:center;font-size:18px;margin-bottom:14px}
   .x{border:0;background:var(--field);color:var(--label);width:38px;height:38px;border-radius:50%;font-size:20px;line-height:1;cursor:pointer}
@@ -366,12 +398,22 @@ function renderUI(): string {
   <div class="tile"><div class="v" id="t_ac">–</div><div class="k">에어컨</div></div>
 </div>
 
+<div class="card" id="sparkCard" style="cursor:pointer;padding:14px 16px;margin-bottom:16px">
+  <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--sec);margin-bottom:4px"><span>최근 24시간 추이 📈</span><span id="sparkMeta"></span></div>
+  <div id="sparkBox"></div>
+</div>
+
 <div class="switch">
   <div><div class="t">자동 제어</div><div class="d" id="swd">끄면 손으로만 관리</div></div>
   <label class="tg"><input type="checkbox" id="auto"><span class="sl"></span></label>
 </div>
-<button class="btn" id="run">지금 한 번 실행</button>
-<div class="mini" style="text-align:center;margin:-4px 2px 2px">자동을 기다리지 않고, 지금 상태를 바로 확인해 필요하면 에어컨을 한 번 맞춰요</div>
+
+<div class="qa">
+  <button class="qbtn cool" data-a="cool"><span class="qi">❄️</span>냉방</button>
+  <button class="qbtn heat" data-a="heat"><span class="qi">🔥</span>난방</button>
+  <button class="qbtn off" data-a="off"><span class="qi">⏻</span>끄기</button>
+</div>
+<button class="linkbtn" id="run">↻ 지금 자동 기준으로 점검</button>
 
 <div id="settingsModal" class="modal2" style="display:none"><div class="inner">
   <div class="sheet-h" style="margin-bottom:14px"><b>⚙️ 설정</b><button id="setClose" class="x">✕</button></div>
@@ -479,8 +521,25 @@ async function drawChart(){
   box.innerHTML=svgChart(d,col);
   const last=d[d.length-1];document.getElementById('chartNote').textContent='최근 '+histRange+'시간 · '+d.length+'개 기록 · 지금 '+last.temp.toFixed(1)+'℃'+(last.hum!=null?' · 습도 '+last.hum+'%':'');
 }
+function sparkSvg(d,blue){
+  const W=440,H=56,p=4;const temps=d.map(x=>x.temp);let lo=Math.min.apply(null,temps),hi=Math.max.apply(null,temps);if(hi-lo<2)hi=lo+2;
+  const t0=d[0].t,t1=d[d.length-1].t;const X=t=>p+(t1===t0?0:(t-t0)/(t1-t0))*(W-2*p);const Y=v=>p+(1-(v-lo)/(hi-lo))*(H-2*p);
+  const path=d.map((x,i)=>(i?'L':'M')+X(x.t).toFixed(1)+' '+Y(x.temp).toFixed(1)).join(' ');
+  const area=path+' L '+X(t1).toFixed(1)+' '+(H-p)+' L '+X(t0).toFixed(1)+' '+(H-p)+' Z';
+  return '<svg viewBox="0 0 '+W+' '+H+'" style="width:100%;height:auto;display:block"><path d="'+area+'" fill="'+blue+'" opacity="0.08"/><path d="'+path+'" fill="none" stroke="'+blue+'" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/></svg>';
+}
+function drawSpark(all){
+  const box=document.getElementById('sparkBox'),meta=document.getElementById('sparkMeta');
+  const cut=Date.now()-24*3600*1000;const d=(all||[]).filter(p=>p.t>=cut);
+  if(d.length<2){box.innerHTML='<div class="mini" style="padding:10px 0">기록을 쌓는 중… (10분마다 한 점)</div>';meta.textContent='';return}
+  const blue=getComputedStyle(document.documentElement).getPropertyValue('--blue').trim()||'#0a84ff';
+  box.innerHTML=sparkSvg(d,blue);const t=d.map(p=>p.temp);
+  meta.textContent='최저 '+Math.min.apply(null,t).toFixed(0)+'℃ · 최고 '+Math.max.apply(null,t).toFixed(0)+'℃';
+}
 function openChart(){document.getElementById('chartModal').style.display='flex';drawChart()}
 document.getElementById('temp').onclick=openChart;
+document.getElementById('sparkCard').onclick=openChart;
+document.querySelectorAll('.qbtn').forEach(function(b){b.onclick=async function(){const a=b.dataset.a;const msg={cool:'에어컨을 냉방으로 켤까요?',heat:'에어컨을 난방으로 켤까요?',off:'에어컨을 끌까요?'};if(!confirm(msg[a]))return;b.style.opacity='.4';let j;try{j=await(await fetch(q('/api/manual'),{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({action:a})})).json();}catch(e){j={ok:false,error:'전송 실패'}}b.style.opacity='';if(j.ok)alert('전송됐어요'+(j.sent&&j.sent.length?' ('+j.sent.join(', ')+')':''));else alert('실패: '+(j.error||''));load();};});
 document.getElementById('gear').onclick=()=>{document.getElementById('settingsModal').style.display='block';document.getElementById('settingsModal').scrollTop=0};
 document.getElementById('setClose').onclick=()=>{document.getElementById('settingsModal').style.display='none'};
 function openWeather(){const w=lastPv&&lastPv.weather;const b=document.getElementById('wxBody');
@@ -512,8 +571,8 @@ function friendly(p,enabled){
   return{em:'😌',t:'지금 알맞아요',sub:'에어컨 대기 중',c:'green',ac:'대기'};
 }
 async function load(){
-  const [s,pv]=await Promise.all([fetch(q('/api/status')).then(r=>r.json()),fetch(q('/api/preview')).then(r=>r.json()).catch(()=>null)]);
-  lastPv=pv;
+  const [s,pv,hist]=await Promise.all([fetch(q('/api/status')).then(r=>r.json()),fetch(q('/api/preview')).then(r=>r.json()).catch(()=>null),fetch(q('/api/history')).then(r=>r.json()).catch(()=>[])]);
+  lastPv=pv;drawSpark(hist);
   const c=s.config;
   // 설정값 채우기
   document.getElementById('title').textContent=c.storeName||'우리 매장';
