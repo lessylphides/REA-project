@@ -599,11 +599,9 @@ function renderUI(token: string): string {
     <div class="acseg" id="acMode"><button data-m="cool">❄️ 냉방</button><button data-m="heat">🔥 난방</button><button data-m="fan">💨 송풍</button><button data-m="auto">자동</button></div>
     <div class="aclabel">온도</div>
     <div class="actemp" id="acTempBox"><button id="tDown">−</button><span id="tVal">24℃</span><button id="tUp">＋</button></div>
-    <div class="aclabel">바람세기 (4단계)</div>
-    <div class="acseg" id="acFan"><button data-c="1">약</button><button data-c="2">중</button><button data-c="3">강</button><button data-c="4">파워</button></div>
-    <div class="aclabel">풍향 바람 (탭 = 움직임 ⟷ 정지)</div>
-    <div class="acseg"><button id="swUD">↕ 상하바람</button><button id="swLR">↔ 좌우바람</button></div>
-    <div class="mini">⚠️ 정확한 명령 확인 전이라 안 먹을 수 있어요. 매장에서 눌러보고 되는지/안 되는지 알려주세요 — 안 되면 실제 명령을 알아내 정확히 연결할게요.</div>
+    <div class="aclabel">바람세기</div>
+    <div class="acseg" id="acFan"><button data-c="1">1단</button><button data-c="2">2단</button><button data-c="3">3단</button><button data-c="4">4단</button></div>
+    <div class="mini" style="margin-top:14px">풍향(상하/좌우)은 헤이홈 기본 에어컨 제어로는 지원되지 않아요. 앱에서 쓰려면 DIY 리모컨 등록이 필요해요(사장님과 상의).</div>
     <div class="mini" id="acMsg" style="margin-top:10px;min-height:16px"></div>
   </div>
 </div>
@@ -700,9 +698,6 @@ document.querySelectorAll('#acMode button').forEach(b=>b.onclick=()=>{document.q
 document.querySelectorAll('#acFan button').forEach(b=>b.onclick=()=>{document.querySelectorAll('#acFan button').forEach(x=>x.classList.remove('on'));b.classList.add('on');acSend({fanSpeedCode:b.dataset.c},'바람 '+b.textContent.trim())});
 document.getElementById('tUp').onclick=()=>{if(acTemp<30){acTemp++;showAcTemp();acSend({temperature:acTemp},acTemp+'℃')}};
 document.getElementById('tDown').onclick=()=>{if(acTemp>16){acTemp--;showAcTemp();acSend({temperature:acTemp},acTemp+'℃')}};
-let swLR=false,swUD=false;
-document.getElementById('swLR').onclick=()=>{swLR=!swLR;document.getElementById('swLR').classList.toggle('on',swLR);acSend({raw:{windLeftRight:swLR}},'좌우 '+(swLR?'움직임':'정지'))};
-document.getElementById('swUD').onclick=()=>{swUD=!swUD;document.getElementById('swUD').classList.toggle('on',swUD);acSend({raw:{windUpDown:swUD}},'상하 '+(swUD?'움직임':'정지'))};
 document.getElementById('wxClose').onclick=()=>document.getElementById('wxModal').style.display='none';
 document.getElementById('wxModal').onclick=e=>{if(e.target.id==='wxModal')e.target.style.display='none'};
 document.getElementById('chartClose').onclick=()=>document.getElementById('chartModal').style.display='none';
