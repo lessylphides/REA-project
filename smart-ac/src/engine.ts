@@ -76,6 +76,20 @@ export function scheduleState(now: Date, cfg: Config): { state: 'open' | 'prehea
   return { state: 'closed', comfort: false };
 }
 
+/** 다음 영업상태 전환(열림↔닫힘) 시각 (한국시간). 최대 8일 탐색. */
+export function nextTransition(now: Date, cfg: Config): { opensNext: boolean; at: number } | null {
+  if (cfg.useSchedule === false) return null;
+  const dm = (d: Date) => { const k = new Date(d.getTime() + 9 * 3600 * 1000); return { day: k.getUTCDay(), min: k.getUTCHours() * 60 + k.getUTCMinutes() }; };
+  const cur = dm(now);
+  const openNow = isOpenAt(cfg.hours, cur.day, cur.min);
+  for (let step = 1; step <= 8 * 24 * 12; step++) { // 5분 간격
+    const t = new Date(now.getTime() + step * 5 * 60000);
+    const x = dm(t);
+    if (isOpenAt(cfg.hours, x.day, x.min) !== openNow) return { opensNext: !openNow, at: t.getTime() };
+  }
+  return null;
+}
+
 export function decide(reading: Reading, cfg: Config, comfort = true): Decision {
   const now = reading.now ?? new Date();
   const month = now.getMonth() + 1;
