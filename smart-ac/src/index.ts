@@ -410,19 +410,25 @@ function renderUI(token: string): string {
   .cbiz{margin-top:14px;font-weight:600}
   /* 가로(태블릿 상시표시) — 2열 대시보드 */
   @media (min-width:880px){
-    body{max-width:1040px}
-    .dash{display:grid;grid-template-columns:1.05fr 1fr;gap:20px;align-items:start}
-    .hero{padding:44px 24px 36px;margin-bottom:0}
-    .temp{font-size:108px}
-    .temp span{font-size:46px}
-    .humid{font-size:21px}
-    .chip{font-size:20px;padding:13px 22px}
-    .chipsub{font-size:15px}
-    h1{font-size:34px}
-    .clockcard{display:block;margin-top:16px;background:var(--card);border-radius:22px;box-shadow:0 1px 3px rgba(0,0,0,.04);padding:28px 20px}
-    .ctime{font-size:72px}
-    .cdate{font-size:19px;margin-top:4px}
-    .cbiz{font-size:18px;margin-top:16px;color:var(--blue)}
+    body{max-width:1040px;padding-top:10px;padding-bottom:12px}
+    h1{font-size:28px}
+    .dash{display:grid;grid-template-columns:1.05fr 1fr;gap:14px;align-items:start}
+    .hero{padding:24px 22px 20px;margin-bottom:0}
+    .temp{font-size:82px}
+    .temp span{font-size:36px}
+    .humid{font-size:18px}
+    .chip{font-size:18px;padding:10px 18px;margin-top:12px}
+    .chipsub{font-size:14px;margin-top:7px}
+    .clockcard{display:block;margin-top:12px;background:var(--card);border-radius:20px;box-shadow:0 1px 3px rgba(0,0,0,.04);padding:16px 18px}
+    .ctime{font-size:50px}
+    .cdate{font-size:16px;margin-top:2px}
+    .cbiz{font-size:15px;margin-top:9px;color:var(--blue)}
+    .tiles{margin-bottom:12px}
+    .tile{padding:9px 6px}
+    #sparkCard{margin-bottom:12px!important;padding:11px 14px!important}
+    .switch{padding:12px 16px;margin-bottom:9px}
+    .qa{margin-bottom:5px}
+    .qbtn{padding:11px 4px}
   }
   .sheet{background:var(--bg);width:100%;max-width:480px;margin:0 auto;border-radius:20px 20px 0 0;padding:16px 16px calc(20px + env(safe-area-inset-bottom));max-height:86vh;overflow:auto}
   .sheet-h{display:flex;justify-content:space-between;align-items:center;font-size:18px;margin-bottom:14px}
