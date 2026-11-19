@@ -674,8 +674,6 @@ function renderUI(token: string): string {
     <div class="acseg" id="acMode"><button data-m="cool">❄️ 냉방</button><button data-m="heat">🔥 난방</button><button data-m="fan">💨 송풍</button><button data-m="auto">자동</button></div>
     <div class="aclabel">온도</div>
     <div class="actemp" id="acTempBox"><button id="tDown">−</button><span id="tVal">24℃</span><button id="tUp">＋</button></div>
-    <div class="aclabel">바람세기</div>
-    <div class="acseg" id="acFan"><button data-c="1">약</button><button data-c="2">중</button><button data-c="3">강</button></div>
     <div class="aclabel">풍향 · 세기 · 파워 <span style="font-weight:400">(누를 때마다 바뀜)</span></div>
     <div class="acseg" id="acDiy"><button data-k="updown">↕️ 상하</button><button data-k="leftright">↔️ 좌우</button><button data-k="fan">🌀 세기</button><button data-k="power">⚡ 파워</button></div>
     <div class="mini" id="acDiyNote" style="margin-top:6px"></div>
@@ -783,7 +781,6 @@ document.getElementById('acClose').onclick=()=>document.getElementById('acModal'
 document.getElementById('acModal').onclick=e=>{if(e.target.id==='acModal')e.target.style.display='none'};
 document.querySelectorAll('#acPower button').forEach(b=>b.onclick=()=>{const on=b.dataset.p==='on';curAcOn=on;applyAcUI();acSend({power:on},on?'켜기':'끄기')});
 document.querySelectorAll('#acMode button').forEach(b=>b.onclick=()=>{document.querySelectorAll('#acMode button').forEach(x=>x.classList.remove('on'));b.classList.add('on');curAcOn=true;applyAcUI();acSend({mode:b.dataset.m},b.textContent.trim())});
-document.querySelectorAll('#acFan button').forEach(b=>b.onclick=()=>{document.querySelectorAll('#acFan button').forEach(x=>x.classList.remove('on'));b.classList.add('on');acSend({fanSpeedCode:b.dataset.c},'바람 '+b.textContent.trim())});
 document.getElementById('tUp').onclick=()=>{if(acTemp<30){acTemp++;showAcTemp();acSend({temperature:acTemp},acTemp+'℃')}};
 document.getElementById('tDown').onclick=()=>{if(acTemp>16){acTemp--;showAcTemp();acSend({temperature:acTemp},acTemp+'℃')}};
 document.getElementById('wxClose').onclick=()=>document.getElementById('wxModal').style.display='none';
