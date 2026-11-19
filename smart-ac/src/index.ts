@@ -373,6 +373,18 @@ function renderUI(): string {
   .qbtn.cool{color:var(--blue)}.qbtn.heat{color:var(--orange)}.qbtn.off{color:var(--sec)}
   .linkbtn{display:block;width:100%;background:none;border:0;color:var(--sec);font-size:14px;padding:8px;cursor:pointer;font-family:inherit}
   .linkbtn:active{opacity:.6}
+  /* 가로(태블릿 상시표시) — 2열 대시보드 */
+  @media (min-width:880px){
+    body{max-width:1040px}
+    .dash{display:grid;grid-template-columns:1.05fr 1fr;gap:20px;align-items:start}
+    .hero{padding:44px 24px 36px;margin-bottom:0}
+    .temp{font-size:108px}
+    .temp span{font-size:46px}
+    .humid{font-size:21px}
+    .chip{font-size:20px;padding:13px 22px}
+    .chipsub{font-size:15px}
+    h1{font-size:34px}
+  }
   .sheet{background:var(--bg);width:100%;max-width:480px;margin:0 auto;border-radius:20px 20px 0 0;padding:16px 16px calc(20px + env(safe-area-inset-bottom));max-height:86vh;overflow:auto}
   .sheet-h{display:flex;justify-content:space-between;align-items:center;font-size:18px;margin-bottom:14px}
   .x{border:0;background:var(--field);color:var(--label);width:38px;height:38px;border-radius:50%;font-size:20px;line-height:1;cursor:pointer}
@@ -438,6 +450,7 @@ function renderUI(): string {
 </div>
 <div style="height:16px"></div>
 
+<div class="dash"><div class="cL">
 <div class="hero">
   <div style="color:var(--sec);font-size:13px;font-weight:500;margin-bottom:2px">실내 온도 <span style="opacity:.6">· 탭하면 그래프 📈</span></div>
   <div class="temp" id="temp" style="cursor:pointer">–<span>℃</span></div>
@@ -446,6 +459,7 @@ function renderUI(): string {
   <div class="chipsub" id="chipsub"></div>
   <div class="chipsub" id="acwarn" style="color:var(--red);font-weight:600"></div>
 </div>
+</div><div class="cR">
 
 <div class="tiles">
   <div class="tile"><div class="v" id="t_season">–</div><div class="k">계절</div></div>
@@ -470,6 +484,7 @@ function renderUI(): string {
   <button class="qbtn off" data-a="off"><span class="qi">⏻</span>끄기</button>
 </div>
 <button class="linkbtn" id="run">↻ 지금 자동 기준으로 점검</button>
+</div></div>
 
 <div id="settingsModal" class="modal2" style="display:none"><div class="inner">
   <div class="sheet-h" style="margin-bottom:14px"><b>⚙️ 설정</b><button id="setClose" class="x">✕</button></div>
