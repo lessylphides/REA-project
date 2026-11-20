@@ -924,7 +924,7 @@ function friendly(p,enabled){
   if(p.maintaining)return{em:'🍃',t:'적정 유지 중',sub:'목표 도달 · 유지',c:'green',ac:'유지'};
   if(cooling)return{em:'❄️',t:'시원하게 트는 중',sub:'목표까지 세게 식히는 중',c:'blue',ac:'냉방'};
   if(heating)return{em:'🔥',t:'따뜻하게 트는 중',sub:'목표까지 세게 데우는 중',c:'orange',ac:'난방'};
-  if(p.action==='off')return{em:'⏹️',t:'에어컨 끄는 중',sub:p.reason,c:'gray',ac:'끄기'};
+  if(p.action==='off')return (p.acLast&&p.acLast.power===false)?{em:'💤',t:'에어컨 꺼짐',sub:'절전 중',c:'gray',ac:'꺼짐'}:{em:'⏹️',t:'에어컨 끄는 중',sub:p.reason,c:'gray',ac:'끄기'};
   // 유지(hold): 새 명령은 없지만 에어컨은 마지막 명령대로 계속 작동 중
   var al=p.acLast, idleHeat=al&&al.mode==='heat'&&al.temperature<=16, idleCool=al&&al.mode==='cool'&&al.temperature>=30;
   if(al&&al.power&&(idleHeat||idleCool))return{em:'🍃',t:'적정 유지 중',sub:'공회전(설정온도 낮춰 송풍처럼)',c:'green',ac:'유지'};
