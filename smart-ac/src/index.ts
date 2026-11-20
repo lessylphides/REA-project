@@ -477,13 +477,14 @@ function renderUI(token: string): string {
     padding:max(10px,env(safe-area-inset-top)) 16px calc(16px + env(safe-area-inset-bottom));
     max-width:480px;margin:0 auto;-webkit-font-smoothing:antialiased}
   h1{font-size:28px;font-weight:700;letter-spacing:-.02em;margin:6px 2px 12px}
-  .hero{background:var(--card);border-radius:22px;padding:22px 20px 18px;text-align:center;margin-bottom:12px;
+  .hero{background:var(--card);border-radius:22px;padding:20px 20px 14px;text-align:center;margin-bottom:12px;
     box-shadow:0 1px 3px rgba(0,0,0,.04)}
   .temp{font-size:72px;font-weight:600;letter-spacing:-.04em;line-height:1;margin:2px 0}
   .temp span{font-size:32px;font-weight:500;color:var(--sec)}
   .humid{color:var(--sec);font-size:17px;margin-top:2px}
-  .sens2{color:var(--sec);font-size:13px;margin-top:4px}.sens2:empty{display:none}.sens2 b{font-weight:600;color:var(--label)}
-  .chip{display:inline-flex;align-items:center;gap:7px;margin-top:18px;padding:11px 18px;border-radius:999px;
+  .sens2{color:var(--sec);font-size:13px;margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  #acwarn:empty{display:none}.sens2:empty{display:none}.sens2 b{font-weight:600;color:var(--label)}
+  .chip{display:inline-flex;align-items:center;gap:7px;margin-top:14px;padding:11px 18px;border-radius:999px;
     font-size:16px;font-weight:600;background:var(--field)}
   .chip .em{font-size:19px}
   .chip.blue{color:var(--blue)} .chip.orange{color:var(--orange)} .chip.green{color:var(--green)} .chip.gray{color:var(--sec)} .chip.red{color:var(--red)}
@@ -568,6 +569,22 @@ function renderUI(token: string): string {
   .tg{position:relative;width:52px;height:32px;flex:0 0 auto}
   .tg input{opacity:0;width:0;height:0;position:absolute}
   .tg .sl{position:absolute;inset:0;background:#e9e9ea;border-radius:999px;transition:.25s}
+  /* 휴대폰 세로: 화면이 짧으면 여백을 줄여 한 화면에 (안전영역 포함) */
+  @media (orientation:portrait) and (max-height:900px){
+    h1{font-size:26px}
+    .hero{padding:16px 18px 12px}
+    .temp{font-size:64px}
+    .temp span{font-size:28px}
+    .chip{margin-top:10px;padding:9px 16px}
+    .chipsub{margin-top:7px}
+    .tiles{margin-bottom:9px}
+    .tile{padding:9px 6px}
+    #sparkCard{margin-bottom:9px!important;padding:10px 14px!important}
+    .switch{padding:12px 16px;margin-bottom:9px}
+    .qa{margin-bottom:4px}
+    .qbtn{padding:11px 4px}
+    .linkbtn{padding:6px}
+  }
   /* 휴대폰 가로: 태블릿처럼 2열, 화면 높이에 맞게 압축 */
   @media (orientation:landscape) and (max-height:500px){
     body{max-width:none;padding:max(6px,env(safe-area-inset-top)) max(14px,env(safe-area-inset-right)) max(6px,env(safe-area-inset-bottom)) max(14px,env(safe-area-inset-left))}
@@ -627,7 +644,7 @@ function renderUI(token: string): string {
 
 <div class="dash"><div class="cL">
 <div class="hero">
-  <div style="color:var(--sec);font-size:13px;font-weight:500;margin-bottom:2px">실내 온도 <span style="opacity:.6">· 탭하면 그래프 📈</span></div>
+  <div style="color:var(--sec);font-size:13px;font-weight:500;margin-bottom:2px">실내 온도<span id="basisLbl"></span> <span style="opacity:.6">· 탭하면 그래프 📈</span></div>
   <div class="temp" id="temp" style="cursor:pointer">–<span>℃</span></div>
   <div class="humid" id="humid" style="cursor:pointer">습도 –</div>
   <div class="sens2" id="sens2"></div>
@@ -940,7 +957,9 @@ async function load(){
     document.getElementById('temp').innerHTML=pv.indoorTemp.toFixed(1)+'<span>℃</span>';
     var sv=pv.sensors||[],sb=document.getElementById('sens2');
     if(sv.length>1){var lab=function(x){return x.online&&x.temp!=null?('<b>'+x.temp.toFixed(1)+'℃</b> '+(x.hum!=null?x.hum+'%':'')):'<span style="color:var(--red)">연결 안 됨</span>'};
-      sb.innerHTML=sv.map(function(x){return esc(x.name)+' '+lab(x)}).join(' · ')+(pv.sensorBasis==='avg'?' <span style="opacity:.7">(평균)</span>':'');}else sb.innerHTML='';
+      var nm=function(x){var t=String(x.name||'').replace(/(온습도)? *(센서|계)/g,'').replace(/온습도/g,'').trim();return t||'센서'};
+      sb.innerHTML=sv.map(function(x){return esc(nm(x))+' '+lab(x)}).join(' · ');}else sb.innerHTML='';
+    document.getElementById('basisLbl').textContent=sv.length>1?(pv.sensorBasis==='avg'?' · 평균':' · '+esc(nm(sv.find(function(x){return x.id===(pv.sensorBasis==='s2'?(sv[1]&&sv[1].id):sv[0].id)})||sv[0]))+' 기준'):'';
     document.getElementById('humid').textContent='습도 '+(pv.indoorHumidity!=null?pv.indoorHumidity+'%':'–')+' · '+(pv.hum&&pv.hum.warn?'⚠️ 가습기 확인':(pv.hum&&pv.hum.on?'💧 가습 중':'가습기'))+' ›';
     document.getElementById('t_season').textContent=pv.seasonMode==='cooling'?'냉방철':pv.seasonMode==='heating'?'난방철':'간절기';
     document.getElementById('t_out').textContent=pv.outdoorTemp!=null?((pv.weather&&pv.weather.emoji?pv.weather.emoji+' ':'')+Math.round(pv.outdoorTemp)+'℃'):'–';
