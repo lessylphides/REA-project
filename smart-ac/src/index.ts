@@ -230,8 +230,9 @@ async function runOnce(env: Env, opts: { force?: boolean; preview?: boolean; log
                       : decision.seasonMode === 'heating' ? effCfg.winterTarget : null;
 
     // 지금 실제로 보낼 명령(반응 감지용 기록): 자동 꺼짐이면 idle
+    // 완만 유지·쉬기는 일부러 살살 트는 단계라 '난방/냉방'으로 치지 않음 (반응 없음 경고 오탐 방지)
     const activeCmd = !cfg.enabled ? 'idle'
-      : decision.action === 'set' ? (decision.desired?.mode ?? 'set')
+      : decision.action === 'set' ? (decision.stage === 'soft' || decision.stage === 'rest' ? decision.stage : (decision.desired?.mode ?? 'set'))
       : decision.action; // off / hold
     // 반응 감지(저장된 이력 기준) → 경고
     const prevHist = (await env.KV.get('history', 'json')) as Array<{ temp: number; cmd?: string }> || [];
@@ -759,7 +760,7 @@ function renderUI(token: string): string {
     <div class="sheet-h"><b>🎛️ 에어컨 리모컨</b><button id="acClose" class="x">✕</button></div>
     <div class="acseg" id="acPower"><button data-p="on">전원 켜기</button><button data-p="off">전원 끄기</button></div>
     <div class="aclabel">모드</div>
-    <div class="acseg" id="acMode"><button data-m="cool">❄️ 냉방</button><button data-m="heat">🔥 난방</button><button data-m="fan">💨 송풍</button><button data-m="auto">자동</button></div>
+    <div class="acseg" id="acMode"><button data-m="cool">❄️ 냉방</button><button data-m="heat">🔥 난방</button><button data-m="fan">💨 송풍</button></div>
     <div class="aclabel">온도</div>
     <div class="actemp" id="acTempBox"><button id="tDown">−</button><span id="tVal">24℃</span><button id="tUp">＋</button></div>
     <div class="aclabel">풍향 · 세기 · 파워 <span style="font-weight:400">(누를 때마다 바뀜)</span></div>
