@@ -73,7 +73,9 @@ async function applyDesired(s: hej.HejSession, acId: string, desired: DesiredAcS
   if (desired.power) {
     if (changed('mode')) { await hej.control(s, acId, { mode: MODE_CODES[desired.mode] }); sent.push(`mode=${desired.mode}`); await sleep(500); }
     if (changed('temperature')) { await hej.control(s, acId, { temperature: desired.temperature }); sent.push(`temp=${desired.temperature}`); await sleep(500); }
-    if (changed('fanSpeed')) { await hej.control(s, acId, { fanSpeed: FAN_CODES[desired.fanSpeed] }); sent.push(`fan=${desired.fanSpeed}`); }
+    // 바람세기: 다른 신호를 보냈으면 항상 같이 보냄. 헤이홈 앱 등에서 바꿔 헤이홈의 기억이
+    // 우리 기록과 어긋나 있어도, 마지막에 바람세기를 보내 실제 단과 헤이홈의 기억을 맞춤
+    if (changed('fanSpeed') || sent.length) { await hej.control(s, acId, { fanSpeed: FAN_CODES[desired.fanSpeed] }); sent.push(`fan=${desired.fanSpeed}`); }
   }
   return sent;
 }
@@ -98,7 +100,7 @@ interface RunStatus {
   sensors?: { id: string; name: string; temp: number | null; hum: number | null; online: boolean }[];
   sensorBasis?: 'avg' | 's1' | 's2';
   hum?: { on: boolean; warn: boolean; auto: boolean; reason: string; low: number; high: number } | null;
-  acLast?: { power: boolean; mode?: string; temperature?: number } | null;
+  acLast?: { power: boolean; mode?: string; temperature?: number; fanSpeed?: string } | null;
   acWarn?: { type: 'noheat' | 'nocool'; dT: number } | null;
   weather?: Weather | null;
   error?: string;
@@ -131,7 +133,7 @@ async function manualControl(env: Env, action: string): Promise<{ ok: boolean; s
     const s = await getSession(env);
     const last = await env.KV.get('lastCommand', 'json') as DesiredAcState | null;
     let desired: DesiredAcState;
-    if (action === 'off') desired = { power: false, mode: last?.mode ?? 'heat', temperature: last?.temperature ?? 22, fanSpeed: last?.fanSpeed ?? 'auto' };
+    if (action === 'off') desired = { power: false, mode: last?.mode ?? 'heat', temperature: last?.temperature ?? 22, fanSpeed: last?.fanSpeed ?? 'low' };
     else if (action === 'heat') desired = { power: true, mode: 'heat', temperature: cfg.winterTarget, fanSpeed: 'medium' };
     else if (action === 'cool') desired = { power: true, mode: 'cool', temperature: cfg.summerTarget, fanSpeed: 'medium' };
     else return { ok: false, error: '알 수 없는 동작' };
@@ -225,7 +227,7 @@ async function runOnce(env: Env, opts: { force?: boolean; preview?: boolean; log
     status.reason = decision.reason;
     status.maintaining = decision.maintaining ?? false;
     const lastCmd = await env.KV.get('lastCommand', 'json') as DesiredAcState | null;
-    status.acLast = lastCmd ? { power: !!lastCmd.power, mode: lastCmd.mode, temperature: lastCmd.temperature } : null;
+    status.acLast = lastCmd ? { power: !!lastCmd.power, mode: lastCmd.mode, temperature: lastCmd.temperature, fanSpeed: lastCmd.fanSpeed } : null;
     status.targetTemp = decision.seasonMode === 'cooling' ? effCfg.summerTarget
                       : decision.seasonMode === 'heating' ? effCfg.winterTarget : null;
 
@@ -254,7 +256,7 @@ async function runOnce(env: Env, opts: { force?: boolean; preview?: boolean; log
       status.sent = await applyDesired(s, cfg.acDeviceId, decision.desired, last);
       await env.KV.put('lastCommand', JSON.stringify(decision.desired));
     } else if (decision.action === 'off') {
-      const offState: DesiredAcState = { power: false, mode: last?.mode ?? 'cool', temperature: last?.temperature ?? 25, fanSpeed: last?.fanSpeed ?? 'auto' };
+      const offState: DesiredAcState = { power: false, mode: last?.mode ?? 'cool', temperature: last?.temperature ?? 25, fanSpeed: last?.fanSpeed ?? 'low' };
       status.sent = await applyDesired(s, cfg.acDeviceId, offState, last);
       await env.KV.put('lastCommand', JSON.stringify(offState));
     } else {
@@ -763,7 +765,7 @@ function renderUI(token: string): string {
     <div class="acseg" id="acMode"><button data-m="cool">❄️ 냉방</button><button data-m="heat">🔥 난방</button><button data-m="fan">💨 송풍</button></div>
     <div class="aclabel">온도</div>
     <div class="actemp" id="acTempBox"><button id="tDown">−</button><span id="tVal">24℃</span><button id="tUp">＋</button></div>
-    <div class="aclabel">풍향 · 세기 · 파워 <span style="font-weight:400">(누를 때마다 바뀜)</span></div>
+    <div class="aclabel">풍향 · 세기 · 파워 <span style="font-weight:400">(누를 때마다 바뀜 · 세기는 1→2→3단)</span></div>
     <div class="acseg" id="acDiy"><button data-k="updown">↕️ 상하</button><button data-k="leftright">↔️ 좌우</button><button data-k="fan">🌀 세기</button><button data-k="power">⚡ 파워</button></div>
     <div class="mini" id="acDiyNote" style="margin-top:6px"></div>
     <div class="mini" id="acMsg" style="margin-top:10px;min-height:16px"></div>
@@ -869,13 +871,19 @@ function applyAcUI(){var b=document.getElementById('acTempBox');if(b)b.classList
 async function acSend(cmd,label){const m=document.getElementById('acMsg');m.textContent='전송 중…';let j;try{j=await(await fetch(q('/api/ac'),{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(cmd)})).json();}catch(e){j={ok:false,error:'전송 실패'}}m.textContent=j.ok?('✓ '+(label||'전송됨')):('✗ '+(j.error||''));}
 document.getElementById('acTile').onclick=()=>{document.getElementById('acModal').style.display='flex';showAcTemp();applyAcUI();document.getElementById('acMsg').textContent='';loadScenes()};
 // DIY 버튼 = 헤이홈 '간편 레시피'를 이름으로 찾아 실행 (이름에 상하/좌우/파워/1~4단 포함)
-var DIY_KEYS={updown:/상하/,leftright:/좌우/,fan:/세기/,power:/파워|power/i};
+var DIY_KEYS={updown:/상하/,leftright:/좌우/,power:/파워|power/i};
+// 🌀 세기: 헤이홈 약·중·강(= 1·2·3단)을 순환. 헤이홈이 기억하는 단도 같이 바뀌어 온도를 바꿔도 유지됨
+var FAN_STEPS=['low','medium','high'],curFan=null;
+function fanLabel(){var i=FAN_STEPS.indexOf(curFan);document.querySelector('#acDiy button[data-k=fan]').textContent='🌀 세기'+(i>=0?' '+(i+1)+'단':'');}
 var diyMap={};
 async function runScene(id,label){const m=document.getElementById('acMsg');m.textContent='전송 중…';let r;try{r=await(await fetch(q('/api/scene'),{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({sceneId:id})})).json();}catch(e){r={ok:false,error:'전송 실패'}}m.textContent=r.ok?('✓ '+label):('✗ '+(r.error||''));}
 async function loadScenes(){let j;try{j=await(await fetch(q('/api/scenes'))).json();}catch(e){j={ok:false}}
   diyMap={};(j.ok?j.scenes:[]).forEach(function(sc){if(/가습/.test(sc.name))return;for(var k in DIY_KEYS){if(!diyMap[k]&&DIY_KEYS[k].test(sc.name))diyMap[k]=sc;}});
   var missing=[];
-  document.querySelectorAll('#acDiy button').forEach(function(b){var sc=diyMap[b.dataset.k];b.disabled=!sc;if(!sc)missing.push(b.textContent.split(' ').slice(1).join(' '));
+  document.querySelectorAll('#acDiy button').forEach(function(b){if(b.dataset.k==='fan'){b.disabled=false;
+      curFan=(lastPv&&lastPv.acLast&&FAN_STEPS.indexOf(lastPv.acLast.fanSpeed)>=0)?lastPv.acLast.fanSpeed:curFan;fanLabel();
+      b.onclick=function(){var i=FAN_STEPS.indexOf(curFan);curFan=FAN_STEPS[(i+1)%3];fanLabel();acSend({fanSpeed:curFan},'바람 '+(FAN_STEPS.indexOf(curFan)+1)+'단');};return;}
+    var sc=diyMap[b.dataset.k];b.disabled=!sc;if(!sc)missing.push(b.textContent.split(' ').slice(1).join(' '));
     b.onclick=function(){if(sc)runScene(sc.sceneId,b.textContent.split(' ').slice(1).join(' '));};});
   document.getElementById('acDiyNote').textContent=!j.ok?'레시피를 불러오지 못했어요':missing.length?('헤이홈 간편 레시피 필요: '+missing.join(', ')+' (이름에 그 단어를 넣어주세요)'):'';
 }
@@ -988,7 +996,7 @@ async function load(){
   document.getElementById('temp').style.color=((c.enabled||warn)&&['blue','orange','red'].includes(f.c))?tc:'';
 }
 document.getElementById('auto').onchange=async()=>{await fetch(q('/api/toggle'),{method:'POST'});load()};
-function sentKo(x){var M={'power=true':'전원 켜기','power=false':'전원 끄기','mode=heat':'난방','mode=cool':'냉방','mode=fan':'송풍','mode=auto':'자동','fan=low':'바람 약','fan=medium':'바람 중','fan=high':'바람 강','fan=auto':'바람 자동'};if(M[x])return M[x];var m=/^temp=([0-9]+)$/.exec(x);return m?('설정 '+m[1]+'℃'):x;}
+function sentKo(x){var M={'power=true':'전원 켜기','power=false':'전원 끄기','mode=heat':'난방','mode=cool':'냉방','mode=fan':'송풍','mode=auto':'자동','fan=low':'바람 1단','fan=medium':'바람 2단','fan=high':'바람 3단'};if(M[x])return M[x];var m=/^temp=([0-9]+)$/.exec(x);return m?('설정 '+m[1]+'℃'):x;}
 document.getElementById('run').onclick=async(e)=>{const b=e.currentTarget,L='↻ 지금 자동 기준으로 점검';if(b.disabled)return;b.disabled=true;b.textContent='점검 중…';let j=null;try{j=await(await fetch(q('/api/run'),{method:'POST'})).json();}catch(_){}
   b.textContent=!j?'✗ 점검 실패':(j.enabled===false?'자동 꺼짐 · 신호 없이 확인만 했어요':((j.sent&&j.sent.length)?('✓ 보냄: '+j.sent.map(sentKo).join(', ')):'✓ 바꿀 것 없음'));
   load();setTimeout(function(){b.textContent=L;b.disabled=false;},2500);};

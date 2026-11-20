@@ -101,14 +101,15 @@ export const AC_TEMP_MIN = 16;
 export const AC_TEMP_MAX = 30;
 
 export type HvacMode = 'cool' | 'heat' | 'auto' | 'fan' | 'dry';
-export type HvacFanSpeed = 'auto' | 'low' | 'medium' | 'high';
+/** 헤이홈 약·중·강 = 실제 에어컨 1·2·3단 (헤이홈 '자동'은 이 에어컨에 맞는 기능이 없어 제외) */
+export type HvacFanSpeed = 'low' | 'medium' | 'high';
 
 // 벤더 코드 매핑 (POST dashboard/control/{id} 의 requirments 값)
 export const MODE_CODES: Record<HvacMode, string> = {
   cool: '0', heat: '1', auto: '2', fan: '3', dry: '4',
 };
 export const FAN_CODES: Record<HvacFanSpeed, string> = {
-  auto: '0', low: '1', medium: '2', high: '3',
+  low: '1', medium: '2', high: '3',
 };
 
 /** 에어컨에 보내려는 "원하는 상태" (한 번에 하나씩 전송됨) */
