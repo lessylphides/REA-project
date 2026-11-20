@@ -409,42 +409,6 @@ export default {
       await saveConfig(env, cfg);
       return json({ ...cfg, owmKey: undefined });
     }
-    // 진단: DIY/IR 리모컨의 버튼 목록·제어 경로 탐색
-    if (url.pathname === '/api/debug') {
-      try {
-        const s = await getSession(env);
-        const fams = await hej.getFamilies(s);
-        const out: any[] = [];
-        for (const f of fams) {
-          const fid = f.familyId;
-          // 1) 기기 목록(DIY 포함)
-          const list = await hej.rawProbe(s, `dashboard/${fid}/devices?scope=shop`);
-          // 2) IrDiy 기기 찾기
-          const diy: any[] = Array.isArray(list.body) ? (list.body as any[]).filter((d) => d?.deviceType === 'IrDiy' || d?.category === 'infrared_diy') : [];
-          const diyProbes: any[] = [];
-          for (const d of diy) {
-            const did = d.id;
-            // DIY 기기의 '버튼 목록/세부정보'가 어느 경로에 있는지 탐색 (GET)
-            const paths = [
-              `dashboard/${fid}/devices/${did}?scope=shop`,
-              `dashboard/${fid}/device/${did}?scope=shop`,
-              `dashboard/${fid}/${did}/devices-state?scope=shop`,
-              `dashboard/device/${did}?scope=shop`,
-              `dashboard/${did}?scope=shop`,
-              `dashboard/${did}/keys?scope=shop`,
-              `dashboard/${fid}/devices/${did}/keys?scope=shop`,
-              `dashboard/${fid}/diy/${did}?scope=shop`,
-              `dashboard/control/${did}?scope=shop`,
-              `dashboard/${fid}/devices/${did}/functions?scope=shop`,
-            ];
-            const probes = await Promise.all(paths.map((p) => hej.rawProbe(s, p)));
-            diyProbes.push({ id: did, name: d.name, deviceType: d.deviceType, probes });
-          }
-          out.push({ familyId: fid, name: (f as any).name ?? null, devicesList: list, diyFound: diy.length, diyProbes });
-        }
-        return json({ familyCount: fams.length, families: out });
-      } catch (e: any) { return json({ error: String(e?.message ?? e) }, 500); }
-    }
     // 기기 목록(센서/에어컨 ID 찾기 + deviceState 확인용)
     if (url.pathname === '/api/devices') {
       try {
@@ -748,14 +712,6 @@ function renderUI(token: string): string {
     <div class="mini" id="devNote">헤이홈 앱에 등록된 기기가 자동으로 여기 나와요. 이름으로 고르기만 하면 돼요.</div>
   </div></details>
 
-<div style="height:10px"></div>
-<details id="dDiag"><summary>진단 (DIY 리모컨 찾기)</summary>
-  <div class="grp">
-    <button class="btn" id="diagBtn" style="width:100%">기기 경로 전체 조회</button>
-    <div class="mini">상하/좌우/파워 같은 DIY 버튼이 헤이홈 API 어디에 있는지 찾아요. 아래 결과를 캡처하거나 [복사]해서 보내주세요.</div>
-    <textarea id="diagOut" readonly style="width:100%;height:180px;margin-top:8px;font-family:monospace;font-size:11px;background:var(--card2,#1c1c1e);color:var(--fg);border:1px solid var(--line,#333);border-radius:10px;padding:8px;display:none"></textarea>
-    <button class="btn" id="diagCopy" style="width:100%;margin-top:6px;display:none">결과 복사</button>
-  </div></details>
 </div></div>
 
 <div id="acModal" class="modal" style="display:none">
@@ -1002,8 +958,6 @@ async function loadDevices(){
   n.textContent='총 '+devs.length+'개 · 이름으로 고르고 [기기 저장]';
 }
 document.getElementById('refreshDev').onclick=loadDevices;
-document.getElementById('diagBtn').onclick=async function(){var b=this,o=document.getElementById('diagOut'),cp=document.getElementById('diagCopy');b.textContent='조회 중…';b.disabled=true;o.style.display='block';o.value='조회 중…';try{var j=await(await fetch(q('/api/debug'))).json();o.value=JSON.stringify(j,null,2);cp.style.display='block';}catch(e){o.value='실패: '+(e&&e.message||e);}b.textContent='기기 경로 전체 조회';b.disabled=false;};
-document.getElementById('diagCopy').onclick=function(){var o=document.getElementById('diagOut');o.select();try{document.execCommand('copy');}catch(e){}navigator.clipboard&&navigator.clipboard.writeText(o.value);this.textContent='복사됨 ✓';var t=this;setTimeout(function(){t.textContent='결과 복사';},1500);};
 document.getElementById('dAdv').addEventListener('toggle',function(){if(this.open&&!document.getElementById('sensorSel').options.length)loadDevices();});
 document.getElementById('saveDev').onclick=async()=>{const b={sensorDeviceId:document.getElementById('sensorSel').value,acDeviceId:document.getElementById('acSel').value};if(!b.sensorDeviceId||!b.acDeviceId){alert('먼저 기기를 불러와 선택하세요');return}await fetch(q('/api/config'),{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(b)});alert('기기 저장됨');load()};
 // 시계 + 영업 카운트다운 (가로 태블릿 표시)

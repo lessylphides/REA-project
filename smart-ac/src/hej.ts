@@ -134,24 +134,6 @@ export async function getDevices(s: HejSession, familyId: number): Promise<HejDe
   return get<HejDevice[]>(s, `dashboard/${familyId}/devices-state?scope=shop`);
 }
 
-/** 임의 경로 GET (진단용) */
-export async function rawGet<T>(s: HejSession, path: string): Promise<T> {
-  return get<T>(s, path);
-}
-
-/** 임의 경로 GET — 실패해도 status/본문을 돌려줌(진단용, DIY 기기 탐색) */
-export async function rawProbe(s: HejSession, path: string): Promise<{ path: string; status: number; body: unknown }> {
-  try {
-    const res = await fetch(`${SQUARE_ORIGIN}/${path}`, { method: 'GET', headers: authHeaders(s) });
-    const text = await res.text();
-    let body: unknown;
-    try { body = JSON.parse(text || 'null'); } catch { body = text.slice(0, 500); }
-    return { path, status: res.status, body };
-  } catch (e: any) {
-    return { path, status: -1, body: String(e?.message ?? e) };
-  }
-}
-
 export interface HejScene { sceneId: string; name: string; }
 
 /** 레시피(장면) 목록 — 헤이홈 앱에서 만든 레시피. DIY 버튼을 담아 실행하는 용도 */
