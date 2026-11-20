@@ -95,6 +95,8 @@ interface RunStatus {
   targetTemp?: number | null;
   maintaining?: boolean;
   stage?: Stage;
+  sensors?: { id: string; name: string; temp: number | null; hum: number | null; online: boolean }[];
+  sensorBasis?: 'avg' | 's1' | 's2';
   hum?: { on: boolean; warn: boolean; auto: boolean; reason: string; low: number; high: number } | null;
   acLast?: { power: boolean; mode?: string; temperature?: number } | null;
   acWarn?: { type: 'noheat' | 'nocool'; dT: number } | null;
@@ -180,10 +182,26 @@ async function runOnce(env: Env, opts: { force?: boolean; preview?: boolean; log
     if (!families.length) throw new Error('집(family) 목록이 비어 있음');
     const devices = await hej.getDevices(s, families[0].familyId);
 
-    const sensor = devices.find((d) => d.id === cfg.sensorDeviceId);
-    if (!sensor) throw new Error('온습도계 기기를 찾지 못함');
-    const { temp, humidity } = readSensor(sensor.deviceState ?? {});
-    if (temp === null) throw new Error('센서에서 온도를 읽지 못함 (deviceState 키 확인 필요)');
+    // 온습도계 1~2개 읽기 → 제어 기준(평균/첫째/둘째)으로 합치기. 꺼진 센서는 건너뜀
+    const readOne = (id?: string) => {
+      if (!id) return null;
+      const d = devices.find((x) => x.id === id);
+      if (!d) return { id, name: '(찾을 수 없음)', temp: null, hum: null, online: false };
+      const r = readSensor(d.deviceState ?? {});
+      return { id, name: d.name ?? '온습도계', temp: r.temp, hum: r.humidity, online: d.online !== false && r.temp !== null };
+    };
+    const sens = [readOne(cfg.sensorDeviceId), readOne(cfg.sensor2DeviceId)].filter((x): x is NonNullable<typeof x> => !!x);
+    status.sensors = sens;
+    const ok = sens.filter((x) => x.online && x.temp !== null);
+    if (!ok.length) throw new Error(sens.length ? '온습도계에서 온도를 읽지 못함 (꺼졌거나 연결 끊김)' : '온습도계 기기를 찾지 못함');
+    const mode = cfg.sensorMode ?? 'avg';
+    const pick = mode === 's1' ? ok.filter((x) => x.id === cfg.sensorDeviceId)
+               : mode === 's2' ? ok.filter((x) => x.id === cfg.sensor2DeviceId) : ok;
+    const use = pick.length ? pick : ok; // 고른 센서가 안 되면 남은 센서로
+    const temp = Math.round(use.reduce((a, x) => a + (x.temp as number), 0) / use.length * 10) / 10;
+    const hs = use.map((x) => x.hum).filter((h): h is number => h !== null);
+    const humidity = hs.length ? Math.round(hs.reduce((a, h) => a + h, 0) / hs.length) : null;
+    status.sensorBasis = use.length > 1 ? 'avg' : (use[0].id === cfg.sensorDeviceId ? 's1' : 's2');
     status.indoorTemp = temp; status.indoorHumidity = humidity;
     status.alert = temp >= cfg.alertHot ? { type: 'hot', temp, threshold: cfg.alertHot }
                  : temp <= cfg.alertCold ? { type: 'cold', temp, threshold: cfg.alertCold }
@@ -464,6 +482,7 @@ function renderUI(token: string): string {
   .temp{font-size:72px;font-weight:600;letter-spacing:-.04em;line-height:1;margin:2px 0}
   .temp span{font-size:32px;font-weight:500;color:var(--sec)}
   .humid{color:var(--sec);font-size:17px;margin-top:2px}
+  .sens2{color:var(--sec);font-size:13px;margin-top:4px}.sens2:empty{display:none}.sens2 b{font-weight:600;color:var(--label)}
   .chip{display:inline-flex;align-items:center;gap:7px;margin-top:18px;padding:11px 18px;border-radius:999px;
     font-size:16px;font-weight:600;background:var(--field)}
   .chip .em{font-size:19px}
@@ -611,6 +630,7 @@ function renderUI(token: string): string {
   <div style="color:var(--sec);font-size:13px;font-weight:500;margin-bottom:2px">실내 온도 <span style="opacity:.6">· 탭하면 그래프 📈</span></div>
   <div class="temp" id="temp" style="cursor:pointer">–<span>℃</span></div>
   <div class="humid" id="humid" style="cursor:pointer">습도 –</div>
+  <div class="sens2" id="sens2"></div>
   <div class="chip gray" id="chip"><span class="em">⏳</span><span id="chipt">불러오는 중…</span></div>
   <div class="chipsub" id="chipsub"></div>
   <div class="chipsub" id="acwarn" style="color:var(--red);font-weight:600"></div>
@@ -706,7 +726,10 @@ function renderUI(token: string): string {
 <div style="height:10px"></div>
 <details id="dAdv"><summary>기기 선택</summary>
   <div class="grp">
-    <div class="fld"><label>온습도계</label><select id="sensorSel" class="sel"></select></div>
+    <div class="fld"><label>온습도계 1</label><select id="sensorSel" class="sel"></select></div>
+    <div class="fld"><label>온습도계 2 <span style="color:var(--sec);font-weight:400">(선택)</span></label><select id="sensor2Sel" class="sel"></select></div>
+    <div class="fld"><label>냉난방 기준</label><select id="sensorMode" class="sel"><option value="avg">두 온습도계 평균</option><option value="s1">온습도계 1만</option><option value="s2">온습도계 2만</option></select>
+      <div class="mini">입구 쪽은 문이 열릴 때 온도가 출렁여요. 평균을 추천해요. 한쪽이 연결 안 되면 남은 쪽으로 자동 전환해요.</div></div>
     <div class="fld"><label>에어컨</label><select id="acSel" class="sel"></select></div>
     <div style="display:flex;gap:8px"><button class="btn" id="refreshDev" style="flex:1">다시 불러오기</button><button class="btn save" id="saveDev" style="flex:1">기기 저장</button></div>
     <div class="mini" id="devNote">헤이홈 앱에 등록된 기기가 자동으로 여기 나와요. 이름으로 고르기만 하면 돼요.</div>
@@ -764,7 +787,7 @@ document.addEventListener('gesturestart',e=>e.preventDefault());
 document.addEventListener('gesturechange',e=>e.preventDefault());
 let _lt=0;document.addEventListener('touchend',e=>{const n=Date.now();if(n-_lt<300)e.preventDefault();_lt=n;},{passive:false});
 const T=new URLSearchParams(location.search).get('t');const q=p=>p+(T?('?t='+T):'');
-let histRange=24;let lastPv=null;let curSensor='',curAc='';let curAcOn=true;let bizNext=null,bizState='';
+let histRange=24;let lastPv=null;let curSensor='',curSensor2='',curAc='';let curAcOn=true;let bizNext=null,bizState='';
 function svgChart(d,col){
   const W=440,H=240,pl=32,pr=30,pt=22,pb=26;
   const temps=d.map(p=>p.temp);const outs=d.filter(p=>p.out!=null).map(p=>p.out);const hums=d.filter(p=>p.hum!=null).map(p=>p.hum);
@@ -889,6 +912,7 @@ function friendly(p,enabled){
   if(al&&al.power&&al.mode==='fan')return{em:'🍃',t:'적정 유지 중',sub:'송풍으로 순환',c:'green',ac:'송풍'};
   return{em:'😌',t:'지금 알맞아요',sub:'에어컨 대기 중',c:'green',ac:'대기'};
 }
+function esc(t){return String(t).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]})}
 function fitLock(){var d=document.documentElement;d.classList.remove('lock');if(d.scrollHeight<=window.innerHeight+2){window.scrollTo(0,0);d.classList.add('lock');}}
 window.addEventListener('resize',fitLock);window.addEventListener('orientationchange',function(){window.scrollTo(0,0);setTimeout(fitLock,300);setTimeout(fitLock,800)});
 async function load(){
@@ -900,7 +924,7 @@ async function load(){
   document.getElementById('title').textContent=c.storeName||'우리 매장';
   document.getElementById('storeName').value=c.storeName||'';
   for(const k of ['summerTarget','winterTarget','deadband','acBias','observeMinutes','restAbove','humLow','humHigh','alertHot','alertCold'])document.getElementById(k).value=c[k];
-  curSensor=c.sensorDeviceId||'';curAc=c.acDeviceId||'';
+  curSensor=c.sensorDeviceId||'';curAc=c.acDeviceId||'';curSensor2=c.sensor2DeviceId||'';document.getElementById('sensorMode').value=c.sensorMode||'avg';
   document.getElementById('address').value=c.address||'';
   document.getElementById('loc').textContent=c.address?('현재 위치: '+c.address):('좌표 '+(c.lat||'-')+', '+(c.lon||'-'));
   document.getElementById('auto').checked=!!c.enabled;
@@ -914,6 +938,9 @@ async function load(){
   const f=friendly(pv,c.enabled);
   if(pv&&typeof pv.indoorTemp==='number'){
     document.getElementById('temp').innerHTML=pv.indoorTemp.toFixed(1)+'<span>℃</span>';
+    var sv=pv.sensors||[],sb=document.getElementById('sens2');
+    if(sv.length>1){var lab=function(x){return x.online&&x.temp!=null?('<b>'+x.temp.toFixed(1)+'℃</b> '+(x.hum!=null?x.hum+'%':'')):'<span style="color:var(--red)">연결 안 됨</span>'};
+      sb.innerHTML=sv.map(function(x){return esc(x.name)+' '+lab(x)}).join(' · ')+(pv.sensorBasis==='avg'?' <span style="opacity:.7">(평균)</span>':'');}else sb.innerHTML='';
     document.getElementById('humid').textContent='습도 '+(pv.indoorHumidity!=null?pv.indoorHumidity+'%':'–')+' · '+(pv.hum&&pv.hum.warn?'⚠️ 가습기 확인':(pv.hum&&pv.hum.on?'💧 가습 중':'가습기'))+' ›';
     document.getElementById('t_season').textContent=pv.seasonMode==='cooling'?'냉방철':pv.seasonMode==='heating'?'난방철':'간절기';
     document.getElementById('t_out').textContent=pv.outdoorTemp!=null?((pv.weather&&pv.weather.emoji?pv.weather.emoji+' ':'')+Math.round(pv.outdoorTemp)+'℃'):'–';
@@ -952,14 +979,15 @@ async function loadDevices(){
   let devs;try{devs=await (await fetch(q('/api/devices'))).json();}catch(e){n.textContent='불러오기 실패';return}
   if(!Array.isArray(devs)){n.textContent='오류: '+((devs&&devs.error)||'기기 목록을 못 읽음');return}
   const opt=d=>'<option value="'+d.id+'">'+(d.name||'(이름없음)')+typeLabel(d.deviceType)+'</option>';
-  const s1=document.getElementById('sensorSel'),s2=document.getElementById('acSel');
+  const s1=document.getElementById('sensorSel'),s2=document.getElementById('acSel'),s3=document.getElementById('sensor2Sel');
   s1.innerHTML=devs.map(opt).join('');s2.innerHTML=devs.map(opt).join('');
-  if(curSensor)s1.value=curSensor;if(curAc)s2.value=curAc;
+  s3.innerHTML='<option value="">없음</option>'+devs.filter(function(d){return d.deviceType==='SensorTh'||/온습도|센서/.test(d.name||'')}).map(opt).join('');
+  if(curSensor)s1.value=curSensor;if(curAc)s2.value=curAc;s3.value=curSensor2||'';
   n.textContent='총 '+devs.length+'개 · 이름으로 고르고 [기기 저장]';
 }
 document.getElementById('refreshDev').onclick=loadDevices;
 document.getElementById('dAdv').addEventListener('toggle',function(){if(this.open&&!document.getElementById('sensorSel').options.length)loadDevices();});
-document.getElementById('saveDev').onclick=async()=>{const b={sensorDeviceId:document.getElementById('sensorSel').value,acDeviceId:document.getElementById('acSel').value};if(!b.sensorDeviceId||!b.acDeviceId){alert('먼저 기기를 불러와 선택하세요');return}await fetch(q('/api/config'),{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(b)});alert('기기 저장됨');load()};
+document.getElementById('saveDev').onclick=async()=>{const b={sensorDeviceId:document.getElementById('sensorSel').value,acDeviceId:document.getElementById('acSel').value,sensor2DeviceId:document.getElementById('sensor2Sel').value,sensorMode:document.getElementById('sensorMode').value};if(b.sensor2DeviceId&&b.sensor2DeviceId===b.sensorDeviceId){alert('온습도계 1과 2를 다르게 골라주세요');return}if(!b.sensorDeviceId||!b.acDeviceId){alert('먼저 기기를 불러와 선택하세요');return}await fetch(q('/api/config'),{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(b)});alert('기기 저장됨');load()};
 // 시계 + 영업 카운트다운 (가로 태블릿 표시)
 function fmtDur(ms){var m=Math.floor(ms/60000),h=Math.floor(m/60);m=m%60;return h>0?(h+'시간 '+m+'분'):(m+'분');}
 function updateClock(){

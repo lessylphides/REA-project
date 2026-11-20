@@ -56,6 +56,10 @@ export interface Config {
   hours?: DayHours[];
   /** 온습도계(센서) 기기 ID */
   sensorDeviceId: string;
+  /** 두 번째 온습도계 기기 ID (선택, 예: 입구 쪽) */
+  sensor2DeviceId?: string;
+  /** 제어 기준: 두 센서 평균 / 첫 번째만 / 두 번째만. 한쪽이 안 되면 남은 쪽 사용 */
+  sensorMode?: 'avg' | 's1' | 's2';
   /** IR 에어컨 기기 ID */
   acDeviceId: string;
   /** 매장 주소(표시용) */
