@@ -968,7 +968,7 @@ async function load(){
   document.getElementById('temp').style.color=((c.enabled||warn)&&['blue','orange','red'].includes(f.c))?tc:'';
 }
 document.getElementById('auto').onchange=async()=>{await fetch(q('/api/toggle'),{method:'POST'});load()};
-function sentKo(x){var M={'power=true':'전원 켜기','power=false':'전원 끄기','mode=heat':'난방','mode=cool':'냉방','mode=fan':'송풍','mode=auto':'자동','fan=low':'바람 약','fan=medium':'바람 중','fan=high':'바람 강','fan=auto':'바람 자동'};if(M[x])return M[x];var m=/^temp=(\d+)$/.exec(x);return m?('설정 '+m[1]+'℃'):x;}
+function sentKo(x){var M={'power=true':'전원 켜기','power=false':'전원 끄기','mode=heat':'난방','mode=cool':'냉방','mode=fan':'송풍','mode=auto':'자동','fan=low':'바람 약','fan=medium':'바람 중','fan=high':'바람 강','fan=auto':'바람 자동'};if(M[x])return M[x];var m=/^temp=([0-9]+)$/.exec(x);return m?('설정 '+m[1]+'℃'):x;}
 document.getElementById('run').onclick=async(e)=>{const b=e.currentTarget,L='↻ 지금 자동 기준으로 점검';if(b.disabled)return;b.disabled=true;b.textContent='점검 중…';let j=null;try{j=await(await fetch(q('/api/run'),{method:'POST'})).json();}catch(_){}
   b.textContent=!j?'✗ 점검 실패':(j.enabled===false?'자동 꺼짐 · 신호 없이 확인만 했어요':((j.sent&&j.sent.length)?('✓ 보냄: '+j.sent.map(sentKo).join(', ')):'✓ 바꿀 것 없음'));
   load();setTimeout(function(){b.textContent=L;b.disabled=false;},2500);};
