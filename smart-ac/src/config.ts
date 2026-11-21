@@ -44,6 +44,10 @@ export interface Config {
   humHigh?: number;
   /** 영업시간에만 가습 (비영업엔 끔) */
   humBizOnly?: boolean;
+  /** 에어컨을 켜면(바람이 나오기 시작한 뒤) 상하 날개를 위로 고정 */
+  vaneFix?: boolean;
+  /** 상하를 켠 뒤 다시 눌러 멈출 때까지 시간(초). 매장에서 시험해 맞춤 */
+  vaneStopSec?: number;
   /** 여름 경고: 실내가 이 온도 이상이면 '너무 더움' 경고 */
   alertHot: number;
   /** 겨울 최저기준: 실내가 이 온도 이하면 '너무 추움' 경고 + 비영업 세트백 바닥 */
@@ -85,6 +89,8 @@ export const DEFAULT_CONFIG: Config = {
   humLow: 40,
   humHigh: 55,
   humBizOnly: true,
+  vaneFix: false,
+  vaneStopSec: 3,
   alertHot: 30,
   alertCold: 15,
   useSchedule: true,

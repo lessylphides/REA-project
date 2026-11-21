@@ -1,6 +1,7 @@
 // Cloudflare Worker 엔트리
 //  - scheduled(cron): 주기적으로 센서 읽고 에어컨 자동 제어
 //  - fetch(http):     상태 확인 + on/off + 설정 UI/API
+import { VaneState, findUpDownScene, fixVane, vaneReady } from './vane';
 import { HumState, HUM_DEFAULT, humDecide, findHumPowerScene } from './hum';
 import { Config, DEFAULT_CONFIG, Env, DesiredAcState, MODE_CODES, FAN_CODES } from './config';
 import * as hej from './hej';
@@ -99,6 +100,7 @@ interface RunStatus {
   stage?: Stage;
   sensors?: { id: string; name: string; temp: number | null; hum: number | null; online: boolean }[];
   sensorBasis?: 'avg' | 's1' | 's2';
+  vaneNote?: string;
   hum?: { on: boolean; warn: boolean; auto: boolean; reason: string; low: number; high: number } | null;
   acLast?: { power: boolean; mode?: string; temperature?: number; fanSpeed?: string } | null;
   acWarn?: { type: 'noheat' | 'nocool'; dT: number } | null;
@@ -140,6 +142,14 @@ function analyzeResponse(hist: Array<{ temp: number; cmd?: string }>): { type: '
   return null;
 }
 
+// ---------- 날개 고정: 에어컨을 켜거나 난방/냉방 모드를 보냈으면 '대기'로 표시 ----------
+async function markVanePending(env: Env, cfg: Config, mode: string | undefined, temp?: number | null): Promise<void> {
+  if (!cfg.vaneFix || (mode !== 'heat' && mode !== 'cool')) return;
+  if (temp === undefined) temp = (await loadState(env)).status?.indoorTemp ?? null;
+  const st: VaneState = { pendingSince: Date.now(), startTemp: temp ?? null, mode, done: false };
+  await env.KV.put('vane', JSON.stringify(st));
+}
+
 // ---------- 수동 제어 (사용자가 버튼으로 즉시) ----------
 async function manualControl(env: Env, action: string): Promise<{ ok: boolean; sent?: string[]; error?: string }> {
   try {
@@ -154,6 +164,7 @@ async function manualControl(env: Env, action: string): Promise<{ ok: boolean; s
     else return { ok: false, error: '알 수 없는 동작' };
     const sent = await applyDesired(s, cfg.acDeviceId, desired, last);
     await putIfChanged(env, 'lastCommand', last, desired);
+    if (desired.power && sent.some((x) => x === 'power=true' || x.startsWith('mode='))) await markVanePending(env, cfg, desired.mode);
     return { ok: true, sent };
   } catch (e: any) { return { ok: false, error: String(e?.message ?? e) }; }
 }
@@ -182,6 +193,7 @@ async function sendAc(env: Env, cmd: { power?: boolean; mode?: string; temperatu
       fanSpeed: (cmd.fanSpeed && FAN_CODES[cmd.fanSpeed as keyof typeof FAN_CODES] !== undefined ? cmd.fanSpeed : prev?.fanSpeed ?? 'medium') as DesiredAcState['fanSpeed'],
     };
     await putIfChanged(env, 'lastCommand', prev, merged);
+    if (merged.power && (cmd.power === true || cmd.mode)) await markVanePending(env, cfg, merged.mode);
     return { ok: true, sent };
   } catch (e: any) { return { ok: false, error: String(e?.message ?? e) }; }
 }
@@ -280,6 +292,27 @@ async function runOnce(env: Env, opts: { force?: boolean; preview?: boolean; log
       await putIfChanged(env, 'lastCommand', last, offState);
     } else {
       status.sent = []; // hold: 아무것도 안 보냄
+    }
+    // 날개 위로 고정: 이번에 켜거나 모드를 바꿨으면 대기 표시, 대기 중이면 바람이 나오기 시작했는지 보고 고정
+    if (cfg.vaneFix) {
+      const sentNow = status.sent ?? [];
+      const acOnNow = decision.action === 'set' ? true : decision.action === 'off' ? false : !!lastCmd?.power;
+      const modeNow = decision.action === 'set' ? decision.desired?.mode : lastCmd?.mode;
+      const vs = await env.KV.get('vane', 'json') as VaneState | null;
+      if (!acOnNow) { if (vs) await env.KV.delete('vane'); }
+      else if (sentNow.some((x) => x === 'power=true' || x.startsWith('mode='))) await markVanePending(env, cfg, modeNow, temp);
+      else {
+        const r = vaneReady(vs, temp, Date.now());
+        if (r.ready && vs) {
+          const sc = findUpDownScene(await hej.getScenes(s, families[0].familyId));
+          if (sc) {
+            await fixVane(s, families[0].familyId, sc.sceneId, cfg.vaneStopSec ?? 3);
+            await env.KV.put('vane', JSON.stringify({ ...vs, done: true }));
+            status.sent = [...sentNow, 'vane=fix'];
+          }
+        }
+        if (r.reason) status.vaneNote = r.reason;
+      }
     }
     // 자동 가습 (레시피 토글)
     if (cfg.humAuto) {
@@ -395,6 +428,20 @@ export default {
       let power: string | null = null;
       try { const s = await getSession(env); const fams = await hej.getFamilies(s); power = findHumPowerScene(await hej.getScenes(s, fams[0].familyId))?.sceneId ?? null; } catch {}
       return json({ ok: true, hum: st, powerSceneId: power });
+    }
+    // 날개 고정 시험: 상하 켜고 sec초 뒤 멈춤
+    if (url.pathname === '/api/vane' && req.method === 'POST') {
+      try {
+        const b = await req.json<{ sec?: number }>();
+        const sec = Number(b.sec);
+        if (!(sec >= 0.5 && sec <= 15)) return json({ ok: false, error: '0.5~15초 사이로 입력하세요' }, 400);
+        const s = await getSession(env);
+        const fams = await hej.getFamilies(s);
+        const sc = findUpDownScene(await hej.getScenes(s, fams[0].familyId));
+        if (!sc) return json({ ok: false, error: '헤이홈에 "상하" 레시피가 없어요' }, 400);
+        await fixVane(s, fams[0].familyId, sc.sceneId, sec);
+        return json({ ok: true, sec });
+      } catch (e: any) { return json({ ok: false, error: String(e?.message ?? e) }, 500); }
     }
     if (url.pathname === '/api/scene' && req.method === 'POST') {
       try {
@@ -741,6 +788,13 @@ function renderUI(token: string): string {
       <div><div style="font-size:16px">영업시간에만 가습</div><div class="mini">비영업엔 가습기를 꺼요 (물 부족·밤샘 방지)</div></div>
       <label class="tg"><input type="checkbox" id="humBizOnly"><span class="sl"></span></label>
     </div>
+    <div class="fld" style="display:flex;align-items:center;justify-content:space-between">
+      <div><div style="font-size:16px">↕️ 날개 위로 고정</div><div class="mini">에어컨을 켜고 바람이 나오기 시작하면 상하 날개를 위로 고정해요 (손님·식물 직바람 방지)</div></div>
+      <label class="tg"><input type="checkbox" id="vaneFix"><span class="sl"></span></label>
+    </div>
+    <div class="fld"><label>멈출 때까지 시간(초)</label><input id="vaneStopSec" type="number" step="0.1" inputmode="decimal">
+      <button class="btn" id="vaneTest" style="margin:8px 0 0">지금 시험: 상하 켜고 위 시간 뒤 멈추기</button>
+      <div class="mini" id="vaneMsg">에어컨이 바람을 내고 있을 때 시험하세요. 날개가 위에서 멈추는 시간을 찾으면 [설정 저장]. 처음엔 3초부터 0.3초씩 바꿔 보세요.</div></div>
     <div class="fld"><div class="row2">
       <div><label>여름 경고 ℃이상</label><input id="alertHot" type="number" inputmode="decimal"></div>
       <div><label>최저기준 ℃이하</label><input id="alertCold" type="number" inputmode="decimal"></div>
@@ -988,7 +1042,7 @@ async function load(){
   // 설정값 채우기
   document.getElementById('title').textContent=c.storeName||'우리 매장';
   document.getElementById('storeName').value=c.storeName||'';
-  for(const k of ['summerTarget','winterTarget','deadband','acBias','observeMinutes','restAbove','humLow','humHigh','alertHot','alertCold'])document.getElementById(k).value=c[k];
+  for(const k of ['summerTarget','winterTarget','deadband','acBias','observeMinutes','restAbove','humLow','humHigh','vaneStopSec','alertHot','alertCold'])document.getElementById(k).value=c[k];
   curSensor=c.sensorDeviceId||'';curAc=c.acDeviceId||'';curSensor2=c.sensor2DeviceId||'';document.getElementById('sensorMode').value=c.sensorMode||'avg';
   document.getElementById('address').value=c.address||'';
   document.getElementById('loc').textContent=c.address?('현재 위치: '+c.address):('좌표 '+(c.lat||'-')+', '+(c.lon||'-'));
@@ -1018,7 +1072,7 @@ async function load(){
   const SM={open:'🟢 영업중',preheat:'🟡 예열중',closed:'⚪ 비영업'};
   document.getElementById('sched').textContent=pv&&pv.scheduleState?SM[pv.scheduleState]||'':'';
   document.getElementById('useSchedule').checked=c.useSchedule!==false;
-  document.getElementById('humAuto').checked=!!c.humAuto;document.getElementById('humBizOnly').checked=c.humBizOnly!==false;
+  document.getElementById('humAuto').checked=!!c.humAuto;document.getElementById('vaneFix').checked=!!c.vaneFix;document.getElementById('humBizOnly').checked=c.humBizOnly!==false;
   document.getElementById('preheatMinutes').value=c.preheatMinutes!=null?c.preheatMinutes:60;
   const DAYS=[['월',1],['화',2],['수',3],['목',4],['금',5],['토',6],['일',0]];
   document.getElementById('daysBox').innerHTML=DAYS.map(function(e){var nm=e[0],ix=e[1];var h=(c.hours&&c.hours[ix])||{closed:false,open:'09:00',close:'00:00'};return '<div class="dayrow'+(h.closed?' off':'')+'" data-d="'+ix+'"><span class="dname">'+nm+'</span><label class="offbox"><input type="checkbox" class="dClosed"'+(h.closed?' checked':'')+'>휴무</label><input type="time" class="dOpen" value="'+(h.open||'09:00')+'"><span class="tilde">~</span><input type="time" class="dClose" value="'+(h.close||'00:00')+'"></div>';}).join('');
@@ -1035,12 +1089,15 @@ async function load(){
   document.getElementById('temp').style.color=((c.enabled||warn)&&['blue','orange','red'].includes(f.c))?tc:'';
 }
 document.getElementById('auto').onchange=async()=>{await fetch(q('/api/toggle'),{method:'POST'});load()};
-function sentKo(x){var M={'power=true':'전원 켜기','power=false':'전원 끄기','mode=heat':'난방','mode=cool':'냉방','mode=fan':'송풍','mode=auto':'자동','fan=low':'바람 1단','fan=medium':'바람 2단','fan=high':'바람 3단'};if(M[x])return M[x];var m=/^temp=([0-9]+)$/.exec(x);return m?('설정 '+m[1]+'℃'):x;}
+function sentKo(x){var M={'power=true':'전원 켜기','power=false':'전원 끄기','mode=heat':'난방','mode=cool':'냉방','mode=fan':'송풍','mode=auto':'자동','vane=fix':'날개 위로 고정','fan=low':'바람 1단','fan=medium':'바람 2단','fan=high':'바람 3단'};if(M[x])return M[x];var m=/^temp=([0-9]+)$/.exec(x);return m?('설정 '+m[1]+'℃'):x;}
+document.getElementById('vaneTest').onclick=async function(){var b=this,m=document.getElementById('vaneMsg'),sec=Number(document.getElementById('vaneStopSec').value);if(!(sec>=0.5&&sec<=15)){m.textContent='0.5~15초 사이로 입력하세요';return}
+  b.disabled=true;m.textContent='상하 켬 → '+sec+'초 뒤 멈춤 보내는 중…';let j;try{j=await(await fetch(q('/api/vane'),{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({sec:sec})})).json();}catch(e){j={ok:false,error:'전송 실패'}}
+  m.textContent=j.ok?('✓ '+sec+'초로 보냈어요. 날개가 위에서 멈췄으면 [설정 저장], 아니면 시간을 바꿔 다시 시험'):('✗ '+(j.error||''));b.disabled=false;};
 document.getElementById('run').onclick=async(e)=>{const b=e.currentTarget,L='↻ 지금 자동 기준으로 점검';if(b.disabled)return;b.disabled=true;b.textContent='점검 중…';let j=null;try{j=await(await fetch(q('/api/run'),{method:'POST'})).json();}catch(_){}
   b.textContent=!j?'✗ 점검 실패':(j.enabled===false?'자동 꺼짐 · 신호 없이 확인만 했어요':((j.sent&&j.sent.length)?('✓ 보냄: '+j.sent.map(sentKo).join(', ')):'✓ 바꿀 것 없음'));
   load();setTimeout(function(){b.textContent=L;b.disabled=false;},2500);};
 document.getElementById('login').onclick=async()=>{const email=document.getElementById('email').value,password=document.getElementById('password').value;if(!email||!password){alert('이메일/비번을 입력하세요');return}const r=await fetch(q('/api/login'),{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({email,password})});const j=await r.json();if(j.ok){document.getElementById('password').value='';document.getElementById('dLogin').open=false;alert('로그인 성공!')}else alert('로그인 실패: '+(j.error||''));load()};
-document.getElementById('save').onclick=async()=>{const b={};for(const k of ['summerTarget','winterTarget','deadband','acBias','observeMinutes','restAbove','humLow','humHigh','alertHot','alertCold']){b[k]=Number(document.getElementById(k).value)}b.humAuto=document.getElementById('humAuto').checked;b.humBizOnly=document.getElementById('humBizOnly').checked;b.storeName=document.getElementById('storeName').value||'우리 매장';const ow=document.getElementById('owmKey').value;if(ow)b.owmKey=ow;await fetch(q('/api/config'),{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(b)});document.getElementById('owmKey').value='';alert('저장됨');load()};
+document.getElementById('save').onclick=async()=>{const b={};for(const k of ['summerTarget','winterTarget','deadband','acBias','observeMinutes','restAbove','humLow','humHigh','vaneStopSec','alertHot','alertCold']){const v=document.getElementById(k).value;if(v!==''&&!isNaN(Number(v)))b[k]=Number(v)}b.humAuto=document.getElementById('humAuto').checked;b.vaneFix=document.getElementById('vaneFix').checked;b.humBizOnly=document.getElementById('humBizOnly').checked;b.storeName=document.getElementById('storeName').value||'우리 매장';const ow=document.getElementById('owmKey').value;if(ow)b.owmKey=ow;await fetch(q('/api/config'),{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(b)});document.getElementById('owmKey').value='';alert('저장됨');load()};
 document.getElementById('geocode').onclick=async()=>{const a=document.getElementById('address').value.trim();if(!a){alert('주소를 입력하세요');return}const loc=document.getElementById('loc');loc.textContent='위치 찾는 중…';const url='/api/geocode?q='+encodeURIComponent(a)+(T?'&t='+T:'');const j=await(await fetch(url)).json();if(j.ok){await fetch(q('/api/config'),{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({address:a,lat:j.lat,lon:j.lon})});loc.textContent='✓ 설정됨: '+j.name;load()}else{loc.textContent='✗ '+(j.error||'주소를 못 찾음')}};
 document.getElementById('saveSched').onclick=async()=>{const hours=[];document.querySelectorAll('#daysBox .dayrow').forEach(function(row){var d=+row.dataset.d;hours[d]={closed:row.querySelector('.dClosed').checked,open:row.querySelector('.dOpen').value||'09:00',close:row.querySelector('.dClose').value||'00:00'};});const b={useSchedule:document.getElementById('useSchedule').checked,preheatMinutes:Number(document.getElementById('preheatMinutes').value)||60,hours:hours};await fetch(q('/api/config'),{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(b)});alert('영업시간 저장됨');load()};
 function typeLabel(t){const m={SensorTh:'온습도계',SensorTh2:'온습도계',IrAirconditioner:'에어컨(IR)',IrFan:'선풍기(IR)',IrTv:'TV(IR)',Plug:'플러그',SmartPlug:'플러그',Curtain:'커튼',Lightbulb:'전구',IrDIY:'IR리모컨'};return t?(' · '+(m[t]||t)):'';}
