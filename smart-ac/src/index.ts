@@ -517,7 +517,9 @@ function renderUI(token: string): string {
   .modal2{position:fixed;inset:0;background:var(--bg);z-index:60;overflow:auto}
   .modal2 .inner{max-width:480px;margin:0 auto;padding:max(16px,env(safe-area-inset-top)) 16px calc(32px + env(safe-area-inset-bottom))}
   .topbar{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
-  .gearbtn{flex:0 0 auto;border:0;background:var(--card);color:var(--label);width:44px;height:44px;border-radius:50%;cursor:pointer;box-shadow:0 1px 3px rgba(0,0,0,.06);margin-top:8px;display:flex;align-items:center;justify-content:center}
+  .titlerow{display:flex;align-items:center;justify-content:space-between;gap:10px}
+  .titlerow h1{flex:1;min-width:0}
+  .gearbtn{flex:0 0 auto;border:0;background:none;color:var(--label);width:40px;height:40px;padding:0;cursor:pointer;margin-top:6px;display:flex;align-items:center;justify-content:flex-end}
   .gearbtn:active{opacity:.6}
   .card{background:var(--card);border-radius:18px;box-shadow:0 1px 3px rgba(0,0,0,.04)}
   #sparkBox svg{width:100%;height:auto;display:block}
@@ -613,7 +615,7 @@ function renderUI(token: string): string {
     body{max-width:none;padding:max(6px,env(safe-area-inset-top)) max(14px,env(safe-area-inset-right)) max(6px,env(safe-area-inset-bottom)) max(14px,env(safe-area-inset-left))}
     h1{font-size:20px}
     #title{margin:2px 0 0!important}
-    .gearbtn{width:38px;height:38px}
+    .gearbtn{width:38px;height:38px;margin-top:1px}
     .dash{display:grid;grid-template-columns:1fr 1.15fr;gap:10px;align-items:stretch}
     .cL{display:flex;flex-direction:column}
     .hero{flex:1;margin-bottom:0;padding:10px 14px;display:flex;flex-direction:column;justify-content:center}
@@ -659,10 +661,10 @@ function renderUI(token: string): string {
   .dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:5px;vertical-align:1px}
   pre{white-space:pre-wrap;word-break:break-all;font-size:11px;color:var(--sec);background:var(--field);border-radius:12px;padding:12px;margin:8px 0 0}
 </style></head><body>
-<div class="topbar">
-  <div><h1 id="title" style="margin:8px 0 2px">우리 매장</h1><div style="color:var(--sec);font-size:14px">실내 환경 자동관리 <span id="sched" class="schedpill"></span></div></div>
-  <button id="gear" class="gearbtn" aria-label="설정"><svg viewBox="0 0 24 24" width="23" height="23" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button>
-</div>
+<div class="topbar"><div style="flex:1;min-width:0">
+  <div class="titlerow"><h1 id="title" style="margin:8px 0 2px">우리 매장</h1><button id="gear" class="gearbtn" aria-label="설정"><svg viewBox="0 0 24 24" width="23" height="23" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button></div>
+  <div style="color:var(--sec);font-size:14px">실내 환경 자동관리 <span id="sched" class="schedpill"></span></div>
+</div></div>
 <div style="height:8px"></div>
 
 <div class="dash"><div class="cL">
