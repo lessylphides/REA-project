@@ -838,19 +838,36 @@ async function drawChart(){
   box.innerHTML=svgChart(d,col);
   const last=d[d.length-1];document.getElementById('chartNote').textContent='최근 '+histRange+'시간 · '+d.length+'개 기록 · 지금 '+last.temp.toFixed(1)+'℃'+(last.hum!=null?' · 습도 '+last.hum+'%':'');
 }
-function sparkSvg(d,blue){
-  const W=440,H=56,p=4;const temps=d.map(x=>x.temp);let lo=Math.min.apply(null,temps),hi=Math.max.apply(null,temps);if(hi-lo<2)hi=lo+2;
-  const t0=d[0].t,t1=d[d.length-1].t;const X=t=>p+(t1===t0?0:(t-t0)/(t1-t0))*(W-2*p);const Y=v=>p+(1-(v-lo)/(hi-lo))*(H-2*p);
+// 영업시간 판단 (서버 engine.isOpenAt 과 같은 규칙, 한국시간 기준)
+function hmM(x){var a=String(x||'0:0').split(':');return (+a[0]||0)*60+(+a[1]||0)}
+function openAtKST(H,t){var k=new Date(t+9*3600e3),day=k.getUTCDay(),m=k.getUTCHours()*60+k.getUTCMinutes(),d=H[day];
+  if(d&&!d.closed){var o=hmM(d.open),c=hmM(d.close);if(c>o){if(m>=o&&m<c)return true}else if(m>=o)return true}
+  var pv=H[(day+6)%7];if(pv&&!pv.closed){var o2=hmM(pv.open),c2=hmM(pv.close);if(c2<=o2&&m<c2)return true}return false}
+function kstHM(t){var k=new Date(t+9*3600e3);return String(k.getUTCHours()).padStart(2,'0')+':'+String(k.getUTCMinutes()).padStart(2,'0')}
+/** t0~t1 사이 영업 구간 [{a,b}]과 전환 시점 [{t,open}] */
+function bizSegments(H,t0,t1){if(!H||H.length!==7)return null;var st=5*60000,segs=[],marks=[],cur=openAtKST(H,t0),start=cur?t0:null;
+  for(var t=Math.ceil(t0/st)*st;t<=t1;t+=st){var o=openAtKST(H,t);if(o!==cur){marks.push({t:t,open:o});if(o)start=t;else{segs.push({a:start,b:t});start=null}cur=o}}
+  if(cur)segs.push({a:start,b:t1});return {segs:segs,marks:marks}}
+function sparkSvg(d,blue,biz){
+  const W=440,H=68,p=4,top=14;const temps=d.map(x=>x.temp);let lo=Math.min.apply(null,temps),hi=Math.max.apply(null,temps);if(hi-lo<2)hi=lo+2;
+  const t0=d[0].t,t1=d[d.length-1].t;const X=t=>p+(t1===t0?0:(t-t0)/(t1-t0))*(W-2*p);const Y=v=>top+(1-(v-lo)/(hi-lo))*(H-top-p);
   const path=d.map((x,i)=>(i?'L':'M')+X(x.t).toFixed(1)+' '+Y(x.temp).toFixed(1)).join(' ');
   const area=path+' L '+X(t1).toFixed(1)+' '+(H-p)+' L '+X(t0).toFixed(1)+' '+(H-p)+' Z';
-  return '<svg viewBox="0 0 '+W+' '+H+'" style="width:100%;height:auto;display:block"><path d="'+area+'" fill="'+blue+'" opacity="0.08"/><path d="'+path+'" fill="none" stroke="'+blue+'" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/></svg>';
+  let bg='',mk='';
+  if(biz){const css=getComputedStyle(document.documentElement),green=css.getPropertyValue('--green').trim()||'#34c759',sec=css.getPropertyValue('--sec').trim()||'#8e8e93';
+    biz.segs.forEach(function(g){bg+='<rect x="'+X(g.a).toFixed(1)+'" y="'+top+'" width="'+Math.max(0,X(g.b)-X(g.a)).toFixed(1)+'" height="'+(H-top-p)+'" fill="'+green+'" opacity="0.10"/>';});
+    biz.marks.forEach(function(m){const x=X(m.t),anc=x<60?'start':(x>W-60?'end':'middle');
+      mk+='<line x1="'+x.toFixed(1)+'" y1="'+(top-1)+'" x2="'+x.toFixed(1)+'" y2="'+(H-p)+'" stroke="'+(m.open?green:sec)+'" stroke-width="1" stroke-dasharray="2 2" opacity="0.8"/>'
+        +'<text x="'+x.toFixed(1)+'" y="10" font-size="10" text-anchor="'+anc+'" fill="'+(m.open?green:sec)+'">'+(m.open?'오픈 ':'마감 ')+kstHM(m.t)+'</text>';});}
+  return '<svg viewBox="0 0 '+W+' '+H+'" style="width:100%;height:auto;display:block">'+bg+'<path d="'+area+'" fill="'+blue+'" opacity="0.08"/><path d="'+path+'" fill="none" stroke="'+blue+'" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>'+mk+'</svg>';
 }
-function drawSpark(all){
+function drawSpark(all,cfg){
   const box=document.getElementById('sparkBox'),meta=document.getElementById('sparkMeta');
   const cut=Date.now()-24*3600*1000;const d=(all||[]).filter(p=>p.t>=cut);
   if(d.length<2){box.innerHTML='<div class="mini" style="padding:10px 0">기록을 쌓는 중… (10분마다 한 점)</div>';meta.textContent='';return}
   const blue=getComputedStyle(document.documentElement).getPropertyValue('--blue').trim()||'#0a84ff';
-  box.innerHTML=sparkSvg(d,blue);const t=d.map(p=>p.temp);
+  const biz=(cfg&&cfg.useSchedule!==false)?bizSegments(cfg.hours,d[0].t,d[d.length-1].t):null;
+  box.innerHTML=sparkSvg(d,blue,biz);const t=d.map(p=>p.temp);
   meta.textContent='최저 '+Math.min.apply(null,t).toFixed(0)+'℃ · 최고 '+Math.max.apply(null,t).toFixed(0)+'℃';
 }
 function openChart(){document.getElementById('chartModal').style.display='flex';drawChart()}
@@ -943,7 +960,7 @@ function fitLock(){var d=document.documentElement;d.classList.remove('lock');if(
 window.addEventListener('resize',fitLock);window.addEventListener('orientationchange',function(){window.scrollTo(0,0);setTimeout(fitLock,300);setTimeout(fitLock,800)});
 async function load(){
   const [s,pv,hist]=await Promise.all([fetch(q('/api/status')).then(r=>r.json()),fetch(q('/api/preview')).then(r=>r.json()).catch(()=>null),fetch(q('/api/history')).then(r=>r.json()).catch(()=>[])]);
-  lastPv=pv;drawSpark(hist);curAcOn=(s.acOn===false)?false:true;applyAcUI();
+  lastPv=pv;drawSpark(hist,s.config);curAcOn=(s.acOn===false)?false:true;applyAcUI();
   bizNext=pv&&pv.nextTransition?pv.nextTransition:null;bizState=pv?pv.scheduleState:'';updateClock();
   const c=s.config;
   // 설정값 채우기
