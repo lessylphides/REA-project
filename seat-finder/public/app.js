@@ -24,7 +24,7 @@ try {
 }
 
 const scene = new THREE.Scene();
-const camera = new THREE.PerspectiveCamera(32, 1, 0.1, 200);
+const camera = new THREE.PerspectiveCamera(32, 1, 0.05, 200);
 const R = LAYOUT.room;
 const center = new THREE.Vector3(R.w / 2, 0.4, R.d / 2);
 
@@ -103,6 +103,13 @@ scene.add(sun, sun.target);
 // ───────── 방 (벽/바닥) ─────────
 const roomGroup = new THREE.Group();
 scene.add(roomGroup);
+// 1인칭에서만 보이는 것(앞/오른쪽 높은 벽, 천장)
+const fpGroup = new THREE.Group();
+fpGroup.visible = false;
+scene.add(fpGroup);
+// 1인칭 이동 때 부딪히는 물체 (회전된 사각형)
+const obstacles = [];
+const addObstacle = (x, z, hw, hd, deg = 0) => obstacles.push({ x, z, hw, hd, deg });
 
 function plankTexture() {
   const c = document.createElement("canvas");
@@ -179,6 +186,34 @@ function buildRoom() {
     wallSeg("x", -T / 2, R.w + T / 2, low, R.d + T / 2);
   }
   wallSeg("z", -T / 2, R.d + T / 2, low, R.w + T / 2);
+  buildInsideShell(T);
+}
+
+/** 1인칭용: 앞/오른쪽 벽을 천장까지 + 천장 + 유리문 (위에서 볼 땐 숨김) */
+function buildInsideShell(T) {
+  const H = R.wallH, o = { outline: 0.02, shadow: false };
+  const zF = R.d + T / 2, xR = R.w + T / 2;
+  const door = LAYOUT.door?.wall === "front" ? LAYOUT.door : null;
+  const front = (x0, x1, y0, y1) => {
+    if (x1 - x0 > 0.01) mk(box(x1 - x0, y1 - y0, T), R.wall, [(x0 + x1) / 2, (y0 + y1) / 2, zF], fpGroup, o);
+  };
+  if (door) {
+    const dh = 2.2;
+    front(-T / 2, door.x - door.w / 2, 0, H);
+    front(door.x + door.w / 2, R.w + T / 2, 0, H);
+    front(door.x - door.w / 2, door.x + door.w / 2, dh, H);
+    const glass = toon("#cfeaf5", { transparent: true, opacity: 0.45 });
+    mk(box(door.w, dh, 0.03), glass, [door.x, dh / 2, zF], fpGroup, { outline: 0, shadow: false });
+    mk(box(0.06, dh, 0.08), "#5a4a40", [door.x, dh / 2, zF], fpGroup, { outline: 0, shadow: false });
+    mk(box(door.w + 0.12, 0.08, 0.1), "#5a4a40", [door.x, dh, zF], fpGroup, { outline: 0, shadow: false });
+  } else front(-T / 2, R.w + T / 2, 0, H);
+  mk(box(T, H, R.d + T), R.wall, [xR, H / 2, R.d / 2], fpGroup, o);
+  mk(box(R.w, 0.9, 0.02), R.accent, [R.w / 2, 0.45, R.d + 0.01], fpGroup, { outline: 0, shadow: false });
+  mk(box(0.02, 0.9, R.d), R.accent, [R.w - 0.01, 0.45, R.d / 2], fpGroup, { outline: 0, shadow: false });
+  // 천장(조명 영향 없이 밝게) + 나무 들보
+  mk(box(R.w + T * 2, 0.08, R.d + T * 2), new THREE.MeshBasicMaterial({ color: "#f8efe2" }), [R.w / 2, H + 0.04, R.d / 2], fpGroup, { outline: 0, shadow: false });
+  const beam = new THREE.MeshBasicMaterial({ color: "#d8b48e" });
+  for (let x = 2; x < R.w; x += 3) mk(box(0.18, 0.14, R.d), beam, [x, H - 0.07, R.d / 2], fpGroup, { outline: 0.015, shadow: false });
 }
 
 // ───────── 소품 ─────────
@@ -189,6 +224,7 @@ function buildProps() {
     g.rotation.y = THREE.MathUtils.degToRad(-(p.rot || 0));
     roomGroup.add(g);
     if (p.type === "counter") {
+      addObstacle(p.x, p.z, p.w / 2, p.d / 2, p.rot);
       mk(box(p.w, 1.0, p.d), "#f3e3cf", [0, 0.5, 0], g);
       mk(box(p.w + 0.1, 0.07, p.d + 0.1), COLOR.woodDark, [0, 1.03, 0], g);
       mk(box(p.w, 0.3, 0.04), R.accent, [0, 0.25, p.d / 2 + 0.01], g, { outline: 0 });
@@ -211,6 +247,7 @@ function buildProps() {
         }
       }
     } else if (p.type === "plant") {
+      addObstacle(p.x, p.z, 0.3, 0.3);
       mk(cyl(0.22, 0.17, 0.4, 16), "#d98b5f", [0, 0.2, 0], g);
       const leaf = "#6bbf7a";
       mk(new THREE.SphereGeometry(0.32, 16, 12), leaf, [0, 0.72, 0], g, { outline: 0.02 });
@@ -315,6 +352,13 @@ function addSeat(id, x, z, angle, kind) {
   const guest = makeGuest(id, seatY);
   g.add(guest);
 
+  // 1인칭에서 빈자리 위에 뜨는 초록 표시(게임 목표 지점처럼)
+  const pin = new THREE.Mesh(new THREE.OctahedronGeometry(0.09, 0), new THREE.MeshBasicMaterial({ color: COLOR.empty }));
+  pin.scale.y = 1.5;
+  pin.position.y = kind === "stool" ? 1.45 : 1.2;
+  pin.visible = false;
+  g.add(pin);
+
   const hb = new THREE.Mesh(box(0.6, 1.4, 0.6), hitMat);
   hb.position.y = 0.7;
   hb.userData.seatId = id;
@@ -322,7 +366,7 @@ function addSeat(id, x, z, angle, kind) {
   g.add(hb);
   hitboxes.push(hb);
 
-  seats.set(id, { id, group: g, cushion, ring, disc, guest, occupied: false, anim: 0, target: 0, bump: 0 });
+  seats.set(id, { id, group: g, cushion, ring, disc, guest, pin, pinY: pin.position.y, occupied: false, anim: 0, target: 0, bump: 0 });
 }
 
 function rotXZ(x, z, deg) {
@@ -338,6 +382,8 @@ function buildTables() {
     roomGroup.add(g);
     const H = 0.74;
     const local = []; // [x, z] 테이블 기준 의자 위치
+    if (t.shape === "round") addObstacle(t.x, t.z, t.r, t.r, t.rot);
+    else addObstacle(t.x, t.z, t.w / 2, t.d / 2, t.rot);
     if (t.shape === "round") {
       mk(cyl(t.r, t.r, 0.05, 32), "#f1dcc2", [0, H, 0], g);
       mk(cyl(0.04, 0.04, H, 10), COLOR.woodDark, [0, H / 2, 0], g, { outline: 0.012 });
@@ -381,6 +427,7 @@ function buildTables() {
     g.position.set(b.x, 0, b.z);
     g.rotation.y = THREE.MathUtils.degToRad(-(b.rot || 0));
     roomGroup.add(g);
+    addObstacle(b.x, b.z, b.length / 2, 0.3, b.rot);
     mk(box(b.length, 1.0, 0.45), "#f3e3cf", [0, 0.5, -0.05], g);
     mk(box(b.length + 0.1, 0.06, 0.6), COLOR.woodDark, [0, 1.03, 0], g);
     const label = textSprite(b.id, { size: 0.26 });
@@ -414,17 +461,34 @@ async function loadModel() {
 
 // ───────── 카메라 / 조작 ─────────
 let controls;
-function fitCamera() {
-  const w = host.clientWidth, h = host.clientHeight;
-  camera.aspect = w / h;
-  camera.updateProjectionMatrix();
-  renderer.setSize(w, h);
+const OVERVIEW_FOV = 32;
+camera.rotation.order = "YXZ";
+
+/** 위에서 내려다보는 기본 시점 위치 */
+function overviewPose() {
   const radius = Math.hypot(R.w, R.d) / 2;
   const vfov = THREE.MathUtils.degToRad(camera.fov);
   const hfov = 2 * Math.atan(Math.tan(vfov / 2) * camera.aspect);
   const dist = (radius / Math.sin(Math.min(vfov, hfov) / 2)) * (camera.aspect < 1 ? 1.05 : 0.9);
   const dir = new THREE.Vector3(0.38, 1.15, 1).normalize();
-  camera.position.copy(center).addScaledVector(dir, dist);
+  const pos = center.clone().addScaledVector(dir, dist);
+  const quat = new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().lookAt(pos, center, camera.up));
+  return { pos, quat, dist };
+}
+
+function fitCamera() {
+  const w = host.clientWidth, h = host.clientHeight;
+  camera.aspect = w / h;
+  renderer.setSize(w, h);
+  if (walk.on || walk.tween) {
+    if (walk.on) camera.fov = walkFov();
+    camera.updateProjectionMatrix();
+    return;
+  }
+  camera.fov = OVERVIEW_FOV;
+  camera.updateProjectionMatrix();
+  const { pos, dist } = overviewPose();
+  camera.position.copy(pos);
   controls.target.copy(center);
   controls.maxDistance = dist * 1.6;
   controls.minDistance = dist * 0.3;
@@ -508,12 +572,12 @@ setInterval(renderUpdated, 1000);
 let token = store.get("seat-admin-token");
 let inflight = 0;
 
-function toast(msg) {
+function toast(msg, ms = 1400) {
   const t = $("toast");
   t.textContent = msg;
   t.classList.add("show");
   clearTimeout(toast.t);
-  toast.t = setTimeout(() => t.classList.remove("show"), 1400);
+  toast.t = setTimeout(() => t.classList.remove("show"), ms);
 }
 
 async function api(path, body) {
@@ -607,12 +671,26 @@ function seatAt(ev) {
 }
 function bindPointer() {
   const el = renderer.domElement;
-  el.addEventListener("pointerdown", (e) => { down = { x: e.clientX, y: e.clientY, t: performance.now() }; });
+  el.addEventListener("pointerdown", (e) => {
+    down = { x: e.clientX, y: e.clientY, t: performance.now() };
+    if (walk.on) { walk.look = { id: e.pointerId, x: e.clientX, y: e.clientY }; el.setPointerCapture?.(e.pointerId); }
+  });
+  el.addEventListener("pointermove", (e) => {
+    const L = walk.look;
+    if (!walk.on || !L || L.id !== e.pointerId) return;
+    const k = e.pointerType === "touch" ? 0.0065 : 0.004;
+    walk.yaw -= (e.clientX - L.x) * k;
+    walk.pitch = THREE.MathUtils.clamp(walk.pitch - (e.clientY - L.y) * k, -1.1, 0.9);
+    L.x = e.clientX; L.y = e.clientY;
+  });
+  const endLook = (e) => { if (walk.look?.id === e.pointerId) walk.look = null; };
+  el.addEventListener("pointercancel", endLook);
   el.addEventListener("pointerup", (e) => {
     if (!down) return;
     const moved = Math.hypot(e.clientX - down.x, e.clientY - down.y);
     const quick = performance.now() - down.t < 600;
     down = null;
+    endLook(e);
     if (moved > 8 || !quick) return;
     if (!document.body.classList.contains("admin")) return; // 손님은 자리를 바꿀 수 없음
     const id = seatAt(e);
@@ -622,6 +700,220 @@ function bindPointer() {
     if (e.pointerType !== "mouse" || !document.body.classList.contains("admin")) return;
     el.style.cursor = seatAt(e) ? "pointer" : "";
   });
+}
+
+// ───────── 1인칭 (매장 안 걸어 다니기) ─────────
+const EYE = 1.55; // 눈높이(m)
+const PR = 0.28; // 몸 반지름(m)
+const IS_TOUCH = matchMedia("(pointer: coarse)").matches;
+const walk = {
+  on: false, tween: null, look: null,
+  pos: new THREE.Vector3(), yaw: 0, pitch: -0.1,
+  keys: new Set(), joy: { x: 0, y: 0 }, bob: 0, aimId: null, frame: 0,
+};
+const walkFov = () => (camera.aspect < 1 ? 78 : 64);
+
+function collide(p) {
+  p.x = THREE.MathUtils.clamp(p.x, PR, R.w - PR);
+  p.z = THREE.MathUtils.clamp(p.z, PR, R.d - PR);
+  for (const o of obstacles) {
+    const [lx, lz] = rotXZ(p.x - o.x, p.z - o.z, -o.deg);
+    const hw = o.hw + PR, hd = o.hd + PR;
+    if (Math.abs(lx) >= hw || Math.abs(lz) >= hd) continue;
+    let nx = lx, nz = lz;
+    if (hw - Math.abs(lx) < hd - Math.abs(lz)) nx = Math.sign(lx || 1) * hw;
+    else nz = Math.sign(lz || 1) * hd;
+    const [wx, wz] = rotXZ(nx, nz, o.deg);
+    p.x = o.x + wx;
+    p.z = o.z + wz;
+  }
+}
+
+const eulerQuat = (pitch, yaw) => new THREE.Quaternion().setFromEuler(new THREE.Euler(pitch, yaw, 0, "YXZ"));
+const ease = (t) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
+
+function flyTo(pos, quat, fov, dur, onDone, onProgress) {
+  walk.tween = {
+    t: 0, dur, onDone, onProgress,
+    p0: camera.position.clone(), p1: pos,
+    q0: camera.quaternion.clone(), q1: quat,
+    f0: camera.fov, f1: fov,
+  };
+}
+
+function enterWalk() {
+  if (walk.on || walk.tween) return;
+  const door = LAYOUT.door?.wall === "front" ? LAYOUT.door : null;
+  walk.pos.set(door ? door.x : R.w / 2, 0, R.d - 0.75);
+  collide(walk.pos);
+  walk.yaw = Math.atan2(-(center.x - walk.pos.x), -(center.z - walk.pos.z));
+  walk.pitch = -0.12;
+  controls.enabled = false;
+  document.body.classList.add("walking");
+  flyTo(new THREE.Vector3(walk.pos.x, EYE, walk.pos.z), eulerQuat(walk.pitch, walk.yaw), walkFov(), 1.6,
+    () => { walk.on = true; showWalkHint(); },
+    (t) => { fpGroup.visible = t > 0.82; });
+}
+
+function exitWalk() {
+  if (!walk.on) return;
+  walk.on = false;
+  walk.look = null;
+  walk.keys.clear();
+  setAim(null);
+  fpGroup.visible = false;
+  document.body.classList.remove("walking");
+  const { pos, quat } = overviewPose();
+  flyTo(pos, quat, OVERVIEW_FOV, 1.3, () => {
+    controls.enabled = true;
+    controls.target.copy(center);
+    fitCamera();
+  });
+}
+
+function showWalkHint() {
+  toast(IS_TOUCH ? "왼쪽 동그라미로 걷고\n화면을 밀어서 둘러보세요" : "W A S D 로 걷고\n마우스를 끌어서 둘러보세요", 3200);
+}
+
+function updateWalk(dt, time) {
+  const tw = walk.tween;
+  if (tw) {
+    tw.t = Math.min(1, tw.t + dt / tw.dur);
+    const e = ease(tw.t);
+    camera.position.lerpVectors(tw.p0, tw.p1, e);
+    camera.quaternion.slerpQuaternions(tw.q0, tw.q1, e);
+    camera.fov = THREE.MathUtils.lerp(tw.f0, tw.f1, e);
+    camera.updateProjectionMatrix();
+    tw.onProgress?.(tw.t);
+    if (tw.t >= 1) { walk.tween = null; tw.onDone?.(); }
+    return;
+  }
+  if (!walk.on) return;
+
+  const k = walk.keys;
+  if (k.has("arrowleft")) walk.yaw += dt * 1.8;
+  if (k.has("arrowright")) walk.yaw -= dt * 1.8;
+  let f = (k.has("w") || k.has("arrowup") ? 1 : 0) - (k.has("s") || k.has("arrowdown") ? 1 : 0) - walk.joy.y;
+  let r = (k.has("d") ? 1 : 0) - (k.has("a") ? 1 : 0) + walk.joy.x;
+  const mag = Math.hypot(f, r);
+  if (mag > 1) { f /= mag; r /= mag; }
+  const speed = (k.has("shift") ? 2.6 : 1.5) * dt;
+  const sy = Math.sin(walk.yaw), cy = Math.cos(walk.yaw);
+  walk.pos.x += (-sy * f + cy * r) * speed;
+  walk.pos.z += (-cy * f - sy * r) * speed;
+  collide(walk.pos);
+
+  const moving = Math.min(1, Math.hypot(f, r));
+  walk.bob += dt * 9 * moving;
+  camera.position.set(walk.pos.x, EYE + Math.sin(walk.bob) * 0.025 * moving, walk.pos.z);
+  camera.rotation.set(walk.pitch, walk.yaw, Math.sin(walk.bob * 0.5) * 0.004 * moving);
+
+  if (++walk.frame % 4 === 0) {
+    ray.setFromCamera(ndc.set(0, 0), camera);
+    ray.far = 4.5;
+    const hit = ray.intersectObjects(hitboxes, false)[0];
+    ray.far = Infinity;
+    setAim(hit?.object.userData.seatId || null);
+    drawMinimap();
+  }
+}
+
+function setAim(id) {
+  const el = $("aim");
+  walk.aimId = id;
+  document.body.classList.toggle("aiming", !!id);
+  if (!id) { el.className = "aim"; return; }
+  const occ = seats.get(id).occupied;
+  const admin = document.body.classList.contains("admin");
+  el.className = `aim show ${occ ? "busy" : "free"}`;
+  el.innerHTML = `<b>${id}</b> ${occ ? "사용 중" : "빈자리"}${admin ? `<small>${IS_TOUCH ? "자리를 눌러" : "E 키 / 클릭으로"} 바꾸기</small>` : ""}`;
+}
+
+// 미니맵 (오른쪽 아래)
+function drawMinimap() {
+  const c = $("minimap");
+  const W = c.clientWidth;
+  if (!W) return;
+  const dpr = Math.min(devicePixelRatio, 2);
+  const sc = W / (R.w + 0.6);
+  const H = (R.d + 0.6) * sc;
+  if (c.width !== Math.round(W * dpr)) { c.width = Math.round(W * dpr); c.height = Math.round(H * dpr); c.style.height = `${H}px`; }
+  const g = c.getContext("2d");
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  g.clearRect(0, 0, W, H);
+  g.translate(0.3 * sc, 0.3 * sc);
+  g.fillStyle = "#f6e6cf";
+  g.strokeStyle = "#4a3a31";
+  g.lineWidth = 2;
+  g.beginPath(); g.roundRect(0, 0, R.w * sc, R.d * sc, 4); g.fill(); g.stroke();
+  g.fillStyle = "#c9a37e";
+  for (const o of obstacles) {
+    g.save();
+    g.translate(o.x * sc, o.z * sc);
+    g.rotate(THREE.MathUtils.degToRad(o.deg || 0));
+    g.fillRect(-o.hw * sc, -o.hd * sc, o.hw * 2 * sc, o.hd * 2 * sc);
+    g.restore();
+  }
+  for (const s of seats.values()) {
+    g.fillStyle = s.occupied ? COLOR.busy : COLOR.empty;
+    g.beginPath(); g.arc(s.group.position.x * sc, s.group.position.z * sc, Math.max(2.5, 0.2 * sc), 0, Math.PI * 2); g.fill();
+  }
+  // 나 (시야 부채꼴 + 점)
+  const px = walk.pos.x * sc, pz = walk.pos.z * sc;
+  const ang = Math.atan2(-Math.cos(walk.yaw), -Math.sin(walk.yaw));
+  g.fillStyle = "rgba(80,140,230,.25)";
+  g.beginPath(); g.moveTo(px, pz); g.arc(px, pz, 2.6 * sc, ang - 0.55, ang + 0.55); g.closePath(); g.fill();
+  g.fillStyle = "#3d7fe0"; g.strokeStyle = "#fff"; g.lineWidth = 2;
+  g.beginPath(); g.arc(px, pz, 5, 0, Math.PI * 2); g.fill(); g.stroke();
+}
+
+function initWalk() {
+  $("walkBtn").addEventListener("click", enterWalk);
+  $("exitWalk").addEventListener("click", exitWalk);
+
+  addEventListener("keydown", (e) => {
+    if (!walk.on || e.target.closest?.("input, textarea")) return;
+    const key = e.key.toLowerCase();
+    if (key === "escape") return exitWalk();
+    if ((key === "e" || key === "enter" || key === " ") && walk.aimId && document.body.classList.contains("admin")) {
+      e.preventDefault();
+      toggleSeat(walk.aimId).then(() => setAim(walk.aimId));
+      return;
+    }
+    walk.keys.add(key);
+    if (key.startsWith("arrow") || key === " ") e.preventDefault();
+  });
+  addEventListener("keyup", (e) => walk.keys.delete(e.key.toLowerCase()));
+  addEventListener("blur", () => walk.keys.clear());
+
+  // 가상 조이스틱 (휴대폰)
+  const joy = $("joy"), knob = joy.querySelector("i");
+  let jid = null, jc = null;
+  const R0 = 44;
+  const move = (e) => {
+    let dx = e.clientX - jc.x, dy = e.clientY - jc.y;
+    const m = Math.hypot(dx, dy);
+    if (m > R0) { dx *= R0 / m; dy *= R0 / m; }
+    knob.style.transform = `translate(${dx}px, ${dy}px)`;
+    walk.joy.x = dx / R0;
+    walk.joy.y = dy / R0;
+  };
+  joy.addEventListener("pointerdown", (e) => {
+    jid = e.pointerId;
+    const r = joy.getBoundingClientRect();
+    jc = { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+    joy.setPointerCapture(e.pointerId);
+    move(e);
+  });
+  joy.addEventListener("pointermove", (e) => { if (e.pointerId === jid) move(e); });
+  const end = (e) => {
+    if (e.pointerId !== jid) return;
+    jid = null;
+    walk.joy.x = walk.joy.y = 0;
+    knob.style.transform = "";
+  };
+  joy.addEventListener("pointerup", end);
+  joy.addEventListener("pointercancel", end);
 }
 
 // ───────── 애니메이션 ─────────
@@ -651,13 +943,19 @@ function tick() {
     s.disc.material.opacity = glow * (0.15 + 0.15 * pulse);
     s.ring.scale.setScalar(1 + pulse * 0.08);
     s.ring.visible = s.disc.visible = glow > 0.01;
+    s.pin.visible = walk.on && glow > 0.5;
+    if (s.pin.visible) {
+      s.pin.rotation.y = time * 2;
+      s.pin.position.y = s.pinY + Math.sin(time * 3 + s.group.position.x) * 0.05;
+    }
     // 터치했을 때 의자 통통
     if (s.bump > 0) {
       s.bump = Math.max(0, s.bump - dt * 3);
       s.cushion.scale.y = 1 + Math.sin(s.bump * Math.PI) * 0.6;
     }
   }
-  controls.update();
+  updateWalk(dt, time);
+  if (!walk.on && !walk.tween) controls.update();
   renderer.render(scene, camera);
 }
 
@@ -694,6 +992,9 @@ async function main() {
     fitCamera();
     addEventListener("resize", fitCamera);
     bindPointer();
+    initWalk();
+    $("walkBtn").hidden = false;
+    if (new URLSearchParams(location.search).has("walk")) setTimeout(enterWalk, 400);
     renderer.setAnimationLoop(tick);
   } else {
     buildTablesHeadless();
