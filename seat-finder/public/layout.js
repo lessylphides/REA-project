@@ -13,12 +13,14 @@ export default {
   name: "우리 카페",
   model: null, // 예: "/models/store.glb"
 
-  // 가게 앞 모습 (첫 화면)
+  // 가게 앞 모습 (첫 화면) — 입구 사진 참고
   front: {
-    color: "#4f8a78", // 외벽 색
-    sign: "우리 카페", // 간판 글자 (없으면 name)
-    awning: ["#e9765f", "#fff6ea"], // 차양 줄무늬 색 2개
-    board: "오늘도 어서 오세요", // 입구 옆 입간판 글자
+    color: "#6e3426", // 벽돌 색
+    sign: "우리 카페", // 입구 옆 나무 명판 + 첫 화면 이름
+    number: "44", // 파란 번지판 숫자 (없애려면 null)
+    street: "", // 번지판 위 작은 글씨 (예: 도로명)
+    windowW: 2.6, // 문 왼쪽 쇼윈도 폭(m)
+    doorSign: ["COME IN  we're", "OPEN"], // 문에 걸린 팻말
   },
 
   room: {

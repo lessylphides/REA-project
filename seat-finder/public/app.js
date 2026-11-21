@@ -169,7 +169,8 @@ function popHeart(pos) {
 }
 
 // ───────── 조명 ─────────
-scene.add(new THREE.HemisphereLight("#fff6ea", "#c9a88a", 1.4));
+const hemi = new THREE.HemisphereLight("#fff6ea", "#c9a88a", 1.4);
+scene.add(hemi);
 const sun = new THREE.DirectionalLight("#fff1dc", 2.2);
 sun.position.set(R.w * 0.2, 12, R.d * 1.3);
 sun.target.position.copy(center);
@@ -308,106 +309,252 @@ function buildInsideShell(T) {
   for (let x = 2; x < R.w; x += 3) mk(box(0.18, 0.14, R.d), beam, [x, H - 0.07, R.d / 2], fpGroup, { outline: 0.015, shadow: false });
 }
 
-/** 가게 바깥 모습: 외벽, 간판, 차양, 쇼윈도, 화분, 입간판, 길 */
+/** 캔버스로 그린 텍스처 */
+function canvasTex(w, h, draw, repeat) {
+  const c = document.createElement("canvas");
+  c.width = w; c.height = h;
+  draw(c.getContext("2d"), w, h);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  if (repeat) { t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(repeat[0], repeat[1]); }
+  return t;
+}
+const flat = (map) => new THREE.MeshBasicMaterial({ map });
+const toonMap = (map) => new THREE.MeshToonMaterial({ map, gradientMap });
+
+/** 가게 바깥 모습 (사진 참고: 적갈색 세로 벽돌, 흰 테두리 쇼윈도, 유리문, 고래꼬리 조명) */
 function buildStorefront(T, door, dh) {
   const F = LAYOUT.front || {};
-  const H = R.wallH, zO = R.d + T + 0.012, no = { outline: 0, shadow: false };
-  const facade = F.color || "#4f8a78";
-  const fx = (x0, x1, y0, y1, color = facade) => {
-    if (x1 - x0 > 0.01) mk(box(x1 - x0, y1 - y0, 0.03), color, [(x0 + x1) / 2, (y0 + y1) / 2, zO], fpGroup, { outline: 0.015, shadow: false });
+  const H = R.wallH, zO = R.d + T + 0.012, no = { outline: 0, shadow: false }, ol = { outline: 0.015, shadow: false };
+  const top = H + 3.2; // 2층까지
+  const brickCol = F.color || "#6e3426";
+
+  // ── 벽돌 외벽 (세로로 긴 타일)
+  const brick = canvasTex(256, 256, (g, w, h) => {
+    g.fillStyle = "#3a1d16"; g.fillRect(0, 0, w, h);
+    for (let row = 0; row < 4; row++) {
+      for (let col = 0; col < 16; col++) {
+        const x = col * 16 + (row % 2) * 8, y = row * 64;
+        const v = ((col * 7 + row * 13) % 5) * 6;
+        g.fillStyle = `rgb(${110 + v},${50 + v / 2},${36 + v / 3})`;
+        g.fillRect(x + 1.5, y + 2, 13, 60);
+        g.fillStyle = "rgba(255,255,255,.07)"; g.fillRect(x + 1.5, y + 2, 3, 60);
+      }
+    }
+  });
+  const brickMat = (w, h) => { const t = brick.clone(); t.needsUpdate = true; t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(w / 1.1, h / 1.1); return toonMap(t); };
+  const wallPart = (x0, x1, y0, y1, d = 0.03, z = zO) => {
+    if (x1 - x0 < 0.01 || y1 - y0 < 0.01) return;
+    mk(box(x1 - x0, y1 - y0, d), brickMat(x1 - x0, y1 - y0), [(x0 + x1) / 2, (y0 + y1) / 2, z + d / 2], fpGroup, ol);
   };
-  const dl = door.x - door.w / 2 - 0.08, dr = door.x + door.w / 2 + 0.08;
-  const top = H + 2.6; // 2층까지 있는 건물처럼
-  fx(-T, dl, 0, top);
-  fx(dr, R.w + T, 0, top);
-  fx(dl, dr, dh + 0.08, top);
-  mk(box(R.w + T * 2 + 0.2, 0.16, 0.3), "#3f6f60", [R.w / 2, top + 0.02, zO + 0.1], fpGroup, { outline: 0.015, shadow: false });
-  mk(box(R.w + T * 2 + 0.1, 0.1, 0.18), "#fdf7ee", [R.w / 2, H + 0.85, zO + 0.06], fpGroup, { outline: 0.012, shadow: false });
-  // 2층 창문
-  const upN = Math.max(2, Math.round(R.w / 3));
-  for (let i = 0; i < upN; i++) {
-    const cx = (R.w / upN) * (i + 0.5);
-    mk(box(1.2, 1.0, 0.04), "#fdf7ee", [cx, H + 1.75, zO + 0.02], fpGroup, { outline: 0.015, shadow: false });
-    mk(box(1.04, 0.84, 0.04), toon("#bfe3f2"), [cx, H + 1.75, zO + 0.04], fpGroup, no);
-    mk(box(0.04, 0.84, 0.05), "#fdf7ee", [cx, H + 1.75, zO + 0.05], fpGroup, no);
-    mk(box(1.3, 0.06, 0.16), "#fdf7ee", [cx, H + 1.22, zO + 0.08], fpGroup, { outline: 0.012, shadow: false });
+
+  // 쇼윈도(문 왼쪽) + 문 = 흰 테두리 안쪽으로 들어간 입구
+  const winW = F.windowW ?? 2.6;
+  const opL = door.x - door.w / 2 - winW, opR = door.x + door.w / 2 + 0.05, opTop = 2.85;
+  wallPart(-T, opL - 0.1, 0, top);
+  wallPart(opR + 0.1, R.w + T, 0, top);
+  wallPart(opL - 0.1, opR + 0.1, opTop + 0.1, top);
+  // 입구 위 벽돌 처마 (살짝 튀어나옴)
+  wallPart(opL - 0.25, opR + 0.25, opTop + 0.1, opTop + 0.32, 0.22);
+  // 흰 테두리
+  const white = "#f4f1ec";
+  mk(box(opR - opL + 0.2, 0.1, 0.16), white, [(opL + opR) / 2, opTop + 0.05, zO + 0.04], fpGroup, ol);
+  mk(box(0.1, opTop, 0.16), white, [opL - 0.05, opTop / 2, zO + 0.04], fpGroup, ol);
+  mk(box(0.1, opTop, 0.16), white, [opR + 0.05, opTop / 2, zO + 0.04], fpGroup, ol);
+
+  // ── 쇼윈도
+  const wx = opL + winW / 2, wz = zO + 0.006; // 벽 바깥면 바로 앞
+  // 아래 패널 (분홍빛, 사선 무늬)
+  const panel = canvasTex(256, 128, (g, w, h) => {
+    g.fillStyle = "#f2d3cf"; g.fillRect(0, 0, w, h);
+    g.strokeStyle = "rgba(170,110,110,.25)"; g.lineWidth = 3;
+    for (let i = -h; i < w; i += 14) { g.beginPath(); g.moveTo(i, h); g.lineTo(i + h, 0); g.stroke(); }
+  });
+  mk(new THREE.PlaneGeometry(winW - 0.08, 0.92), flat(panel), [wx, 0.12 + 0.46, wz], fpGroup, no);
+  // 선반 + 주황 LED 줄조명 + 촛불
+  mk(box(winW - 0.06, 0.05, 0.16), "#2b2522", [wx, 1.06, wz + 0.08], fpGroup, ol);
+  mk(box(winW - 0.1, 0.03, 0.02), new THREE.MeshBasicMaterial({ color: "#ffad66" }), [wx, 1.02, wz + 0.15], fpGroup, no);
+  const glowStrip = mk(new THREE.PlaneGeometry(winW - 0.1, 0.35), new THREE.MeshBasicMaterial({ color: "#ff9a5c", transparent: true, opacity: 0.35, depthWrite: false }), [wx, 0.86, wz + 0.004], fpGroup, no);
+  glowStrip.renderOrder = 2;
+  for (let i = 0; i < 4; i++) {
+    const h = [0.16, 0.22, 0.12, 0.18][i];
+    mk(cyl(0.045, 0.045, h, 14), new THREE.MeshBasicMaterial({ color: "#ffd27a" }), [wx + 0.35 + i * 0.13, 1.09 + h / 2, wz + 0.08], fpGroup, { outline: 0.008, shadow: false });
   }
-  // 바닥과 길
-  const ground = mk(new THREE.CircleGeometry(45, 48), "#e2d8c6", [R.w / 2, -0.125, R.d / 2], fpGroup, no);
+  // 유리 너머 따뜻한 실내 + 블라인드
+  const blinds = (rows) => canvasTex(256, 256, (g, w, h) => {
+    const grd = g.createLinearGradient(0, 0, 0, h);
+    grd.addColorStop(0, "#d9c7cf"); grd.addColorStop(1, "#b99aa8");
+    g.fillStyle = grd; g.fillRect(0, 0, w, h);
+    // 안쪽 사람/조명 실루엣
+    g.fillStyle = "rgba(60,40,60,.35)";
+    g.beginPath(); g.ellipse(w * 0.62, h * 0.82, 26, 40, 0, 0, Math.PI * 2); g.fill();
+    g.beginPath(); g.arc(w * 0.62, h * 0.6, 16, 0, Math.PI * 2); g.fill();
+    g.fillStyle = "rgba(80,150,200,.55)"; g.fillRect(w * 0.2, h * 0.45, 70, 40);
+    g.fillStyle = "rgba(255,210,150,.8)"; g.beginPath(); g.arc(w * 0.82, h * 0.18, 12, 0, Math.PI * 2); g.fill();
+    g.fillStyle = "rgba(255,255,255,.38)";
+    for (let y = 0; y < h; y += h / rows) g.fillRect(0, y, w, h / rows * 0.55);
+  });
+  mk(new THREE.PlaneGeometry(winW - 0.1, 1.15), flat(blinds(26)), [wx, 1.72, wz], fpGroup, no);
+  mk(new THREE.PlaneGeometry(winW - 0.1, 0.5), flat(blinds(12)), [wx, 2.55, wz], fpGroup, no);
+  // 창틀 (흰색)
+  
+  mk(box(winW, 0.07, 0.06), white, [wx, 2.3, zO + 0.03], fpGroup, ol);
+  mk(box(0.07, opTop, 0.06), white, [opL + winW, opTop / 2, zO + 0.03], fpGroup, ol);
+  // 유리 반사
+  const shine = new THREE.MeshBasicMaterial({ color: "#ffffff", transparent: true, opacity: 0.22, depthWrite: false });
+  mk(box(0.12, 1.0, 0.005), shine, [wx - winW * 0.25, 1.72, zO + 0.04], fpGroup, no).rotation.z = 0.5;
+
+  // ── 문 위: 작은 창 + 환풍기
+  mk(box(door.w + 0.1, 0.06, 0.06), white, [door.x, dh + 0.02, zO + 0.03], fpGroup, ol);
+  mk(new THREE.PlaneGeometry(door.w * 0.55, 0.42), flat(blinds(6)), [door.x - door.w * 0.2, dh + 0.33, wz], fpGroup, no);
+  const fan = canvasTex(128, 128, (g) => {
+    g.fillStyle = "#e9e6e1"; g.beginPath(); g.arc(64, 64, 60, 0, Math.PI * 2); g.fill();
+    g.strokeStyle = "#555"; g.lineWidth = 6; g.beginPath(); g.arc(64, 64, 48, 0, Math.PI * 2); g.stroke();
+    g.lineWidth = 4; for (let a = 0; a < 6; a++) { g.beginPath(); g.moveTo(64, 64); g.lineTo(64 + Math.cos(a) * 44, 64 + Math.sin(a) * 44); g.stroke(); }
+  });
+  mk(new THREE.PlaneGeometry(0.42, 0.42), toon("#e9e6e1"), [door.x + door.w * 0.3, dh + 0.33, wz], fpGroup, no);
+  const fanMesh = mk(new THREE.PlaneGeometry(0.4, 0.4), new THREE.MeshBasicMaterial({ map: fan, transparent: true }), [door.x + door.w * 0.3, dh + 0.33, wz + 0.01], fpGroup, no);
+  steamFan = fanMesh;
+
+  // ── 문에 거는 팻말
+  const openSign = canvasTex(256, 160, (g, w, h) => {
+    g.fillStyle = "#f7efe2"; g.fillRect(0, 0, w, h);
+    g.strokeStyle = "#2b2522"; g.lineWidth = 6; g.strokeRect(3, 3, w - 6, h - 6);
+    g.fillStyle = "#c8392b"; g.font = "800 30px sans-serif"; g.textAlign = "center"; g.fillText(F.doorSign?.[0] ?? "COME IN  we're", w / 2, 50);
+    g.fillStyle = "#2b2522"; g.font = "900 64px Georgia, serif"; g.fillText(F.doorSign?.[1] ?? "OPEN", w / 2, 122);
+  });
+  doorSign = mk(new THREE.PlaneGeometry(0.34, 0.21), flat(openSign), [0, 1.45, 0.03], doorPanels[0]?.g || fpGroup, no);
+
+  // ── 오른쪽 기둥: 번지판 + 나무 명판
+  const px = opR + 0.55;
+  if (F.number) {
+    const plate = canvasTex(256, 200, (g, w, h) => {
+      g.fillStyle = "#1f4fa3"; g.beginPath(); g.roundRect(4, 4, w - 8, h - 8, 26); g.fill();
+      g.strokeStyle = "#fff"; g.lineWidth = 5; g.beginPath(); g.roundRect(12, 12, w - 24, h - 24, 20); g.stroke();
+      g.fillStyle = "#fff"; g.textAlign = "center";
+      g.font = "700 26px sans-serif"; g.fillText(F.street || "", w / 2, 58);
+      g.font = "800 96px sans-serif"; g.fillText(F.number, w / 2, 160);
+    });
+    mk(new THREE.PlaneGeometry(0.42, 0.33), flat(plate), [px, 2.25, zO + 0.04], fpGroup, no);
+  }
+  const wood = canvasTex(128, 128, (g, w, h) => {
+    g.fillStyle = "#c9a57c"; g.fillRect(0, 0, w, h);
+    g.strokeStyle = "rgba(120,80,40,.25)"; g.lineWidth = 2;
+    for (let y = 8; y < h; y += 11) { g.beginPath(); g.moveTo(0, y); g.bezierCurveTo(40, y + 4, 80, y - 4, w, y + 2); g.stroke(); }
+    g.fillStyle = "#4a3a31"; g.font = "700 18px sans-serif"; g.textAlign = "center"; g.fillText(F.sign || "", w / 2, h / 2 + 6);
+  });
+  mk(box(0.48, 0.42, 0.03), toonMap(wood), [px, 1.72, zO + 0.03], fpGroup, ol);
+
+  // ── 바닥: 한 칸 올라간 입구 턱, 보도, 도로(노란 선)
+  const ground = mk(new THREE.CircleGeometry(45, 48), "#3b3b3d", [R.w / 2, -0.125, R.d / 2], fpGroup, no);
   ground.rotation.x = -Math.PI / 2;
   ground.receiveShadow = true;
-  const walkway = mk(box(R.w + 8, 0.05, 3.4), "#cfc3ae", [R.w / 2, -0.1, R.d + T + 1.7], fpGroup, no);
-  walkway.receiveShadow = true;
-  for (let x = -4; x < R.w + 4; x += 1.2) mk(box(0.03, 0.052, 3.4), "#bfb29b", [x, -0.1, R.d + T + 1.7], fpGroup, no);
-  mk(box(R.w + 8, 0.14, 0.25), "#b9ad98", [R.w / 2, -0.06, R.d + T + 3.5], fpGroup, { outline: 0.015, shadow: false });
-  // 쇼윈도 (밖에서 보이는 큰 창)
-  const glass = toon("#bfe3f2");
-  const spans = [[0.5, dl - 0.5], [dr + 0.5, R.w - 0.5]];
-  for (const [a, b] of spans) {
-    const len = b - a;
-    if (len < 1.2) continue;
-    const n = Math.max(1, Math.round(len / 2.4));
-    const ww = len / n;
-    for (let i = 0; i < n; i++) {
-      const cx = a + ww * (i + 0.5);
-      mk(box(ww - 0.1, 1.5, 0.04), "#fdf7ee", [cx, 1.35, zO + 0.02], fpGroup, { outline: 0.015, shadow: false });
-      mk(box(ww - 0.26, 1.34, 0.04), glass, [cx, 1.35, zO + 0.04], fpGroup, no);
-      // 유리에 비친 빛
-      mk(box(0.08, 1.0, 0.01), new THREE.MeshBasicMaterial({ color: "#ffffff", transparent: true, opacity: 0.6 }), [cx - ww * 0.22, 1.4, zO + 0.07], fpGroup, no).rotation.z = 0.35;
-      mk(box(ww - 0.06, 0.08, 0.2), "#fdf7ee", [cx, 0.56, zO + 0.1], fpGroup, { outline: 0.015, shadow: false });
-    }
+  mk(box(R.w + 8, 0.12, 1.3), "#8e8a85", [R.w / 2, -0.07, R.d + T + 0.65], fpGroup, ol).receiveShadow = true;
+  mk(box(R.w + 8, 0.05, 1.0), "#6b5a58", [R.w / 2, -0.1, R.d + T + 1.8], fpGroup, no).receiveShadow = true;
+  mk(box(R.w + 8, 0.01, 0.12), "#d9b84a", [R.w / 2, -0.07, R.d + T + 2.6], fpGroup, no);
+
+  // ── 2층 창문 (흰 창틀, 어두운 유리)
+  const upW = Math.min(4.2, (opR - opL) * 1.15);
+  mk(box(upW + 0.16, 1.5, 0.08), white, [(opL + opR) / 2, H + 1.9, zO + 0.02], fpGroup, ol);
+  mk(box(upW, 1.34, 0.06), toon("#2a3550"), [(opL + opR) / 2, H + 1.9, zO + 0.05], fpGroup, no);
+  mk(box(0.07, 1.34, 0.08), white, [(opL + opR) / 2, H + 1.9, zO + 0.07], fpGroup, no);
+  // 오른쪽 이웃 건물 (흰 셔터)
+  const nx0 = R.w + T + 0.02;
+  mk(box(4, top - 0.4, 3), "#cfc9bf", [nx0 + 2, (top - 0.4) / 2, R.d - 1.5 + T], fpGroup, ol);
+  mk(box(2.6, 2.5, 0.05), "#ecebe6", [nx0 + 1.6, 1.25, R.d + T + 0.02], fpGroup, ol);
+  for (let y = 0.15; y < 2.5; y += 0.18) mk(box(2.6, 0.012, 0.06), "#cfcdc6", [nx0 + 1.6, y, R.d + T + 0.03], fpGroup, no);
+  mk(box(3.0, 0.08, 0.6), "#55595e", [nx0 + 1.6, 2.65, R.d + T + 0.3], fpGroup, ol);
+
+  // ── 화분들 (고무나무 + 측백나무)
+  makeRubberPlant(fpGroup, opL + 0.35, R.d + T + 0.35);
+  for (const [dx, dz, k] of [[0.95, 0.4, 0.9], [1.55, 0.95, 1.0], [2.15, 0.95, 0.95], [winW + door.w + 0.35, 0.45, 0.95]]) makeCypress(fpGroup, opL + dx, R.d + T + dz, k);
+
+  // ── 고래꼬리 조명 상자
+  const lx = opR + 0.15, lz = R.d + T + 1.15;
+  const lantern = new THREE.Group();
+  lantern.position.set(lx, 0, lz);
+  fpGroup.add(lantern);
+  const logo = canvasTex(160, 320, (g, w, h) => {
+    const grd = g.createLinearGradient(0, 0, 0, h);
+    grd.addColorStop(0, "#fff6f6"); grd.addColorStop(1, "#ffd9dc");
+    g.fillStyle = grd; g.fillRect(0, 0, w, h);
+    g.strokeStyle = "#2b2522"; g.lineWidth = 5; g.lineCap = "round"; g.lineJoin = "round";
+    const cx = w / 2, cy = h * 0.47;
+    // 꼬리
+    g.beginPath(); g.moveTo(cx, cy + 22); g.lineTo(cx, cy - 6);
+    g.quadraticCurveTo(cx - 6, cy - 24, cx - 34, cy - 30); g.quadraticCurveTo(cx - 14, cy - 14, cx, cy - 6);
+    g.moveTo(cx, cy - 6); g.quadraticCurveTo(cx + 6, cy - 24, cx + 34, cy - 30); g.quadraticCurveTo(cx + 14, cy - 14, cx, cy - 6);
+    g.stroke();
+    // 물결
+    g.beginPath(); g.ellipse(cx, cy + 26, 40, 10, 0, Math.PI * 0.05, Math.PI * 1.1); g.stroke();
+    g.beginPath(); g.ellipse(cx, cy + 30, 56, 15, 0, Math.PI * 0.95, Math.PI * 1.9, true); g.stroke();
+  });
+  const glow = new THREE.MeshBasicMaterial({ map: logo });
+  for (const [rx, rz, ry] of [[0, 0.16, 0], [0.16, 0, Math.PI / 2], [-0.16, 0, -Math.PI / 2], [0, -0.16, Math.PI]]) {
+    mk(new THREE.PlaneGeometry(0.3, 0.6), glow, [rx, 0.62, rz], lantern, no).rotation.y = ry;
   }
-  // 간판
-  const c = document.createElement("canvas");
-  c.width = 1024; c.height = 200;
-  const g = c.getContext("2d");
-  g.fillStyle = "#fff7ea"; g.beginPath(); g.roundRect(6, 6, 1012, 188, 40); g.fill();
-  g.strokeStyle = "#4a3a31"; g.lineWidth = 10; g.stroke();
-  g.fillStyle = "#3b2f2a"; g.font = "800 112px 'Pretendard','Apple SD Gothic Neo','Noto Sans KR',sans-serif";
-  g.textAlign = "center"; g.textBaseline = "middle"; g.fillText(F.sign || LAYOUT.name, 512, 108);
-  const st = new THREE.CanvasTexture(c);
-  st.colorSpace = THREE.SRGBColorSpace;
-  const signW = Math.min(4.2, R.w * 0.45);
-  const signX = THREE.MathUtils.clamp(door.x, signW / 2 + 0.3, R.w - signW / 2 - 0.3);
-  mk(new THREE.PlaneGeometry(signW, signW * 200 / 1024), new THREE.MeshBasicMaterial({ map: st }), [signX, H + 0.4, zO + 0.03], fpGroup, no);
-  // 차양 (줄무늬)
-  const [a1, a2] = F.awning || ["#e9765f", "#fff6ea"];
-  const aw = new THREE.Group();
-  aw.position.set(door.x, dh + 0.35, zO);
-  aw.rotation.x = 0.45;
-  fpGroup.add(aw);
-  const awW = door.w + 1.0, n = 9;
-  for (let i = 0; i < n; i++) mk(box(awW / n, 0.04, 0.9), i % 2 ? a2 : a1, [-awW / 2 + awW / n * (i + 0.5), 0, 0.45], aw, { outline: 0, shadow: false });
-  for (let i = 0; i < n; i++) mk(new THREE.CylinderGeometry(awW / n / 2, awW / n / 2, 0.04, 12, 1, false, 0, Math.PI), i % 2 ? a2 : a1, [-awW / 2 + awW / n * (i + 0.5), 0, 0.9], aw, { outline: 0, shadow: false }).rotation.set(Math.PI / 2, 0, Math.PI / 2);
-  // 입구 옆 화분 + 입간판
-  for (const dir of [-1, 1]) makePlant(fpGroup, door.x + dir * (door.w / 2 + 0.55), R.d + T + 0.45, 0.85);
-  if (F.board) {
-    const b = new THREE.Group();
-    b.position.set(door.x - door.w / 2 - 1.5, 0, R.d + T + 1.0);
-    b.rotation.y = 0.35;
-    fpGroup.add(b);
-    const bc = document.createElement("canvas");
-    bc.width = 256; bc.height = 360;
-    const bg = bc.getContext("2d");
-    bg.fillStyle = "#2f4a3f"; bg.fillRect(0, 0, 256, 360);
-    bg.fillStyle = "#fffbe8"; bg.textAlign = "center"; bg.font = "700 34px 'Pretendard','Apple SD Gothic Neo',sans-serif";
-    const words = F.board.split(" ");
-    let line = "", y = 90;
-    for (const w of words) {
-      if (bg.measureText(line + w).width > 210 && line) { bg.fillText(line.trim(), 128, y); y += 50; line = ""; }
-      line += w + " ";
-    }
-    bg.fillText(line.trim(), 128, y);
-    bg.strokeStyle = "#fffbe8"; bg.setLineDash([10, 10]); bg.lineWidth = 3; bg.strokeRect(20, 20, 216, 320);
-    const bt = new THREE.CanvasTexture(bc);
-    bt.colorSpace = THREE.SRGBColorSpace;
-    const leg = mk(box(0.62, 0.9, 0.04), "#8f6447", [0, 0.5, 0.12], b, { outline: 0.015, shadow: true });
-    leg.rotation.x = -0.22;
-    const face = mk(new THREE.PlaneGeometry(0.5, 0.7), new THREE.MeshBasicMaterial({ map: bt }), [0, 0.52, 0.16], b, no);
-    face.rotation.x = -0.22;
-    mk(box(0.62, 0.9, 0.04), "#8f6447", [0, 0.5, -0.12], b, { outline: 0.015, shadow: true }).rotation.x = 0.22;
+  const iron = "#1c1c1e";
+  for (const [sx, sz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) mk(box(0.025, 1.0, 0.025), iron, [sx * 0.17, 0.5, sz * 0.17], lantern, { outline: 0, shadow: true });
+  for (const y of [0.04, 0.3, 0.93, 1.0]) {
+    mk(box(0.36, 0.02, 0.025), iron, [0, y, 0.17], lantern, no); mk(box(0.36, 0.02, 0.025), iron, [0, y, -0.17], lantern, no);
+    mk(box(0.025, 0.02, 0.36), iron, [0.17, y, 0], lantern, no); mk(box(0.025, 0.02, 0.36), iron, [-0.17, y, 0], lantern, no);
+  }
+  // 바닥에 비치는 분홍빛
+  const pool = mk(new THREE.CircleGeometry(0.9, 32), new THREE.MeshBasicMaterial({ color: "#ff9fb0", transparent: true, opacity: 0.22, depthWrite: false }), [0, 0.005, 0], lantern, no);
+  pool.rotation.x = -Math.PI / 2;
+  const lampLight = new THREE.PointLight("#ffb3c0", 3, 4, 1.6);
+  lampLight.position.set(0, 0.7, 0.2);
+  lantern.add(lampLight);
+  const winLight = new THREE.PointLight("#ff9a5c", 1.2, 3, 1.6);
+  winLight.position.set(wx, 0.7, zO + 0.9);
+  fpGroup.add(winLight);
+
+  // ── 주차금지 표지 (검은 받침)
+  const cone = new THREE.Group();
+  cone.position.set(opL - 0.2, 0, R.d + T + 1.9);
+  fpGroup.add(cone);
+  mk(new THREE.CylinderGeometry(0.08, 0.2, 0.75, 20), "#232325", [0, 0.375, 0], cone, ol);
+  mk(new THREE.CylinderGeometry(0.22, 0.24, 0.06, 20), "#232325", [0, 0.03, 0], cone, ol);
+  mk(new THREE.CylinderGeometry(0.2, 0.2, 0.04, 24), "#232325", [0, 1.0, 0], cone, ol).rotation.x = Math.PI / 2;
+  mk(cyl(0.03, 0.03, 0.25, 8), "#232325", [0, 0.82, 0], cone, no);
+  const noPark = canvasTex(128, 128, (g, w, h) => {
+    g.fillStyle = "#fff"; g.fillRect(0, 0, w, h);
+    g.fillStyle = "#d32f2f"; g.font = "800 30px sans-serif"; g.textAlign = "center"; g.fillText("주차금지", w / 2, 76);
+  });
+  mk(new THREE.PlaneGeometry(0.26, 0.26), flat(noPark), [0, 1.0, 0.025], cone, no);
+}
+
+/** 고무나무 (흰 화분) */
+function makeRubberPlant(parent, x, z) {
+  const g = new THREE.Group();
+  g.position.set(x, 0, z);
+  parent.add(g);
+  mk(cyl(0.19, 0.15, 0.4, 18), "#f1efea", [0, 0.2, 0], g);
+  mk(cyl(0.02, 0.025, 1.0, 6), "#6b4a2e", [0, 0.85, 0], g, { outline: 0, shadow: true });
+  const leaf = new THREE.SphereGeometry(0.09, 10, 8);
+  for (let i = 0; i < 11; i++) {
+    const a = i * 2.3, y = 0.6 + i * 0.07;
+    const m = mk(leaf, i % 2 ? "#4f7d3a" : "#6a9a4a", [Math.cos(a) * 0.16, y, Math.sin(a) * 0.16], g, { outline: 0.01 });
+    m.scale.set(1, 0.35, 1.7);
+    m.rotation.y = -a;
   }
 }
+
+/** 측백나무 (테라코타 화분) */
+function makeCypress(parent, x, z, k = 1) {
+  const g = new THREE.Group();
+  g.position.set(x, 0, z);
+  g.scale.setScalar(k);
+  parent.add(g);
+  mk(cyl(0.2, 0.15, 0.36, 18), "#c49a86", [0, 0.18, 0], g);
+  mk(cyl(0.18, 0.18, 0.02, 18), "#2e2a28", [0, 0.35, 0], g, { outline: 0, shadow: false });
+  const cols = ["#5d7d68", "#4f6e5b", "#6b8b74"];
+  for (let i = 0; i < 4; i++) {
+    mk(new THREE.ConeGeometry(0.24 - i * 0.045, 0.42, 10), cols[i % 3], [0, 0.55 + i * 0.25, 0], g, { outline: 0.012 });
+  }
+}
+let steamFan = null;
+let doorSign = null;
 
 function makePlant(parent, x, z, k = 1) {
   const g = new THREE.Group();
@@ -492,6 +639,19 @@ function buildProps() {
 }
 
 // ───────── 자리(의자 + 손님) ─────────
+const emptyTagTex = (() => {
+  const c = document.createElement("canvas");
+  c.width = 256; c.height = 150;
+  const g = c.getContext("2d");
+  g.fillStyle = "#2fa877"; g.strokeStyle = "#ffffff"; g.lineWidth = 8;
+  g.beginPath(); g.roundRect(8, 8, 240, 96, 48); g.fill(); g.stroke();
+  g.beginPath(); g.moveTo(108, 100); g.lineTo(128, 140); g.lineTo(148, 100); g.closePath(); g.fill();
+  g.fillStyle = "#ffffff"; g.font = "800 54px 'Pretendard','Apple SD Gothic Neo','Noto Sans KR',sans-serif";
+  g.textAlign = "center"; g.textBaseline = "middle"; g.fillText("빈자리", 128, 58);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+})();
 /** @type {Map<string, any>} */
 const seats = new Map();
 const hitboxes = [];
@@ -569,31 +729,15 @@ function addSeat(id, x, z, angle, kind) {
     seatY += 0.05;
   }
 
-  // 바닥 표시등 (빈자리 = 초록 원, 반짝임)
-  const ring = new THREE.Mesh(
-    new THREE.RingGeometry(0.3, 0.4, 40),
-    new THREE.MeshBasicMaterial({ color: COLOR.empty, transparent: true, opacity: 0.75, depthWrite: false })
-  );
-  ring.rotation.x = -Math.PI / 2;
-  ring.position.y = 0.02;
-  g.add(ring);
-  const disc = new THREE.Mesh(
-    new THREE.CircleGeometry(0.3, 40),
-    new THREE.MeshBasicMaterial({ color: COLOR.empty, transparent: true, opacity: 0.25, depthWrite: false })
-  );
-  disc.rotation.x = -Math.PI / 2;
-  disc.position.y = 0.018;
-  g.add(disc);
-
   const guest = makeGuest(id, seatY);
   g.add(guest);
 
-  // 1인칭에서 빈자리 위에 뜨는 초록 표시(게임 목표 지점처럼)
-  const pin = new THREE.Mesh(new THREE.OctahedronGeometry(0.09, 0), new THREE.MeshBasicMaterial({ color: COLOR.empty }));
-  pin.scale.y = 1.5;
-  pin.position.y = kind === "stool" ? 1.45 : 1.2;
-  pin.visible = false;
-  g.add(pin);
+  // 빈자리 위에 뜨는 "빈자리" 표시 (사람이 앉으면 사라짐)
+  const tag = new THREE.Sprite(new THREE.SpriteMaterial({ map: emptyTagTex, transparent: true, depthWrite: false }));
+  tag.center.set(0.5, 0);
+  tag.position.y = kind === "stool" ? 1.15 : 0.95;
+  tag.renderOrder = 5;
+  g.add(tag);
 
   const hb = new THREE.Mesh(box(0.6, 1.4, 0.6), hitMat);
   hb.position.y = 0.7;
@@ -602,7 +746,7 @@ function addSeat(id, x, z, angle, kind) {
   g.add(hb);
   hitboxes.push(hb);
 
-  seats.set(id, { id, group: g, cushion, ring, disc, guest, pin, pinY: pin.position.y, occupied: false, anim: 0, target: 0, bump: 0 });
+  seats.set(id, { id, group: g, cushion, guest, tag, tagY: tag.position.y, occupied: false, anim: 0, target: 0, bump: 0 });
 }
 
 function rotXZ(x, z, deg) {
@@ -1177,13 +1321,15 @@ function startIntro() {
   document.body.classList.add("walking", "intro");
   camera.fov = walkFov();
   camera.updateProjectionMatrix();
-  camera.position.set(door.x - 1.4, EYE, R.d + 5.4);
-  camera.lookAt(door.x - 1.1, 2.3, R.d);
+  const midX = (door.x - door.w / 2 - (LAYOUT.front?.windowW ?? 2.6) + door.x + door.w / 2 + 0.6) / 2;
+  camera.position.set(midX, EYE, R.d + 7.2);
+  camera.lookAt(midX, 1.45, R.d); // 가게가 화면 위쪽에 오도록 (아래는 입장 카드)
   $("introName").textContent = (LAYOUT.front && LAYOUT.front.sign) || LAYOUT.name;
 }
 function enterStore() {
   if (!walk.intro || walk.tween) return;
   document.body.classList.remove("intro");
+  document.body.classList.add("entering");
   const door = frontDoor();
   walk.pos.set(door.x, 0, R.d - 0.9);
   collide(walk.pos);
@@ -1194,6 +1340,7 @@ function enterStore() {
     flyTo(new THREE.Vector3(walk.pos.x, EYE, walk.pos.z), eulerQuat(walk.pitch, walk.yaw), walkFov(), 1.9, () => {
       walk.intro = false;
       walk.on = true;
+      document.body.classList.remove("entering");
       showWalkHint();
     });
   });
@@ -1403,17 +1550,13 @@ function tick() {
       a.rotation.x = THREE.MathUtils.lerp(-1.1, -2.9, w);
       a.rotation.z = Math.sin(time * 14) * 0.45 * w;
     }
-    // 빈자리 표시등 반짝임
-    const glow = 1 - Math.min(1, s.anim * 1.5);
-    const pulse = 0.5 + 0.5 * Math.sin(time * 3 + s.group.position.x);
-    s.ring.material.opacity = glow * (0.45 + 0.4 * pulse);
-    s.disc.material.opacity = glow * (0.15 + 0.15 * pulse);
-    s.ring.scale.setScalar(1 + pulse * 0.08);
-    s.ring.visible = s.disc.visible = glow > 0.01;
-    s.pin.visible = walk.on && glow > 0.5;
-    if (s.pin.visible) {
-      s.pin.rotation.y = time * 2;
-      s.pin.position.y = s.pinY + Math.sin(time * 3 + s.group.position.x) * 0.05;
+    // 빈자리 표시 (둥실둥실)
+    const show = 1 - Math.min(1, s.anim * 2);
+    s.tag.visible = show > 0.01;
+    if (s.tag.visible) {
+      const k = 0.34 * show;
+      s.tag.scale.set(k, k * 150 / 256, 1);
+      s.tag.position.y = s.tagY + Math.sin(time * 2.4 + s.group.position.x * 1.7) * 0.035;
     }
     // 터치했을 때 의자 통통
     if (s.bump > 0) {
@@ -1429,7 +1572,17 @@ function tick() {
 
 let steamT = 0;
 const steamGeo = new THREE.SphereGeometry(0.05, 8, 6);
+const DAY = { sky: new THREE.Color("#fff6ea"), ground: new THREE.Color("#c9a88a") };
+const NIGHT = { sky: new THREE.Color("#7f8db5"), ground: new THREE.Color("#3a3140") };
 function updateWorld(dt, time) {
+  // 밖(가게 앞)은 밤, 안으로 들어가면 밝게
+  const night = fpGroup.visible ? THREE.MathUtils.clamp((camera.position.z - (R.d + 0.4)) / 1.6, 0, 1) : 0;
+  hemi.intensity = THREE.MathUtils.lerp(1.4, 0.55, night);
+  hemi.color.copy(DAY.sky).lerp(NIGHT.sky, night);
+  hemi.groundColor.copy(DAY.ground).lerp(NIGHT.ground, night);
+  sun.intensity = THREE.MathUtils.lerp(2.2, 0.12, night);
+  document.body.classList.toggle("night", night > 0.5);
+  if (steamFan) steamFan.rotation.z -= dt * 5;
   // 자동문
   if (doorPanels.length) {
     const d = frontDoor();

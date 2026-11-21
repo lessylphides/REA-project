@@ -117,6 +117,7 @@
   body.walking .count .label { font-size: 13px; }
   body.walking .count .n { font-size: 22px; }
   body.intro .reticle, body.intro .aim, body.intro .mapbtn, body.intro .joy { display: none !important; }
+  body.entering .reticle, body.entering .aim, body.entering .mapbtn, body.entering .joy { display: none !important; }
   .introbox { display: none; position: fixed; z-index: 7; left: 0; right: 0; bottom: 0; padding: 0 16px calc(env(safe-area-inset-bottom) + 28px); justify-content: center; pointer-events: none; }
   body.intro .introbox { display: flex; }
   .introcard {
@@ -129,6 +130,8 @@
   .introcard strong { font-size: 24px; font-weight: 800; margin-bottom: 8px; }
   .introcard .walkbtn { padding: 14px 44px; font-size: 17px; }
   @keyframes rise { from { opacity: 0; transform: translateY(30px); } to { opacity: 1; transform: none; } }
+  body { transition: background .8s; }
+  body.night { background: linear-gradient(180deg, #0a1020 0%, #1a2236 55%, #2b2a33 100%); }
   .stats { cursor: pointer; text-decoration: underline dotted rgba(255,255,255,.5); text-underline-offset: 3px; }
   .reticle {
     position: fixed; z-index: 4; left: 50%; top: 50%; width: 22px; height: 22px; margin: -11px 0 0 -11px; pointer-events: none;
