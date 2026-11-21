@@ -106,11 +106,26 @@ interface RunStatus {
   error?: string;
 }
 
-// ---------- 온도 기록(히스토리) ----------
-async function appendHistory(env: Env, point: { t: number; temp: number; hum: number | null; out: number | null; cmd?: string }): Promise<void> {
-  const arr = (await env.KV.get('history', 'json') as any[]) || [];
-  arr.push(point);
-  await env.KV.put('history', JSON.stringify(arr.slice(-1008))); // 최근 ~7일(10분 간격)
+// ---------- 실행 상태 + 온도 기록 ----------
+// KV 무료 한도(쓰기 하루 1,000회)를 아끼려고 마지막 상태(status)와 온도 기록(history)을
+// 한 키('state')에 함께 저장한다 → 10분마다 실행해도 쓰기는 1회.
+interface HistoryPoint { t: number; temp: number; hum: number | null; out: number | null; cmd?: string }
+interface RunState { status: RunStatus | null; history: HistoryPoint[] }
+const HISTORY_MAX = 1008; // 최근 ~7일(10분 간격)
+
+async function loadState(env: Env): Promise<RunState> {
+  const s = await env.KV.get('state', 'json') as RunState | null;
+  if (s) return { status: s.status ?? null, history: Array.isArray(s.history) ? s.history : [] };
+  // 이전 버전은 status/history 를 따로 저장했음 → 처음 한 번 읽어서 이어받음
+  const [status, history] = await Promise.all([env.KV.get('status', 'json'), env.KV.get('history', 'json')]);
+  return { status: status as RunStatus | null, history: Array.isArray(history) ? history as HistoryPoint[] : [] };
+}
+async function saveState(env: Env, st: RunState): Promise<void> {
+  await env.KV.put('state', JSON.stringify({ status: st.status, history: st.history.slice(-HISTORY_MAX) }));
+}
+/** 값이 바뀌었을 때만 KV 에 쓴다 */
+async function putIfChanged(env: Env, key: string, prev: unknown, next: unknown): Promise<void> {
+  if (JSON.stringify(prev ?? null) !== JSON.stringify(next ?? null)) await env.KV.put(key, JSON.stringify(next));
 }
 
 // 반응 감지: 난방/냉방을 계속 보냈는데 온도가 반대로 움직이면 '에어컨 미반응'으로 판단
@@ -138,7 +153,7 @@ async function manualControl(env: Env, action: string): Promise<{ ok: boolean; s
     else if (action === 'cool') desired = { power: true, mode: 'cool', temperature: cfg.summerTarget, fanSpeed: 'medium' };
     else return { ok: false, error: '알 수 없는 동작' };
     const sent = await applyDesired(s, cfg.acDeviceId, desired, last);
-    await env.KV.put('lastCommand', JSON.stringify(desired));
+    await putIfChanged(env, 'lastCommand', last, desired);
     return { ok: true, sent };
   } catch (e: any) { return { ok: false, error: String(e?.message ?? e) }; }
 }
@@ -166,7 +181,7 @@ async function sendAc(env: Env, cmd: { power?: boolean; mode?: string; temperatu
       temperature: typeof cmd.temperature === 'number' ? Math.max(16, Math.min(30, Math.round(cmd.temperature))) : (prev?.temperature ?? 22),
       fanSpeed: (cmd.fanSpeed && FAN_CODES[cmd.fanSpeed as keyof typeof FAN_CODES] !== undefined ? cmd.fanSpeed : prev?.fanSpeed ?? 'medium') as DesiredAcState['fanSpeed'],
     };
-    await env.KV.put('lastCommand', JSON.stringify(merged));
+    await putIfChanged(env, 'lastCommand', prev, merged);
     return { ok: true, sent };
   } catch (e: any) { return { ok: false, error: String(e?.message ?? e) }; }
 }
@@ -174,10 +189,14 @@ async function sendAc(env: Env, cmd: { power?: boolean; mode?: string; temperatu
 // ---------- 자동화 1회 실행 ----------
 async function runOnce(env: Env, opts: { force?: boolean; preview?: boolean; log?: boolean } = {}): Promise<RunStatus> {
   const status: RunStatus = { ts: new Date().toISOString(), ok: false, enabled: false };
+  let state: RunState | null = null;
+  // 상태·기록은 실행 끝에 한 번만 저장 (미리보기는 저장 안 함)
+  const save = async () => { if (!opts.preview && state) { state.status = status; await saveState(env, state); } };
   try {
+    state = await loadState(env);
     const cfg = await loadConfig(env);
     status.enabled = cfg.enabled;
-    if (!cfg.sensorDeviceId || !cfg.acDeviceId) { status.reason = '센서/에어컨 기기 ID 미설정 (설정에서 지정하세요)'; if (!opts.preview) await env.KV.put('status', JSON.stringify(status)); return status; }
+    if (!cfg.sensorDeviceId || !cfg.acDeviceId) { status.reason = '센서/에어컨 기기 ID 미설정 (설정에서 지정하세요)'; await save(); return status; }
 
     const s = await getSession(env);
     const families = await hej.getFamilies(s);
@@ -237,9 +256,8 @@ async function runOnce(env: Env, opts: { force?: boolean; preview?: boolean; log
       : decision.action === 'set' ? (decision.stage === 'soft' || decision.stage === 'rest' ? decision.stage : (decision.desired?.mode ?? 'set'))
       : decision.action; // off / hold
     // 반응 감지(저장된 이력 기준) → 경고
-    const prevHist = (await env.KV.get('history', 'json')) as Array<{ temp: number; cmd?: string }> || [];
-    status.acWarn = analyzeResponse(prevHist);
-    if (opts.log && temp !== null) await appendHistory(env, { t: Date.now(), temp, hum: humidity, out: weather?.outdoorTemp ?? null, cmd: activeCmd });
+    status.acWarn = analyzeResponse(state.history);
+    if (opts.log && temp !== null) state.history.push({ t: Date.now(), temp, hum: humidity, out: weather?.outdoorTemp ?? null, cmd: activeCmd });
 
     // 가습기: 앱이 기억한 상태 + 이번 판단
     const humSt = (await env.KV.get('hum', 'json') as HumState | null) ?? HUM_DEFAULT;
@@ -247,18 +265,19 @@ async function runOnce(env: Env, opts: { force?: boolean; preview?: boolean; log
     status.hum = { on: humSt.on, warn: !!(humDec.next.warn), auto: !!cfg.humAuto, reason: cfg.humAuto ? humDec.reason : '자동 가습 꺼짐', low: cfg.humLow ?? 40, high: cfg.humHigh ?? 55 };
 
     if (opts.preview) { status.sent = []; status.ok = true; return status; } // 미리보기: 전송/저장 없음
-    if (!cfg.enabled && !opts.force) { status.sent = []; status.ok = true; status.reason = '자동 꺼짐 — 온도 기록만 함'; await env.KV.put('status', JSON.stringify(status)); return status; } // 꺼짐: 기록만
+    if (!cfg.enabled && !opts.force) { status.sent = []; status.ok = true; status.reason = '자동 꺼짐 — 온도 기록만 함'; await save(); return status; } // 꺼짐: 기록만
 
-    // 단계 상태 저장 (실제 제어할 때만)
-    if (decision.ctl) await env.KV.put('ctl', JSON.stringify(decision.ctl)); else await env.KV.delete('ctl');
-    const last = await env.KV.get('lastCommand', 'json') as DesiredAcState | null;
+    // 단계 상태 저장 (실제 제어할 때만, 바뀐 경우에만)
+    if (decision.ctl) await putIfChanged(env, 'ctl', prevCtl, decision.ctl);
+    else if (prevCtl) await env.KV.delete('ctl');
+    const last = lastCmd;
     if (decision.action === 'set' && decision.desired) {
       status.sent = await applyDesired(s, cfg.acDeviceId, decision.desired, last);
-      await env.KV.put('lastCommand', JSON.stringify(decision.desired));
+      await putIfChanged(env, 'lastCommand', last, decision.desired);
     } else if (decision.action === 'off') {
       const offState: DesiredAcState = { power: false, mode: last?.mode ?? 'cool', temperature: last?.temperature ?? 25, fanSpeed: last?.fanSpeed ?? 'low' };
       status.sent = await applyDesired(s, cfg.acDeviceId, offState, last);
-      await env.KV.put('lastCommand', JSON.stringify(offState));
+      await putIfChanged(env, 'lastCommand', last, offState);
     } else {
       status.sent = []; // hold: 아무것도 안 보냄
     }
@@ -275,11 +294,12 @@ async function runOnce(env: Env, opts: { force?: boolean; preview?: boolean; log
       } else if (humDec.next.warn && !humSt.warn) await env.KV.put('hum', JSON.stringify(humDec.next));
     }
     status.ok = true;
-    await env.KV.put('status', JSON.stringify(status));
+    await save();
     return status;
   } catch (e: any) {
     status.error = String(e?.message ?? e);
-    if (!opts.preview) await env.KV.put('status', JSON.stringify(status));
+    // 기록을 못 읽은 경우(state 없음)에는 기존 기록을 덮어쓰지 않도록 저장하지 않음
+    await save().catch(() => {});
     return status;
   }
 }
@@ -326,7 +346,7 @@ export default {
 
     // 상태
     if (url.pathname === '/api/status') {
-      const [cfg, st, creds, last] = await Promise.all([loadConfig(env), env.KV.get('status', 'json'), hasCreds(env), env.KV.get('lastCommand', 'json')]);
+      const [cfg, st, creds, last] = await Promise.all([loadConfig(env), loadState(env).then((x) => x.status), hasCreds(env), env.KV.get('lastCommand', 'json')]);
       const hasOwmKey = !!(cfg.owmKey || env.OWM_API_KEY);
       const acOn = last ? !!(last as DesiredAcState).power : null;
       return json({ config: { ...cfg, owmKey: undefined }, hasOwmKey, hasCreds: creds, acOn, lastRun: st });
@@ -346,7 +366,7 @@ export default {
     }
     // 온도 기록(그래프용)
     if (url.pathname === '/api/history') {
-      return json((await env.KV.get('history', 'json')) || []);
+      return json((await loadState(env)).history);
     }
     // 수동 제어 (냉방/난방/끄기 즉시)
     if (url.pathname === '/api/manual' && req.method === 'POST') {
@@ -366,7 +386,7 @@ export default {
     if (url.pathname === '/api/hum') {
       if (req.method === 'POST') {
         const b = await req.json<{ on?: boolean }>();
-        const last = await env.KV.get('status', 'json') as { indoorHumidity?: number } | null;
+        const last = (await loadState(env)).status;
         const next: HumState = { on: !!b.on, since: Date.now(), startHum: b.on ? (last?.indoorHumidity ?? null) : null, warn: false };
         await env.KV.put('hum', JSON.stringify(next));
         return json({ ok: true, hum: next });
@@ -387,7 +407,7 @@ export default {
         const pw = findHumPowerScene(await hej.getScenes(s, fams[0].familyId));
         if (pw && pw.sceneId === b.sceneId) {
           const st = (await env.KV.get('hum', 'json') as HumState | null) ?? HUM_DEFAULT;
-          const last = await env.KV.get('status', 'json') as { indoorHumidity?: number } | null;
+          const last = (await loadState(env)).status;
           const next: HumState = { on: !st.on, since: Date.now(), startHum: last?.indoorHumidity ?? null, warn: false };
           await env.KV.put('hum', JSON.stringify(next));
           return json({ ok: true, hum: next });
