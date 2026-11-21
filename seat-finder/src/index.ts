@@ -1,7 +1,7 @@
 import { DurableObject } from "cloudflare:workers";
+import { ASSETS } from "./assets.generated";
 
 export interface Env {
-  ASSETS: Fetcher;
   SEATS: DurableObjectNamespace<SeatStore>;
   ADMIN_TOKEN?: string;
 }
@@ -66,6 +66,20 @@ function isAdmin(req: Request, env: Env) {
   return !!env.ADMIN_TOKEN && token.length > 0 && timingSafeEqual(token, env.ADMIN_TOKEN);
 }
 
+function serveAsset(req: Request, path: string): Response {
+  const f = ASSETS[path];
+  if (!f || (req.method !== "GET" && req.method !== "HEAD")) return new Response("Not found", { status: 404 });
+  const headers = {
+    "content-type": f.type,
+    etag: f.etag,
+    // 화면 파일은 매번 확인(수정 즉시 반영), three.js 라이브러리는 오래 캐시
+    "cache-control": path.startsWith("/vendor/") ? "public, max-age=604800" : "no-cache",
+  };
+  if (req.headers.get("if-none-match") === f.etag) return new Response(null, { status: 304, headers });
+  const body = f.b64 ? Uint8Array.from(atob(f.body), (c) => c.charCodeAt(0)) : f.body;
+  return new Response(req.method === "HEAD" ? null : body, { headers });
+}
+
 export default {
   async fetch(req: Request, env: Env): Promise<Response> {
     const url = new URL(req.url);
@@ -98,11 +112,10 @@ export default {
       return json({ error: "not found" }, 404);
     }
 
-    // /admin, /관리자 → 같은 화면(관리자 모드로 열림)
-    if (url.pathname === "/admin" || decodeURIComponent(url.pathname) === "/관리자") {
-      return env.ASSETS.fetch(new Request(new URL("/", url), req));
-    }
-
-    return env.ASSETS.fetch(req);
+    // /, /admin, /관리자 → 같은 화면(관리자 모드는 화면에서 주소를 보고 결정)
+    let path = url.pathname;
+    try { path = decodeURIComponent(path); } catch { /* 잘못된 주소는 그대로 → 404 */ }
+    if (path === "/" || path === "/admin" || path === "/관리자") path = "/index.html";
+    return serveAsset(req, path);
   },
 } satisfies ExportedHandler<Env>;

@@ -33,7 +33,8 @@
 public/layout.js   ★ 매장 배치도 (벽·창문·테이블·의자 위치) ← 매장에 맞게 이것만 수정
 public/app.js      3D 화면 (three.js, 툰 셰이딩 + 외곽선)
 public/index.html  화면 틀 / 스타일
-src/index.ts       Cloudflare Worker + Durable Object (자리 상태 저장, 관리자 확인)
+src/index.ts       Cloudflare Worker + Durable Object (자리 상태 저장, 관리자 확인, 화면 파일 제공)
+scripts/build-assets.mjs  public/ → src/assets.generated.ts (배포 때 자동 실행)
 ```
 - 저장: Durable Object 1개 → 모든 손님이 같은 상태를 즉시 봄.
 - 서버 API: `GET /api/seats` (누구나) · `POST /api/seats/:id` · `POST /api/reset` (관리자 비밀번호 필요)
@@ -43,9 +44,11 @@ src/index.ts       Cloudflare Worker + Durable Object (자리 상태 저장, 관
 cd seat-finder
 npm install
 npx wrangler secret put ADMIN_TOKEN   # 관리자 비밀번호 (채팅/파일에 적지 말 것)
-npx wrangler deploy
+npm run deploy                        # public/ 화면 파일을 Worker 에 넣어서 배포
 ```
 로컬 테스트: `.dev.vars` 파일에 `ADMIN_TOKEN=아무거나` 적고 `npm run dev` → http://localhost:8787
+
+테스트 주소(현재 배포): https://seat-finder.hanguk-soek.workers.dev  ·  관리자: `/관리자`
 
 ## 한글 주소 연결 (빈자리찾기.co.kr)
 한글 도메인은 내부적으로 **퓨니코드**로 바뀝니다: `빈자리찾기.co.kr` = `xn--ok0bu1teudt3lg0f.co.kr`
