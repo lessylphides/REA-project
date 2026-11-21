@@ -497,7 +497,7 @@ function renderUI(token: string): string {
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
   body{margin:0;background:var(--bg);color:var(--label);
     font-family:-apple-system,BlinkMacSystemFont,'SF Pro Display','SF Pro Text',system-ui,sans-serif;
-    padding:max(10px,env(safe-area-inset-top)) 16px calc(16px + env(safe-area-inset-bottom));
+    padding:calc(max(10px,env(safe-area-inset-top)) + 12px) 16px calc(16px + env(safe-area-inset-bottom));
     max-width:480px;margin:0 auto;-webkit-font-smoothing:antialiased}
   h1{font-size:28px;font-weight:700;letter-spacing:-.02em;margin:6px 2px 12px}
   .hero{background:var(--card);border-radius:22px;padding:20px 20px 14px;text-align:center;margin-bottom:12px;
