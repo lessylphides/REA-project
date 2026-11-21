@@ -73,7 +73,9 @@ async function applyDesired(s: hej.HejSession, acId: string, desired: DesiredAcS
   if (desired.power) {
     if (changed('mode')) { await hej.control(s, acId, { mode: MODE_CODES[desired.mode] }); sent.push(`mode=${desired.mode}`); await sleep(500); }
     if (changed('temperature')) { await hej.control(s, acId, { temperature: desired.temperature }); sent.push(`temp=${desired.temperature}`); await sleep(500); }
-    if (changed('fanSpeed')) { await hej.control(s, acId, { fanSpeed: FAN_CODES[desired.fanSpeed] }); sent.push(`fan=${desired.fanSpeed}`); }
+    // 바람세기: 다른 신호를 보냈으면 항상 같이 보냄. 헤이홈 앱 등에서 바꿔 헤이홈의 기억이
+    // 우리 기록과 어긋나 있어도, 마지막에 바람세기를 보내 실제 단과 헤이홈의 기억을 맞춤
+    if (changed('fanSpeed') || sent.length) { await hej.control(s, acId, { fanSpeed: FAN_CODES[desired.fanSpeed] }); sent.push(`fan=${desired.fanSpeed}`); }
   }
   return sent;
 }
@@ -95,18 +97,35 @@ interface RunStatus {
   targetTemp?: number | null;
   maintaining?: boolean;
   stage?: Stage;
+  sensors?: { id: string; name: string; temp: number | null; hum: number | null; online: boolean }[];
+  sensorBasis?: 'avg' | 's1' | 's2';
   hum?: { on: boolean; warn: boolean; auto: boolean; reason: string; low: number; high: number } | null;
-  acLast?: { power: boolean; mode?: string; temperature?: number } | null;
+  acLast?: { power: boolean; mode?: string; temperature?: number; fanSpeed?: string } | null;
   acWarn?: { type: 'noheat' | 'nocool'; dT: number } | null;
   weather?: Weather | null;
   error?: string;
 }
 
-// ---------- 온도 기록(히스토리) ----------
-async function appendHistory(env: Env, point: { t: number; temp: number; hum: number | null; out: number | null; cmd?: string }): Promise<void> {
-  const arr = (await env.KV.get('history', 'json') as any[]) || [];
-  arr.push(point);
-  await env.KV.put('history', JSON.stringify(arr.slice(-1008))); // 최근 ~7일(10분 간격)
+// ---------- 실행 상태 + 온도 기록 ----------
+// KV 무료 한도(쓰기 하루 1,000회)를 아끼려고 마지막 상태(status)와 온도 기록(history)을
+// 한 키('state')에 함께 저장한다 → 10분마다 실행해도 쓰기는 1회.
+interface HistoryPoint { t: number; temp: number; hum: number | null; out: number | null; cmd?: string }
+interface RunState { status: RunStatus | null; history: HistoryPoint[] }
+const HISTORY_MAX = 1008; // 최근 ~7일(10분 간격)
+
+async function loadState(env: Env): Promise<RunState> {
+  const s = await env.KV.get('state', 'json') as RunState | null;
+  if (s) return { status: s.status ?? null, history: Array.isArray(s.history) ? s.history : [] };
+  // 이전 버전은 status/history 를 따로 저장했음 → 처음 한 번 읽어서 이어받음
+  const [status, history] = await Promise.all([env.KV.get('status', 'json'), env.KV.get('history', 'json')]);
+  return { status: status as RunStatus | null, history: Array.isArray(history) ? history as HistoryPoint[] : [] };
+}
+async function saveState(env: Env, st: RunState): Promise<void> {
+  await env.KV.put('state', JSON.stringify({ status: st.status, history: st.history.slice(-HISTORY_MAX) }));
+}
+/** 값이 바뀌었을 때만 KV 에 쓴다 */
+async function putIfChanged(env: Env, key: string, prev: unknown, next: unknown): Promise<void> {
+  if (JSON.stringify(prev ?? null) !== JSON.stringify(next ?? null)) await env.KV.put(key, JSON.stringify(next));
 }
 
 // 반응 감지: 난방/냉방을 계속 보냈는데 온도가 반대로 움직이면 '에어컨 미반응'으로 판단
@@ -129,12 +148,12 @@ async function manualControl(env: Env, action: string): Promise<{ ok: boolean; s
     const s = await getSession(env);
     const last = await env.KV.get('lastCommand', 'json') as DesiredAcState | null;
     let desired: DesiredAcState;
-    if (action === 'off') desired = { power: false, mode: last?.mode ?? 'heat', temperature: last?.temperature ?? 22, fanSpeed: last?.fanSpeed ?? 'auto' };
+    if (action === 'off') desired = { power: false, mode: last?.mode ?? 'heat', temperature: last?.temperature ?? 22, fanSpeed: last?.fanSpeed ?? 'low' };
     else if (action === 'heat') desired = { power: true, mode: 'heat', temperature: cfg.winterTarget, fanSpeed: 'medium' };
     else if (action === 'cool') desired = { power: true, mode: 'cool', temperature: cfg.summerTarget, fanSpeed: 'medium' };
     else return { ok: false, error: '알 수 없는 동작' };
     const sent = await applyDesired(s, cfg.acDeviceId, desired, last);
-    await env.KV.put('lastCommand', JSON.stringify(desired));
+    await putIfChanged(env, 'lastCommand', last, desired);
     return { ok: true, sent };
   } catch (e: any) { return { ok: false, error: String(e?.message ?? e) }; }
 }
@@ -162,7 +181,7 @@ async function sendAc(env: Env, cmd: { power?: boolean; mode?: string; temperatu
       temperature: typeof cmd.temperature === 'number' ? Math.max(16, Math.min(30, Math.round(cmd.temperature))) : (prev?.temperature ?? 22),
       fanSpeed: (cmd.fanSpeed && FAN_CODES[cmd.fanSpeed as keyof typeof FAN_CODES] !== undefined ? cmd.fanSpeed : prev?.fanSpeed ?? 'medium') as DesiredAcState['fanSpeed'],
     };
-    await env.KV.put('lastCommand', JSON.stringify(merged));
+    await putIfChanged(env, 'lastCommand', prev, merged);
     return { ok: true, sent };
   } catch (e: any) { return { ok: false, error: String(e?.message ?? e) }; }
 }
@@ -170,20 +189,40 @@ async function sendAc(env: Env, cmd: { power?: boolean; mode?: string; temperatu
 // ---------- 자동화 1회 실행 ----------
 async function runOnce(env: Env, opts: { force?: boolean; preview?: boolean; log?: boolean } = {}): Promise<RunStatus> {
   const status: RunStatus = { ts: new Date().toISOString(), ok: false, enabled: false };
+  let state: RunState | null = null;
+  // 상태·기록은 실행 끝에 한 번만 저장 (미리보기는 저장 안 함)
+  const save = async () => { if (!opts.preview && state) { state.status = status; await saveState(env, state); } };
   try {
+    state = await loadState(env);
     const cfg = await loadConfig(env);
     status.enabled = cfg.enabled;
-    if (!cfg.sensorDeviceId || !cfg.acDeviceId) { status.reason = '센서/에어컨 기기 ID 미설정 (설정에서 지정하세요)'; if (!opts.preview) await env.KV.put('status', JSON.stringify(status)); return status; }
+    if (!cfg.sensorDeviceId || !cfg.acDeviceId) { status.reason = '센서/에어컨 기기 ID 미설정 (설정에서 지정하세요)'; await save(); return status; }
 
     const s = await getSession(env);
     const families = await hej.getFamilies(s);
     if (!families.length) throw new Error('집(family) 목록이 비어 있음');
     const devices = await hej.getDevices(s, families[0].familyId);
 
-    const sensor = devices.find((d) => d.id === cfg.sensorDeviceId);
-    if (!sensor) throw new Error('온습도계 기기를 찾지 못함');
-    const { temp, humidity } = readSensor(sensor.deviceState ?? {});
-    if (temp === null) throw new Error('센서에서 온도를 읽지 못함 (deviceState 키 확인 필요)');
+    // 온습도계 1~2개 읽기 → 제어 기준(평균/첫째/둘째)으로 합치기. 꺼진 센서는 건너뜀
+    const readOne = (id?: string) => {
+      if (!id) return null;
+      const d = devices.find((x) => x.id === id);
+      if (!d) return { id, name: '(찾을 수 없음)', temp: null, hum: null, online: false };
+      const r = readSensor(d.deviceState ?? {});
+      return { id, name: d.name ?? '온습도계', temp: r.temp, hum: r.humidity, online: d.online !== false && r.temp !== null };
+    };
+    const sens = [readOne(cfg.sensorDeviceId), readOne(cfg.sensor2DeviceId)].filter((x): x is NonNullable<typeof x> => !!x);
+    status.sensors = sens;
+    const ok = sens.filter((x) => x.online && x.temp !== null);
+    if (!ok.length) throw new Error(sens.length ? '온습도계에서 온도를 읽지 못함 (꺼졌거나 연결 끊김)' : '온습도계 기기를 찾지 못함');
+    const mode = cfg.sensorMode ?? 'avg';
+    const pick = mode === 's1' ? ok.filter((x) => x.id === cfg.sensorDeviceId)
+               : mode === 's2' ? ok.filter((x) => x.id === cfg.sensor2DeviceId) : ok;
+    const use = pick.length ? pick : ok; // 고른 센서가 안 되면 남은 센서로
+    const temp = Math.round(use.reduce((a, x) => a + (x.temp as number), 0) / use.length * 10) / 10;
+    const hs = use.map((x) => x.hum).filter((h): h is number => h !== null);
+    const humidity = hs.length ? Math.round(hs.reduce((a, h) => a + h, 0) / hs.length) : null;
+    status.sensorBasis = use.length > 1 ? 'avg' : (use[0].id === cfg.sensorDeviceId ? 's1' : 's2');
     status.indoorTemp = temp; status.indoorHumidity = humidity;
     status.alert = temp >= cfg.alertHot ? { type: 'hot', temp, threshold: cfg.alertHot }
                  : temp <= cfg.alertCold ? { type: 'cold', temp, threshold: cfg.alertCold }
@@ -207,18 +246,18 @@ async function runOnce(env: Env, opts: { force?: boolean; preview?: boolean; log
     status.reason = decision.reason;
     status.maintaining = decision.maintaining ?? false;
     const lastCmd = await env.KV.get('lastCommand', 'json') as DesiredAcState | null;
-    status.acLast = lastCmd ? { power: !!lastCmd.power, mode: lastCmd.mode, temperature: lastCmd.temperature } : null;
+    status.acLast = lastCmd ? { power: !!lastCmd.power, mode: lastCmd.mode, temperature: lastCmd.temperature, fanSpeed: lastCmd.fanSpeed } : null;
     status.targetTemp = decision.seasonMode === 'cooling' ? effCfg.summerTarget
                       : decision.seasonMode === 'heating' ? effCfg.winterTarget : null;
 
     // 지금 실제로 보낼 명령(반응 감지용 기록): 자동 꺼짐이면 idle
+    // 완만 유지·쉬기는 일부러 살살 트는 단계라 '난방/냉방'으로 치지 않음 (반응 없음 경고 오탐 방지)
     const activeCmd = !cfg.enabled ? 'idle'
-      : decision.action === 'set' ? (decision.desired?.mode ?? 'set')
+      : decision.action === 'set' ? (decision.stage === 'soft' || decision.stage === 'rest' ? decision.stage : (decision.desired?.mode ?? 'set'))
       : decision.action; // off / hold
     // 반응 감지(저장된 이력 기준) → 경고
-    const prevHist = (await env.KV.get('history', 'json')) as Array<{ temp: number; cmd?: string }> || [];
-    status.acWarn = analyzeResponse(prevHist);
-    if (opts.log && temp !== null) await appendHistory(env, { t: Date.now(), temp, hum: humidity, out: weather?.outdoorTemp ?? null, cmd: activeCmd });
+    status.acWarn = analyzeResponse(state.history);
+    if (opts.log && temp !== null) state.history.push({ t: Date.now(), temp, hum: humidity, out: weather?.outdoorTemp ?? null, cmd: activeCmd });
 
     // 가습기: 앱이 기억한 상태 + 이번 판단
     const humSt = (await env.KV.get('hum', 'json') as HumState | null) ?? HUM_DEFAULT;
@@ -226,18 +265,19 @@ async function runOnce(env: Env, opts: { force?: boolean; preview?: boolean; log
     status.hum = { on: humSt.on, warn: !!(humDec.next.warn), auto: !!cfg.humAuto, reason: cfg.humAuto ? humDec.reason : '자동 가습 꺼짐', low: cfg.humLow ?? 40, high: cfg.humHigh ?? 55 };
 
     if (opts.preview) { status.sent = []; status.ok = true; return status; } // 미리보기: 전송/저장 없음
-    if (!cfg.enabled && !opts.force) { status.sent = []; status.ok = true; status.reason = '자동 꺼짐 — 온도 기록만 함'; await env.KV.put('status', JSON.stringify(status)); return status; } // 꺼짐: 기록만
+    if (!cfg.enabled && !opts.force) { status.sent = []; status.ok = true; status.reason = '자동 꺼짐 — 온도 기록만 함'; await save(); return status; } // 꺼짐: 기록만
 
-    // 단계 상태 저장 (실제 제어할 때만)
-    if (decision.ctl) await env.KV.put('ctl', JSON.stringify(decision.ctl)); else await env.KV.delete('ctl');
-    const last = await env.KV.get('lastCommand', 'json') as DesiredAcState | null;
+    // 단계 상태 저장 (실제 제어할 때만, 바뀐 경우에만)
+    if (decision.ctl) await putIfChanged(env, 'ctl', prevCtl, decision.ctl);
+    else if (prevCtl) await env.KV.delete('ctl');
+    const last = lastCmd;
     if (decision.action === 'set' && decision.desired) {
       status.sent = await applyDesired(s, cfg.acDeviceId, decision.desired, last);
-      await env.KV.put('lastCommand', JSON.stringify(decision.desired));
+      await putIfChanged(env, 'lastCommand', last, decision.desired);
     } else if (decision.action === 'off') {
-      const offState: DesiredAcState = { power: false, mode: last?.mode ?? 'cool', temperature: last?.temperature ?? 25, fanSpeed: last?.fanSpeed ?? 'auto' };
+      const offState: DesiredAcState = { power: false, mode: last?.mode ?? 'cool', temperature: last?.temperature ?? 25, fanSpeed: last?.fanSpeed ?? 'low' };
       status.sent = await applyDesired(s, cfg.acDeviceId, offState, last);
-      await env.KV.put('lastCommand', JSON.stringify(offState));
+      await putIfChanged(env, 'lastCommand', last, offState);
     } else {
       status.sent = []; // hold: 아무것도 안 보냄
     }
@@ -254,11 +294,12 @@ async function runOnce(env: Env, opts: { force?: boolean; preview?: boolean; log
       } else if (humDec.next.warn && !humSt.warn) await env.KV.put('hum', JSON.stringify(humDec.next));
     }
     status.ok = true;
-    await env.KV.put('status', JSON.stringify(status));
+    await save();
     return status;
   } catch (e: any) {
     status.error = String(e?.message ?? e);
-    if (!opts.preview) await env.KV.put('status', JSON.stringify(status));
+    // 기록을 못 읽은 경우(state 없음)에는 기존 기록을 덮어쓰지 않도록 저장하지 않음
+    await save().catch(() => {});
     return status;
   }
 }
@@ -305,7 +346,7 @@ export default {
 
     // 상태
     if (url.pathname === '/api/status') {
-      const [cfg, st, creds, last] = await Promise.all([loadConfig(env), env.KV.get('status', 'json'), hasCreds(env), env.KV.get('lastCommand', 'json')]);
+      const [cfg, st, creds, last] = await Promise.all([loadConfig(env), loadState(env).then((x) => x.status), hasCreds(env), env.KV.get('lastCommand', 'json')]);
       const hasOwmKey = !!(cfg.owmKey || env.OWM_API_KEY);
       const acOn = last ? !!(last as DesiredAcState).power : null;
       return json({ config: { ...cfg, owmKey: undefined }, hasOwmKey, hasCreds: creds, acOn, lastRun: st });
@@ -321,11 +362,11 @@ export default {
     }
     // 수동 실행
     if (url.pathname === '/api/run' && req.method === 'POST') {
-      return json(await runOnce(env, { force: true, log: true }));
+      return json(await runOnce(env, { log: true })); // 자동 제어가 꺼져 있으면 신호 없이 확인·기록만
     }
     // 온도 기록(그래프용)
     if (url.pathname === '/api/history') {
-      return json((await env.KV.get('history', 'json')) || []);
+      return json((await loadState(env)).history);
     }
     // 수동 제어 (냉방/난방/끄기 즉시)
     if (url.pathname === '/api/manual' && req.method === 'POST') {
@@ -345,7 +386,7 @@ export default {
     if (url.pathname === '/api/hum') {
       if (req.method === 'POST') {
         const b = await req.json<{ on?: boolean }>();
-        const last = await env.KV.get('status', 'json') as { indoorHumidity?: number } | null;
+        const last = (await loadState(env)).status;
         const next: HumState = { on: !!b.on, since: Date.now(), startHum: b.on ? (last?.indoorHumidity ?? null) : null, warn: false };
         await env.KV.put('hum', JSON.stringify(next));
         return json({ ok: true, hum: next });
@@ -366,7 +407,7 @@ export default {
         const pw = findHumPowerScene(await hej.getScenes(s, fams[0].familyId));
         if (pw && pw.sceneId === b.sceneId) {
           const st = (await env.KV.get('hum', 'json') as HumState | null) ?? HUM_DEFAULT;
-          const last = await env.KV.get('status', 'json') as { indoorHumidity?: number } | null;
+          const last = (await loadState(env)).status;
           const next: HumState = { on: !st.on, since: Date.now(), startHum: last?.indoorHumidity ?? null, warn: false };
           await env.KV.put('hum', JSON.stringify(next));
           return json({ ok: true, hum: next });
@@ -459,12 +500,14 @@ function renderUI(token: string): string {
     padding:max(10px,env(safe-area-inset-top)) 16px calc(16px + env(safe-area-inset-bottom));
     max-width:480px;margin:0 auto;-webkit-font-smoothing:antialiased}
   h1{font-size:28px;font-weight:700;letter-spacing:-.02em;margin:6px 2px 12px}
-  .hero{background:var(--card);border-radius:22px;padding:22px 20px 18px;text-align:center;margin-bottom:12px;
+  .hero{background:var(--card);border-radius:22px;padding:20px 20px 14px;text-align:center;margin-bottom:12px;
     box-shadow:0 1px 3px rgba(0,0,0,.04)}
   .temp{font-size:72px;font-weight:600;letter-spacing:-.04em;line-height:1;margin:2px 0}
   .temp span{font-size:32px;font-weight:500;color:var(--sec)}
   .humid{color:var(--sec);font-size:17px;margin-top:2px}
-  .chip{display:inline-flex;align-items:center;gap:7px;margin-top:18px;padding:11px 18px;border-radius:999px;
+  .sens2{color:var(--sec);font-size:13px;margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  #acwarn:empty{display:none}.sens2:empty{display:none}.sens2 b{font-weight:600;color:var(--label)}
+  .chip{display:inline-flex;align-items:center;gap:7px;margin-top:14px;padding:11px 18px;border-radius:999px;
     font-size:16px;font-weight:600;background:var(--field)}
   .chip .em{font-size:19px}
   .chip.blue{color:var(--blue)} .chip.orange{color:var(--orange)} .chip.green{color:var(--green)} .chip.gray{color:var(--sec)} .chip.red{color:var(--red)}
@@ -549,6 +592,22 @@ function renderUI(token: string): string {
   .tg{position:relative;width:52px;height:32px;flex:0 0 auto}
   .tg input{opacity:0;width:0;height:0;position:absolute}
   .tg .sl{position:absolute;inset:0;background:#e9e9ea;border-radius:999px;transition:.25s}
+  /* 휴대폰 세로: 화면이 짧으면 여백을 줄여 한 화면에 (안전영역 포함) */
+  @media (orientation:portrait) and (max-height:900px){
+    h1{font-size:26px}
+    .hero{padding:16px 18px 12px}
+    .temp{font-size:64px}
+    .temp span{font-size:28px}
+    .chip{margin-top:10px;padding:9px 16px}
+    .chipsub{margin-top:7px}
+    .tiles{margin-bottom:9px}
+    .tile{padding:9px 6px}
+    #sparkCard{margin-bottom:9px!important;padding:10px 14px!important}
+    .switch{padding:12px 16px;margin-bottom:9px}
+    .qa{margin-bottom:4px}
+    .qbtn{padding:11px 4px}
+    .linkbtn{padding:6px}
+  }
   /* 휴대폰 가로: 태블릿처럼 2열, 화면 높이에 맞게 압축 */
   @media (orientation:landscape) and (max-height:500px){
     body{max-width:none;padding:max(6px,env(safe-area-inset-top)) max(14px,env(safe-area-inset-right)) max(6px,env(safe-area-inset-bottom)) max(14px,env(safe-area-inset-left))}
@@ -608,9 +667,10 @@ function renderUI(token: string): string {
 
 <div class="dash"><div class="cL">
 <div class="hero">
-  <div style="color:var(--sec);font-size:13px;font-weight:500;margin-bottom:2px">실내 온도 <span style="opacity:.6">· 탭하면 그래프 📈</span></div>
+  <div style="color:var(--sec);font-size:13px;font-weight:500;margin-bottom:2px">실내 온도<span id="basisLbl"></span> <span style="opacity:.6">· 탭하면 그래프 📈</span></div>
   <div class="temp" id="temp" style="cursor:pointer">–<span>℃</span></div>
   <div class="humid" id="humid" style="cursor:pointer">습도 –</div>
+  <div class="sens2" id="sens2"></div>
   <div class="chip gray" id="chip"><span class="em">⏳</span><span id="chipt">불러오는 중…</span></div>
   <div class="chipsub" id="chipsub"></div>
   <div class="chipsub" id="acwarn" style="color:var(--red);font-weight:600"></div>
@@ -706,7 +766,10 @@ function renderUI(token: string): string {
 <div style="height:10px"></div>
 <details id="dAdv"><summary>기기 선택</summary>
   <div class="grp">
-    <div class="fld"><label>온습도계</label><select id="sensorSel" class="sel"></select></div>
+    <div class="fld"><label>온습도계 1</label><select id="sensorSel" class="sel"></select></div>
+    <div class="fld"><label>온습도계 2 <span style="color:var(--sec);font-weight:400">(선택)</span></label><select id="sensor2Sel" class="sel"></select></div>
+    <div class="fld"><label>냉난방 기준</label><select id="sensorMode" class="sel"><option value="avg">두 온습도계 평균</option><option value="s1">온습도계 1만</option><option value="s2">온습도계 2만</option></select>
+      <div class="mini">입구 쪽은 문이 열릴 때 온도가 출렁여요. 평균을 추천해요. 한쪽이 연결 안 되면 남은 쪽으로 자동 전환해요.</div></div>
     <div class="fld"><label>에어컨</label><select id="acSel" class="sel"></select></div>
     <div style="display:flex;gap:8px"><button class="btn" id="refreshDev" style="flex:1">다시 불러오기</button><button class="btn save" id="saveDev" style="flex:1">기기 저장</button></div>
     <div class="mini" id="devNote">헤이홈 앱에 등록된 기기가 자동으로 여기 나와요. 이름으로 고르기만 하면 돼요.</div>
@@ -719,10 +782,10 @@ function renderUI(token: string): string {
     <div class="sheet-h"><b>🎛️ 에어컨 리모컨</b><button id="acClose" class="x">✕</button></div>
     <div class="acseg" id="acPower"><button data-p="on">전원 켜기</button><button data-p="off">전원 끄기</button></div>
     <div class="aclabel">모드</div>
-    <div class="acseg" id="acMode"><button data-m="cool">❄️ 냉방</button><button data-m="heat">🔥 난방</button><button data-m="fan">💨 송풍</button><button data-m="auto">자동</button></div>
+    <div class="acseg" id="acMode"><button data-m="cool">❄️ 냉방</button><button data-m="heat">🔥 난방</button><button data-m="fan">💨 송풍</button></div>
     <div class="aclabel">온도</div>
     <div class="actemp" id="acTempBox"><button id="tDown">−</button><span id="tVal">24℃</span><button id="tUp">＋</button></div>
-    <div class="aclabel">풍향 · 세기 · 파워 <span style="font-weight:400">(누를 때마다 바뀜)</span></div>
+    <div class="aclabel">풍향 · 세기 · 파워 <span style="font-weight:400">(누를 때마다 바뀜 · 세기는 1→2→3단)</span></div>
     <div class="acseg" id="acDiy"><button data-k="updown">↕️ 상하</button><button data-k="leftright">↔️ 좌우</button><button data-k="fan">🌀 세기</button><button data-k="power">⚡ 파워</button></div>
     <div class="mini" id="acDiyNote" style="margin-top:6px"></div>
     <div class="mini" id="acMsg" style="margin-top:10px;min-height:16px"></div>
@@ -764,7 +827,7 @@ document.addEventListener('gesturestart',e=>e.preventDefault());
 document.addEventListener('gesturechange',e=>e.preventDefault());
 let _lt=0;document.addEventListener('touchend',e=>{const n=Date.now();if(n-_lt<300)e.preventDefault();_lt=n;},{passive:false});
 const T=new URLSearchParams(location.search).get('t');const q=p=>p+(T?('?t='+T):'');
-let histRange=24;let lastPv=null;let curSensor='',curAc='';let curAcOn=true;let bizNext=null,bizState='';
+let histRange=24;let lastPv=null;let curSensor='',curSensor2='',curAc='';let curAcOn=true;let bizNext=null,bizState='';
 function svgChart(d,col){
   const W=440,H=240,pl=32,pr=30,pt=22,pb=26;
   const temps=d.map(p=>p.temp);const outs=d.filter(p=>p.out!=null).map(p=>p.out);const hums=d.filter(p=>p.hum!=null).map(p=>p.hum);
@@ -828,13 +891,19 @@ function applyAcUI(){var b=document.getElementById('acTempBox');if(b)b.classList
 async function acSend(cmd,label){const m=document.getElementById('acMsg');m.textContent='전송 중…';let j;try{j=await(await fetch(q('/api/ac'),{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(cmd)})).json();}catch(e){j={ok:false,error:'전송 실패'}}m.textContent=j.ok?('✓ '+(label||'전송됨')):('✗ '+(j.error||''));}
 document.getElementById('acTile').onclick=()=>{document.getElementById('acModal').style.display='flex';showAcTemp();applyAcUI();document.getElementById('acMsg').textContent='';loadScenes()};
 // DIY 버튼 = 헤이홈 '간편 레시피'를 이름으로 찾아 실행 (이름에 상하/좌우/파워/1~4단 포함)
-var DIY_KEYS={updown:/상하/,leftright:/좌우/,fan:/세기/,power:/파워|power/i};
+var DIY_KEYS={updown:/상하/,leftright:/좌우/,power:/파워|power/i};
+// 🌀 세기: 헤이홈 약·중·강(= 1·2·3단)을 순환. 헤이홈이 기억하는 단도 같이 바뀌어 온도를 바꿔도 유지됨
+var FAN_STEPS=['low','medium','high'],curFan=null;
+function fanLabel(){var i=FAN_STEPS.indexOf(curFan);document.querySelector('#acDiy button[data-k=fan]').textContent='🌀 세기'+(i>=0?' '+(i+1)+'단':'');}
 var diyMap={};
 async function runScene(id,label){const m=document.getElementById('acMsg');m.textContent='전송 중…';let r;try{r=await(await fetch(q('/api/scene'),{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({sceneId:id})})).json();}catch(e){r={ok:false,error:'전송 실패'}}m.textContent=r.ok?('✓ '+label):('✗ '+(r.error||''));}
 async function loadScenes(){let j;try{j=await(await fetch(q('/api/scenes'))).json();}catch(e){j={ok:false}}
   diyMap={};(j.ok?j.scenes:[]).forEach(function(sc){if(/가습/.test(sc.name))return;for(var k in DIY_KEYS){if(!diyMap[k]&&DIY_KEYS[k].test(sc.name))diyMap[k]=sc;}});
   var missing=[];
-  document.querySelectorAll('#acDiy button').forEach(function(b){var sc=diyMap[b.dataset.k];b.disabled=!sc;if(!sc)missing.push(b.textContent.split(' ').slice(1).join(' '));
+  document.querySelectorAll('#acDiy button').forEach(function(b){if(b.dataset.k==='fan'){b.disabled=false;
+      curFan=(lastPv&&lastPv.acLast&&FAN_STEPS.indexOf(lastPv.acLast.fanSpeed)>=0)?lastPv.acLast.fanSpeed:curFan;fanLabel();
+      b.onclick=function(){var i=FAN_STEPS.indexOf(curFan);curFan=FAN_STEPS[(i+1)%3];fanLabel();acSend({fanSpeed:curFan},'바람 '+(FAN_STEPS.indexOf(curFan)+1)+'단');};return;}
+    var sc=diyMap[b.dataset.k];b.disabled=!sc;if(!sc)missing.push(b.textContent.split(' ').slice(1).join(' '));
     b.onclick=function(){if(sc)runScene(sc.sceneId,b.textContent.split(' ').slice(1).join(' '));};});
   document.getElementById('acDiyNote').textContent=!j.ok?'레시피를 불러오지 못했어요':missing.length?('헤이홈 간편 레시피 필요: '+missing.join(', ')+' (이름에 그 단어를 넣어주세요)'):'';
 }
@@ -889,6 +958,7 @@ function friendly(p,enabled){
   if(al&&al.power&&al.mode==='fan')return{em:'🍃',t:'적정 유지 중',sub:'송풍으로 순환',c:'green',ac:'송풍'};
   return{em:'😌',t:'지금 알맞아요',sub:'에어컨 대기 중',c:'green',ac:'대기'};
 }
+function esc(t){return String(t).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]})}
 function fitLock(){var d=document.documentElement;d.classList.remove('lock');if(d.scrollHeight<=window.innerHeight+2){window.scrollTo(0,0);d.classList.add('lock');}}
 window.addEventListener('resize',fitLock);window.addEventListener('orientationchange',function(){window.scrollTo(0,0);setTimeout(fitLock,300);setTimeout(fitLock,800)});
 async function load(){
@@ -900,7 +970,7 @@ async function load(){
   document.getElementById('title').textContent=c.storeName||'우리 매장';
   document.getElementById('storeName').value=c.storeName||'';
   for(const k of ['summerTarget','winterTarget','deadband','acBias','observeMinutes','restAbove','humLow','humHigh','alertHot','alertCold'])document.getElementById(k).value=c[k];
-  curSensor=c.sensorDeviceId||'';curAc=c.acDeviceId||'';
+  curSensor=c.sensorDeviceId||'';curAc=c.acDeviceId||'';curSensor2=c.sensor2DeviceId||'';document.getElementById('sensorMode').value=c.sensorMode||'avg';
   document.getElementById('address').value=c.address||'';
   document.getElementById('loc').textContent=c.address?('현재 위치: '+c.address):('좌표 '+(c.lat||'-')+', '+(c.lon||'-'));
   document.getElementById('auto').checked=!!c.enabled;
@@ -914,6 +984,11 @@ async function load(){
   const f=friendly(pv,c.enabled);
   if(pv&&typeof pv.indoorTemp==='number'){
     document.getElementById('temp').innerHTML=pv.indoorTemp.toFixed(1)+'<span>℃</span>';
+    var sv=pv.sensors||[],sb=document.getElementById('sens2');
+    if(sv.length>1){var lab=function(x){return x.online&&x.temp!=null?('<b>'+x.temp.toFixed(1)+'℃</b> '+(x.hum!=null?x.hum+'%':'')):'<span style="color:var(--red)">연결 안 됨</span>'};
+      var nm=function(x){var t=String(x.name||'').replace(/(온습도)? *(센서|계)/g,'').replace(/온습도/g,'').trim();return t||'센서'};
+      sb.innerHTML=sv.map(function(x){return esc(nm(x))+' '+lab(x)}).join(' · ');}else sb.innerHTML='';
+    document.getElementById('basisLbl').textContent=sv.length>1?(pv.sensorBasis==='avg'?' · 평균':' · '+esc(nm(sv.find(function(x){return x.id===(pv.sensorBasis==='s2'?(sv[1]&&sv[1].id):sv[0].id)})||sv[0]))+' 기준'):'';
     document.getElementById('humid').textContent='습도 '+(pv.indoorHumidity!=null?pv.indoorHumidity+'%':'–')+' · '+(pv.hum&&pv.hum.warn?'⚠️ 가습기 확인':(pv.hum&&pv.hum.on?'💧 가습 중':'가습기'))+' ›';
     document.getElementById('t_season').textContent=pv.seasonMode==='cooling'?'냉방철':pv.seasonMode==='heating'?'난방철':'간절기';
     document.getElementById('t_out').textContent=pv.outdoorTemp!=null?((pv.weather&&pv.weather.emoji?pv.weather.emoji+' ':'')+Math.round(pv.outdoorTemp)+'℃'):'–';
@@ -941,7 +1016,10 @@ async function load(){
   document.getElementById('temp').style.color=((c.enabled||warn)&&['blue','orange','red'].includes(f.c))?tc:'';
 }
 document.getElementById('auto').onchange=async()=>{await fetch(q('/api/toggle'),{method:'POST'});load()};
-document.getElementById('run').onclick=async(e)=>{e.target.textContent='실행 중…';await fetch(q('/api/run'),{method:'POST'});e.target.textContent='지금 한 번 실행';load()};
+function sentKo(x){var M={'power=true':'전원 켜기','power=false':'전원 끄기','mode=heat':'난방','mode=cool':'냉방','mode=fan':'송풍','mode=auto':'자동','fan=low':'바람 1단','fan=medium':'바람 2단','fan=high':'바람 3단'};if(M[x])return M[x];var m=/^temp=([0-9]+)$/.exec(x);return m?('설정 '+m[1]+'℃'):x;}
+document.getElementById('run').onclick=async(e)=>{const b=e.currentTarget,L='↻ 지금 자동 기준으로 점검';if(b.disabled)return;b.disabled=true;b.textContent='점검 중…';let j=null;try{j=await(await fetch(q('/api/run'),{method:'POST'})).json();}catch(_){}
+  b.textContent=!j?'✗ 점검 실패':(j.enabled===false?'자동 꺼짐 · 신호 없이 확인만 했어요':((j.sent&&j.sent.length)?('✓ 보냄: '+j.sent.map(sentKo).join(', ')):'✓ 바꿀 것 없음'));
+  load();setTimeout(function(){b.textContent=L;b.disabled=false;},2500);};
 document.getElementById('login').onclick=async()=>{const email=document.getElementById('email').value,password=document.getElementById('password').value;if(!email||!password){alert('이메일/비번을 입력하세요');return}const r=await fetch(q('/api/login'),{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({email,password})});const j=await r.json();if(j.ok){document.getElementById('password').value='';document.getElementById('dLogin').open=false;alert('로그인 성공!')}else alert('로그인 실패: '+(j.error||''));load()};
 document.getElementById('save').onclick=async()=>{const b={};for(const k of ['summerTarget','winterTarget','deadband','acBias','observeMinutes','restAbove','humLow','humHigh','alertHot','alertCold']){b[k]=Number(document.getElementById(k).value)}b.humAuto=document.getElementById('humAuto').checked;b.humBizOnly=document.getElementById('humBizOnly').checked;b.storeName=document.getElementById('storeName').value||'우리 매장';const ow=document.getElementById('owmKey').value;if(ow)b.owmKey=ow;await fetch(q('/api/config'),{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(b)});document.getElementById('owmKey').value='';alert('저장됨');load()};
 document.getElementById('geocode').onclick=async()=>{const a=document.getElementById('address').value.trim();if(!a){alert('주소를 입력하세요');return}const loc=document.getElementById('loc');loc.textContent='위치 찾는 중…';const url='/api/geocode?q='+encodeURIComponent(a)+(T?'&t='+T:'');const j=await(await fetch(url)).json();if(j.ok){await fetch(q('/api/config'),{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({address:a,lat:j.lat,lon:j.lon})});loc.textContent='✓ 설정됨: '+j.name;load()}else{loc.textContent='✗ '+(j.error||'주소를 못 찾음')}};
@@ -952,14 +1030,15 @@ async function loadDevices(){
   let devs;try{devs=await (await fetch(q('/api/devices'))).json();}catch(e){n.textContent='불러오기 실패';return}
   if(!Array.isArray(devs)){n.textContent='오류: '+((devs&&devs.error)||'기기 목록을 못 읽음');return}
   const opt=d=>'<option value="'+d.id+'">'+(d.name||'(이름없음)')+typeLabel(d.deviceType)+'</option>';
-  const s1=document.getElementById('sensorSel'),s2=document.getElementById('acSel');
+  const s1=document.getElementById('sensorSel'),s2=document.getElementById('acSel'),s3=document.getElementById('sensor2Sel');
   s1.innerHTML=devs.map(opt).join('');s2.innerHTML=devs.map(opt).join('');
-  if(curSensor)s1.value=curSensor;if(curAc)s2.value=curAc;
+  s3.innerHTML='<option value="">없음</option>'+devs.filter(function(d){return d.deviceType==='SensorTh'||/온습도|센서/.test(d.name||'')}).map(opt).join('');
+  if(curSensor)s1.value=curSensor;if(curAc)s2.value=curAc;s3.value=curSensor2||'';
   n.textContent='총 '+devs.length+'개 · 이름으로 고르고 [기기 저장]';
 }
 document.getElementById('refreshDev').onclick=loadDevices;
 document.getElementById('dAdv').addEventListener('toggle',function(){if(this.open&&!document.getElementById('sensorSel').options.length)loadDevices();});
-document.getElementById('saveDev').onclick=async()=>{const b={sensorDeviceId:document.getElementById('sensorSel').value,acDeviceId:document.getElementById('acSel').value};if(!b.sensorDeviceId||!b.acDeviceId){alert('먼저 기기를 불러와 선택하세요');return}await fetch(q('/api/config'),{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(b)});alert('기기 저장됨');load()};
+document.getElementById('saveDev').onclick=async()=>{const b={sensorDeviceId:document.getElementById('sensorSel').value,acDeviceId:document.getElementById('acSel').value,sensor2DeviceId:document.getElementById('sensor2Sel').value,sensorMode:document.getElementById('sensorMode').value};if(b.sensor2DeviceId&&b.sensor2DeviceId===b.sensorDeviceId){alert('온습도계 1과 2를 다르게 골라주세요');return}if(!b.sensorDeviceId||!b.acDeviceId){alert('먼저 기기를 불러와 선택하세요');return}await fetch(q('/api/config'),{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(b)});alert('기기 저장됨');load()};
 // 시계 + 영업 카운트다운 (가로 태블릿 표시)
 function fmtDur(ms){var m=Math.floor(ms/60000),h=Math.floor(m/60);m=m%60;return h>0?(h+'시간 '+m+'분'):(m+'분');}
 function updateClock(){

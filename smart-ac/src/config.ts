@@ -56,6 +56,10 @@ export interface Config {
   hours?: DayHours[];
   /** 온습도계(센서) 기기 ID */
   sensorDeviceId: string;
+  /** 두 번째 온습도계 기기 ID (선택, 예: 입구 쪽) */
+  sensor2DeviceId?: string;
+  /** 제어 기준: 두 센서 평균 / 첫 번째만 / 두 번째만. 한쪽이 안 되면 남은 쪽 사용 */
+  sensorMode?: 'avg' | 's1' | 's2';
   /** IR 에어컨 기기 ID */
   acDeviceId: string;
   /** 매장 주소(표시용) */
@@ -97,14 +101,15 @@ export const AC_TEMP_MIN = 16;
 export const AC_TEMP_MAX = 30;
 
 export type HvacMode = 'cool' | 'heat' | 'auto' | 'fan' | 'dry';
-export type HvacFanSpeed = 'auto' | 'low' | 'medium' | 'high';
+/** 헤이홈 약·중·강 = 실제 에어컨 1·2·3단 (헤이홈 '자동'은 이 에어컨에 맞는 기능이 없어 제외) */
+export type HvacFanSpeed = 'low' | 'medium' | 'high';
 
 // 벤더 코드 매핑 (POST dashboard/control/{id} 의 requirments 값)
 export const MODE_CODES: Record<HvacMode, string> = {
   cool: '0', heat: '1', auto: '2', fan: '3', dry: '4',
 };
 export const FAN_CODES: Record<HvacFanSpeed, string> = {
-  auto: '0', low: '1', medium: '2', high: '3',
+  low: '1', medium: '2', high: '3',
 };
 
 /** 에어컨에 보내려는 "원하는 상태" (한 번에 하나씩 전송됨) */
