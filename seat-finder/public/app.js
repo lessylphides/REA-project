@@ -441,7 +441,15 @@ function buildStorefront(T, door, dh) {
     g.fillStyle = "#c9a57c"; g.fillRect(0, 0, w, h);
     g.strokeStyle = "rgba(120,80,40,.25)"; g.lineWidth = 2;
     for (let y = 8; y < h; y += 11) { g.beginPath(); g.moveTo(0, y); g.bezierCurveTo(40, y + 4, 80, y - 4, w, y + 2); g.stroke(); }
-    g.fillStyle = "#4a3a31"; g.font = "700 18px sans-serif"; g.textAlign = "center"; g.fillText(F.sign || "", w / 2, h / 2 + 6);
+    // 명판 글자: 폭에 맞춰 줄바꿈
+    g.fillStyle = "#3b2b22"; g.textAlign = "center"; g.font = "800 22px Georgia, 'Times New Roman', serif";
+    const lines = [];
+    for (const word of String(F.sign || "").split(" ")) {
+      const last = lines[lines.length - 1];
+      if (last && g.measureText(last + " " + word).width < w - 24) lines[lines.length - 1] = last + " " + word;
+      else lines.push(word);
+    }
+    lines.forEach((l, i) => g.fillText(l, w / 2, h / 2 + 8 + (i - (lines.length - 1) / 2) * 26));
   });
   mk(box(0.48, 0.42, 0.03), toonMap(wood), [px, 1.72, zO + 0.03], fpGroup, ol);
 
