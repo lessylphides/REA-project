@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>빈자리찾기</title>
+<meta name="description" content="지금 매장에 빈자리가 있는지 3D로 확인하세요." />
+<meta name="theme-color" content="#fdf1e2" />
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><rect x='10' y='26' width='44' height='8' rx='3' fill='%2357b38a'/><rect x='14' y='8' width='8' height='26' rx='3' fill='%2357b38a'/><rect x='14' y='34' width='6' height='22' rx='3' fill='%23a0785a'/><rect x='44' y='34' width='6' height='22' rx='3' fill='%23a0785a'/></svg>" />
+<style>
+  :root {
+    --bg1: #fdf1e2; --bg2: #e3f1ec;
+    --ink: #3b2f2a; --sub: #8a7a70; --card: rgba(255,255,255,.86);
+    --empty: #2fa877; --busy: #ee7a62; --line: rgba(59,47,42,.1);
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; height: 100%; overflow: hidden; }
+  body {
+    font-family: "Pretendard", "Apple SD Gothic Neo", "Noto Sans KR", system-ui, sans-serif;
+    color: var(--ink);
+    background: linear-gradient(170deg, var(--bg1) 0%, #fbe8d8 45%, var(--bg2) 100%);
+    overscroll-behavior: none;
+  }
+  #scene { position: fixed; inset: 0; touch-action: none; }
+  #scene canvas { display: block; }
+
+  .top {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 5;
+    padding: calc(env(safe-area-inset-top) + 12px) 16px 0;
+    display: flex; flex-direction: column; align-items: center; gap: 8px; pointer-events: none;
+  }
+  .brand { font-size: 14px; font-weight: 700; color: var(--sub); letter-spacing: .02em; }
+  .count {
+    pointer-events: auto; background: var(--card); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+    border-radius: 22px; padding: 12px 22px; box-shadow: 0 6px 24px rgba(120,80,50,.14);
+    display: flex; align-items: baseline; gap: 8px; border: 1px solid rgba(255,255,255,.7);
+  }
+  .count .label { font-size: 15px; font-weight: 700; }
+  .count .n { font-size: 34px; font-weight: 800; color: var(--empty); font-variant-numeric: tabular-nums; line-height: 1; }
+  .count .n.zero { color: var(--busy); }
+  .count .tot { font-size: 15px; color: var(--sub); font-weight: 600; }
+  .meta { font-size: 12px; color: var(--sub); display: flex; gap: 10px; align-items: center; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--empty); display: inline-block; margin-right: 4px; box-shadow: 0 0 0 0 rgba(47,168,119,.5); animation: ping 2s infinite; }
+  .dot.off { background: #bbb; animation: none; }
+  @keyframes ping { 0% { box-shadow: 0 0 0 0 rgba(47,168,119,.45);} 70% { box-shadow: 0 0 0 8px rgba(47,168,119,0);} 100% { box-shadow: 0 0 0 0 rgba(47,168,119,0);} }
+  .legend { display: flex; gap: 12px; font-size: 12px; font-weight: 600; }
+  .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 4px; vertical-align: -1px; }
+
+  .bottom {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 5;
+    padding: 0 16px calc(env(safe-area-inset-bottom) + 14px);
+    display: flex; flex-direction: column; align-items: center; gap: 10px; pointer-events: none;
+  }
+  .chips {
+    pointer-events: auto; display: flex; gap: 6px; overflow-x: auto; max-width: 100%;
+    padding: 4px 2px; scrollbar-width: none;
+  }
+  .chips::-webkit-scrollbar { display: none; }
+  .chip {
+    flex: none; background: var(--card); border-radius: 14px; padding: 7px 11px; font-size: 13px; font-weight: 700;
+    border: 1px solid rgba(255,255,255,.8); box-shadow: 0 2px 8px rgba(120,80,50,.1); white-space: nowrap;
+  }
+  .chip b { color: var(--empty); }
+  .chip.full { opacity: .55; }
+  .chip.full b { color: var(--busy); }
+  .hint { font-size: 12px; color: var(--sub); background: rgba(255,255,255,.6); padding: 4px 10px; border-radius: 10px; }
+
+  .adminbar {
+    pointer-events: auto; display: none; align-items: center; gap: 8px;
+    background: #3b2f2a; color: #fff; border-radius: 18px; padding: 8px 8px 8px 14px; font-size: 13px; font-weight: 700;
+    box-shadow: 0 6px 20px rgba(0,0,0,.2);
+  }
+  body.admin .adminbar { display: flex; }
+  .adminbar button {
+    border: 0; border-radius: 12px; padding: 8px 12px; font: inherit; font-size: 13px; cursor: pointer;
+    background: rgba(255,255,255,.15); color: #fff;
+  }
+  .adminbar button.warn { background: var(--busy); }
+
+  .toast {
+    position: fixed; left: 50%; top: 45%; transform: translate(-50%, -50%) scale(.9); z-index: 20;
+    background: rgba(59,47,42,.92); color: #fff; padding: 12px 18px; border-radius: 14px; font-weight: 700; font-size: 15px;
+    opacity: 0; pointer-events: none; transition: opacity .2s, transform .2s; text-align: center;
+  }
+  .toast.show { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+
+  .modal { position: fixed; inset: 0; z-index: 30; display: none; align-items: center; justify-content: center; background: rgba(59,47,42,.35); padding: 16px; }
+  .modal.show { display: flex; }
+  .modal form { background: #fff; border-radius: 20px; padding: 22px; width: 100%; max-width: 340px; display: flex; flex-direction: column; gap: 12px; box-shadow: 0 20px 60px rgba(0,0,0,.25); }
+  .modal h2 { margin: 0; font-size: 18px; }
+  .modal p { margin: 0; font-size: 13px; color: var(--sub); }
+  .modal input { font-size: 17px; padding: 12px 14px; border-radius: 12px; border: 1.5px solid #e4d8cf; outline: none; }
+  .modal input:focus { border-color: var(--empty); }
+  .modal button { font-size: 16px; font-weight: 700; padding: 12px; border-radius: 12px; border: 0; background: var(--empty); color: #fff; cursor: pointer; }
+  .modal .err { color: var(--busy); font-size: 13px; min-height: 1em; }
+  .modal a { font-size: 13px; color: var(--sub); text-align: center; }
+
+  .nogl { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; text-align: center; color: var(--sub); padding: 24px; }
+  @media (min-width: 720px) { .count .n { font-size: 40px; } }
+</style>
+<script type="importmap">
+{ "imports": {
+  "three": "/vendor/three/build/three.module.js",
+  "three/addons/": "/vendor/three/examples/jsm/"
+} }
+</script>
+</head>
+<body>
+  <div id="scene"></div>
+  <div class="nogl" id="nogl">이 기기에서는 3D 화면을 표시할 수 없어요.<br />아래 목록으로 빈자리를 확인해 주세요.</div>
+
+  <header class="top">
+    <div class="brand" id="brand">빈자리찾기</div>
+    <div class="count" aria-live="polite">
+      <span class="label">빈자리</span>
+      <span class="n" id="nEmpty">–</span>
+      <span class="tot" id="nTotal">/ – 석</span>
+    </div>
+    <div class="meta">
+      <span><span class="dot" id="liveDot"></span><span id="updated">불러오는 중…</span></span>
+    </div>
+    <div class="legend">
+      <span><i style="background:var(--empty)"></i>빈자리</span>
+      <span><i style="background:var(--busy)"></i>사용 중</span>
+    </div>
+  </header>
+
+  <footer class="bottom">
+    <div class="hint" id="hint">손가락으로 돌려보고, 두 손가락으로 확대할 수 있어요</div>
+    <div class="chips" id="chips"></div>
+    <div class="adminbar">
+      <span>관리자 · 자리를 눌러 바꾸기</span>
+      <button type="button" class="warn" id="resetBtn">전체 비우기</button>
+      <button type="button" id="logoutBtn">나가기</button>
+    </div>
+  </footer>
+
+  <div class="toast" id="toast"></div>
+
+  <div class="modal" id="login">
+    <form id="loginForm">
+      <h2>관리자 로그인</h2>
+      <p>자리 상태를 바꾸려면 비밀번호를 입력하세요.</p>
+      <input type="password" id="pw" autocomplete="current-password" placeholder="비밀번호" required />
+      <div class="err" id="loginErr"></div>
+      <button type="submit">들어가기</button>
+      <a href="/">손님 화면으로</a>
+    </form>
+  </div>
+
+  <script type="module" src="/app.js"></script>
+</body>
+</html>

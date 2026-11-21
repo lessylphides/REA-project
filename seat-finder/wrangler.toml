@@ -1,0 +1,26 @@
+name = "seat-finder"
+main = "src/index.ts"
+compatibility_date = "2024-11-06"
+
+# 3D 화면(정적 파일)
+[assets]
+directory = "public"
+binding = "ASSETS"
+
+# 자리 상태 저장: Durable Object 1개 (모든 손님이 같은 상태를 즉시 봄)
+[[durable_objects.bindings]]
+name = "SEATS"
+class_name = "SeatStore"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["SeatStore"]
+
+# 한글 도메인 연결 (도메인 구입 + Cloudflare에 추가한 뒤 주석 해제)
+# 빈자리찾기.co.kr = xn--ok0bu1teudt3lg0f.co.kr (퓨니코드)
+# routes = [
+#   { pattern = "xn--ok0bu1teudt3lg0f.co.kr", custom_domain = true }
+# ]
+
+# 관리자 비밀번호는 파일에 두지 말고:
+#   npx wrangler secret put ADMIN_TOKEN

@@ -1,0 +1,19 @@
+{
+  "name": "seat-finder",
+  "version": "0.1.0",
+  "private": true,
+  "description": "빈자리찾기 - 매장 3D 빈자리 안내 (Cloudflare Worker + Durable Object)",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "typecheck": "tsc --noEmit",
+    "vendor": "mkdir -p public/vendor/three/build public/vendor/three/examples/jsm/controls public/vendor/three/examples/jsm/loaders public/vendor/three/examples/jsm/utils && cp node_modules/three/build/three.module.min.js public/vendor/three/build/three.module.js && cp node_modules/three/examples/jsm/controls/OrbitControls.js public/vendor/three/examples/jsm/controls/ && cp node_modules/three/examples/jsm/loaders/GLTFLoader.js public/vendor/three/examples/jsm/loaders/ && cp node_modules/three/examples/jsm/utils/BufferGeometryUtils.js public/vendor/three/examples/jsm/utils/"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20241106.0",
+    "three": "^0.170.0",
+    "typescript": "^5.6.3",
+    "wrangler": "^3.114.0"
+  }
+}
