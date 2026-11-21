@@ -107,14 +107,29 @@
   .walkbtn svg { width: 20px; height: 20px; }
   .walk-ui { display: none; }
   body.walking .walk-ui { display: block; }
-  body.walking .brand, body.walking .legend, body.walking .chips, body.walking .hint, body.walking .walkbtn { display: none; }
+  body.walking .brand, body.walking .legend, body.walking .chips, body.walking .hint, body.walking #walkBtn { display: none; }
   body.walking .count { padding: 7px 16px; border-radius: 16px; }
   body.walking .count .n { font-size: 26px; }
-  .exitwalk {
-    position: fixed; z-index: 6; top: calc(env(safe-area-inset-top) + 12px); right: 16px;
-    border: 0; border-radius: 14px; padding: 10px 14px; font: inherit; font-size: 13px; font-weight: 800; cursor: pointer;
-    background: var(--card); color: var(--ink); box-shadow: 0 4px 14px rgba(0,0,0,.15);
+  /* 1인칭에선 '빈자리 N' 한 줄만 왼쪽 위에 */
+  body.walking .top { align-items: flex-start; }
+  body.walking .meta, body.walking .count .tot { display: none; }
+  body.walking .count { padding: 6px 14px; gap: 6px; }
+  body.walking .count .label { font-size: 13px; }
+  body.walking .count .n { font-size: 22px; }
+  body.intro .reticle, body.intro .aim, body.intro .mapbtn, body.intro .joy { display: none !important; }
+  .introbox { display: none; position: fixed; z-index: 7; left: 0; right: 0; bottom: 0; padding: 0 16px calc(env(safe-area-inset-bottom) + 28px); justify-content: center; pointer-events: none; }
+  body.intro .introbox { display: flex; }
+  .introcard {
+    pointer-events: auto; display: flex; flex-direction: column; align-items: center; gap: 6px;
+    background: var(--card); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+    border-radius: 24px; padding: 16px 28px 20px; box-shadow: 0 10px 30px rgba(60,40,20,.2);
+    animation: rise .6s cubic-bezier(.2,1.4,.4,1) both .3s;
   }
+  .introcard small { font-size: 13px; color: var(--sub); font-weight: 700; }
+  .introcard strong { font-size: 24px; font-weight: 800; margin-bottom: 8px; }
+  .introcard .walkbtn { padding: 14px 44px; font-size: 17px; }
+  @keyframes rise { from { opacity: 0; transform: translateY(30px); } to { opacity: 1; transform: none; } }
+  .stats { cursor: pointer; text-decoration: underline dotted rgba(255,255,255,.5); text-underline-offset: 3px; }
   .reticle {
     position: fixed; z-index: 4; left: 50%; top: 50%; width: 22px; height: 22px; margin: -11px 0 0 -11px; pointer-events: none;
     border-radius: 50%; border: 2.5px solid rgba(255,255,255,.95); box-shadow: 0 0 0 1.5px rgba(59,47,42,.35);
@@ -131,10 +146,12 @@
   .aim.free b { color: #7be0b3; }
   .aim.busy b { color: #ffab99; }
   .aim small { display: block; font-size: 11px; font-weight: 600; opacity: .75; margin-top: 2px; }
-  .minimap {
-    position: fixed; z-index: 5; right: 16px; bottom: calc(env(safe-area-inset-bottom) + 18px); width: 132px;
-    border-radius: 12px; background: rgba(255,255,255,.75); box-shadow: 0 4px 14px rgba(0,0,0,.15); pointer-events: none;
+  .mapbtn {
+    position: fixed; z-index: 5; right: 16px; bottom: calc(env(safe-area-inset-bottom) + 18px); width: 112px; padding: 4px 4px 2px;
+    border: 0; border-radius: 14px; background: rgba(255,255,255,.8); box-shadow: 0 4px 14px rgba(0,0,0,.15); cursor: pointer; font: inherit;
   }
+  .mapbtn canvas { display: block; width: 100%; }
+  .mapbtn span { display: block; font-size: 11px; font-weight: 800; color: var(--ink); padding: 2px 0 3px; }
   .joy {
     position: fixed; z-index: 6; left: 22px; bottom: calc(env(safe-area-inset-bottom) + 22px); width: 120px; height: 120px;
     border-radius: 50%; background: rgba(255,255,255,.35); border: 2px solid rgba(255,255,255,.8);
@@ -145,7 +162,7 @@
     background: rgba(255,255,255,.95); box-shadow: 0 3px 10px rgba(0,0,0,.2); pointer-events: none;
   }
   @media (pointer: fine) { .joy { display: none !important; } }
-  body.walking.admin .minimap, body.walking.admin .joy { bottom: calc(env(safe-area-inset-bottom) + 76px); }
+  body.walking.admin .mapbtn, body.walking.admin .joy { bottom: calc(env(safe-area-inset-bottom) + 76px); }
   body.walking .adminbar > span { display: none; }
 
   .nogl { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; text-align: center; color: var(--sub); padding: 24px; }
@@ -186,18 +203,25 @@
       매장 안으로 들어가기
     </button>
     <div class="adminbar">
-      <span>관리자 · 자리를 눌러 바꾸기</span>
+      <span class="stats" id="stats" role="button" title="최근 7일 보기">관리자 · 자리를 눌러 바꾸기</span>
       <button type="button" class="warn" id="resetBtn">전체 비우기</button>
       <button type="button" id="logoutBtn">나가기</button>
     </div>
   </footer>
 
   <div class="walk-ui">
-    <button type="button" class="exitwalk" id="exitWalk">전체 보기</button>
     <div class="reticle"></div>
     <div class="aim" id="aim"></div>
-    <canvas class="minimap" id="minimap"></canvas>
+    <button type="button" class="mapbtn" id="mapBtn" aria-label="전체 지도 보기"><canvas id="minimap"></canvas><span>전체 지도</span></button>
     <div class="joy" id="joy"><i></i></div>
+  </div>
+
+  <div class="introbox" id="intro">
+    <div class="introcard">
+      <small>어서 오세요</small>
+      <strong id="introName">우리 카페</strong>
+      <button type="button" class="walkbtn" id="enterBtn">입장하기</button>
+    </div>
   </div>
 
   <div class="toast" id="toast"></div>

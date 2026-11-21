@@ -45,7 +45,31 @@ export class SeatStore extends DurableObject<Env> {
   async reset() {
     return this.save({});
   }
+
+  /** 손님 방문 기록: 하루(한국시간)마다 방문 id → [머문 시간 ms, 광고 클릭 수] */
+  async recordVisit(day: string, sid: string, ms: number, ad: number) {
+    const key = `v:${day}`;
+    const m = (await this.ctx.storage.get<Record<string, [number, number]>>(key)) ?? {};
+    if (!m[sid] && Object.keys(m).length >= MAX_VISITS_PER_DAY) return;
+    const prev = m[sid] ?? [0, 0];
+    m[sid] = [Math.max(prev[0], ms), Math.max(prev[1], ad)];
+    await this.ctx.storage.put(key, m);
+  }
+
+  async stats(days: string[]) {
+    const out = [];
+    for (const day of days) {
+      const m = (await this.ctx.storage.get<Record<string, [number, number]>>(`v:${day}`)) ?? {};
+      const v = Object.values(m);
+      const total = v.reduce((a, [ms]) => a + ms, 0);
+      out.push({ day, visits: v.length, avgMs: v.length ? Math.round(total / v.length) : 0, adTaps: v.reduce((a, [, ad]) => a + ad, 0) });
+    }
+    return out;
+  }
 }
+
+const MAX_VISITS_PER_DAY = 3000;
+const kstDay = (offsetDays = 0) => new Date(Date.now() + 9 * 3600e3 - offsetDays * 86400e3).toISOString().slice(0, 10);
 
 const json = (data: unknown, status = 200) =>
   new Response(JSON.stringify(data), {
@@ -89,6 +113,17 @@ export default {
       return json(await store.snapshot());
     }
 
+    // 손님 체류시간 기록 (로그인 없이, 숫자만 받음)
+    if (url.pathname === "/api/visit" && req.method === "POST") {
+      const b = (await req.json().catch(() => null)) as { sid?: unknown; ms?: unknown; ad?: unknown } | null;
+      const sid = typeof b?.sid === "string" && /^[a-z0-9]{6,32}$/.test(b.sid) ? b.sid : null;
+      const ms = typeof b?.ms === "number" && Number.isFinite(b.ms) ? Math.min(Math.max(0, Math.round(b.ms)), 3 * 3600e3) : null;
+      const ad = typeof b?.ad === "number" && Number.isFinite(b.ad) ? Math.min(Math.max(0, Math.round(b.ad)), 50) : 0;
+      if (!sid || ms === null) return json({ error: "bad visit" }, 400);
+      await store.recordVisit(kstDay(), sid, ms, ad);
+      return new Response(null, { status: 204 });
+    }
+
     if (url.pathname.startsWith("/api/")) {
       if (req.method !== "POST") return json({ error: "method" }, 405);
       if (!env.ADMIN_TOKEN) return json({ error: "ADMIN_TOKEN 이 설정되지 않았습니다" }, 500);
@@ -96,6 +131,7 @@ export default {
 
       if (url.pathname === "/api/login") return json({ ok: true });
       if (url.pathname === "/api/reset") return json(await store.reset());
+      if (url.pathname === "/api/stats") return json({ days: await store.stats([0, 1, 2, 3, 4, 5, 6].map(kstDay)) });
 
       const m = url.pathname.match(/^\/api\/seats\/([^/]+)$/);
       if (m) {
