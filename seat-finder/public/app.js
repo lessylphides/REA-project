@@ -406,6 +406,11 @@ function buildEdge(e, group, h, T) {
   for (let i = 0; i <= n; i++) mk(box(0.06, top - sill, T * 0.8), white, [-e.len / 2 + (e.len / n) * i, (top + sill) / 2, 0], g, { outline: 0.01, shadow: false });
   mk(box(e.len, 0.05, T * 0.9), white, [0, top - 0.02, 0], g, { outline: 0.01, shadow: false });
   mk(box(e.len, 0.05, T * 0.9), white, [0, sill + 0.02, 0], g, { outline: 0.01, shadow: false });
+  // 햇살 줄무늬 (방 안쪽 바닥)
+  if (group === roomGroup || !sunPatches.some((m) => m.userData.edge === e.i)) {
+    addSunPatch(g, e.len * 0.95, 2.6, 0, T / 2);
+    sunPatches[sunPatches.length - 1].userData.edge = e.i;
+  }
   // 창밖 거리 (1인칭에서만, 블라인드 틈으로 보임)
   if (group === fpGroup || group === roomGroup) addStreetView((e.ax + e.bx) / 2, (e.az + e.bz) / 2, e.nx, e.nz, e.len + 6, 5, 3.5, 17 + e.i * 31, R.outside?.[e.i] || "street");
 }
@@ -420,10 +425,11 @@ function drawStreet(g, W, H, phase, seed) {
   // 하늘
   const sky = g.createLinearGradient(0, 0, 0, H * 0.7);
   if (night) { sky.addColorStop(0, "#121833"); sky.addColorStop(1, "#2b2f55"); }
-  else if (dusk) { sky.addColorStop(0, "#8f7fd0"); sky.addColorStop(1, "#f3a7a0"); }
-  else { sky.addColorStop(0, "#d9c3ef"); sky.addColorStop(1, "#f2e3f0"); }
+  else if (dusk) { sky.addColorStop(0, "#8f7fd0"); sky.addColorStop(0.6, "#f39fb0"); sky.addColorStop(1, "#ffb36b"); }
+  else { sky.addColorStop(0, "#bfe0f6"); sky.addColorStop(1, "#f2eef6"); }
   g.fillStyle = sky; g.fillRect(0, 0, W, H);
   const roadY = H * 0.74;
+  drawSun(g, W * 0.68, roadY - H * (dusk ? 0.16 : 0.5), H, phase);
   // 건물들
   const walls = night ? ["#3a2630", "#2e2b3f", "#3d3036", "#2a3040"] : dusk ? ["#9a5b4c", "#7d6f86", "#a06a58", "#6f7690"] : ["#b5583f", "#cfc9bf", "#a7b6c9", "#c98f6b"];
   let x = -20;
@@ -475,6 +481,17 @@ function drawStreet(g, W, H, phase, seed) {
   if (night) { g.fillStyle = "rgba(120,110,160,.12)"; g.fillRect(0, 0, W, H); }
 }
 
+/** 하늘의 해 (낮: 작고 밝게 / 노을: 크고 주황, 번짐) */
+function drawSun(g, x, y, H, phase) {
+  if (phase === "night") return;
+  const dusk = phase === "dusk", r = dusk ? H * 0.11 : H * 0.06;
+  const glow = g.createRadialGradient(x, y, r * 0.5, x, y, r * (dusk ? 5 : 3));
+  glow.addColorStop(0, dusk ? "rgba(255,170,90,.75)" : "rgba(255,250,220,.7)"); glow.addColorStop(1, "rgba(255,200,150,0)");
+  g.fillStyle = glow; g.beginPath(); g.arc(x, y, r * (dusk ? 5 : 3), 0, Math.PI * 2); g.fill();
+  g.fillStyle = dusk ? "#ff9548" : "#fff6c8"; g.strokeStyle = "#1b1b1f"; g.lineWidth = 5;
+  g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.fill(); g.stroke();
+}
+
 /** 삼거리 골목: 창에서 똑바로 뻗어 나가는 길 (원근감) */
 function drawAlley(g, W, H, phase, seed) {
   let s = seed;
@@ -482,10 +499,11 @@ function drawAlley(g, W, H, phase, seed) {
   const night = phase === "night", dusk = phase === "dusk";
   const sky = g.createLinearGradient(0, 0, 0, H * 0.5);
   if (night) { sky.addColorStop(0, "#121833"); sky.addColorStop(1, "#2b2f55"); }
-  else if (dusk) { sky.addColorStop(0, "#8f7fd0"); sky.addColorStop(1, "#f3a7a0"); }
-  else { sky.addColorStop(0, "#d9c3ef"); sky.addColorStop(1, "#f2e3f0"); }
+  else if (dusk) { sky.addColorStop(0, "#8f7fd0"); sky.addColorStop(0.6, "#f39fb0"); sky.addColorStop(1, "#ffb36b"); }
+  else { sky.addColorStop(0, "#bfe0f6"); sky.addColorStop(1, "#f2eef6"); }
   g.fillStyle = sky; g.fillRect(0, 0, W, H);
   const vx = W * 0.5, vy = H * 0.46; // 소실점
+  drawSun(g, vx, vy - H * (dusk ? 0.02 : 0.3), H, phase);
   const ink = "#1b1b1f";
   const poly = (pts, fill, lw = 5) => { g.beginPath(); pts.forEach(([x, y], i) => (i ? g.lineTo(x, y) : g.moveTo(x, y))); g.closePath(); g.fillStyle = fill; g.fill(); if (lw) { g.strokeStyle = ink; g.lineWidth = lw; g.stroke(); } };
   const lerp = (a, b, t) => a + (b - a) * t;
@@ -555,6 +573,28 @@ function updateStreetViews(phase) {
   for (const v of streetViews) { (v.kind === "alley" ? drawAlley : drawStreet)(v.ctx, v.W, v.H, phase, v.seed); v.tex.needsUpdate = true; }
 }
 
+// ───────── 블라인드 틈으로 들어오는 햇살 / 노을빛 (바닥 줄무늬) ─────────
+const sunPatches = [];
+const sunTex = canvasTex(256, 256, (g, w, h) => {
+  g.clearRect(0, 0, w, h);
+  for (let y = 0; y < h; y += 22) {
+    const grd = g.createLinearGradient(0, 0, w, 0); // 창에서 멀어질수록 옅게
+    grd.addColorStop(0, "rgba(255,255,255,.95)"); grd.addColorStop(1, "rgba(255,255,255,0)");
+    g.fillStyle = grd; g.fillRect(0, y, w, 10);
+  }
+});
+/** parent 의 로컬 좌표: 창을 따라 x, 방 안쪽 +z */
+function addSunPatch(parent, len, depth, x = 0, z0 = 0.05) {
+  const mat = new THREE.MeshBasicMaterial({ map: sunTex, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending, color: "#fff1d6" });
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(depth, len), mat);
+  m.rotation.set(-Math.PI / 2, 0, Math.PI / 2); // 텍스처 가로(옅어지는 방향) = 방 안쪽
+  m.position.set(x, 0.012, z0 + depth / 2);
+  m.renderOrder = 1;
+  parent.add(m);
+  sunPatches.push(mat);
+}
+const SUN_DAY = new THREE.Color("#fff1d6"), SUN_DUSK = new THREE.Color("#ff8a4c");
+
 /** 1인칭용: 정면 벽 + 자동문 + 천장 + 가게 앞 (위에서 볼 땐 숨김) */
 function buildInsideShell(T) {
   const H = R.wallH, o = { outline: 0.02, shadow: false };
@@ -584,6 +624,13 @@ function buildInsideShell(T) {
     registerTint(bm);
     const inner = mk(new THREE.PlaneGeometry(winW, 1.9), bm, [(wx0 + wx1) / 2, 1.5, R.d - 0.005], fpGroup, { outline: 0, shadow: false });
     inner.renderOrder = 3;
+    {
+      const sg = new THREE.Group();
+      sg.position.set((wx0 + wx1) / 2, 0, R.d);
+      sg.rotation.y = Math.PI; // 로컬 +z = 방 안쪽(-z)
+      roomGroup.add(sg);
+      addSunPatch(sg, winW, 2.6);
+    }
     // 정면(입구 쪽) 바깥 골목: 유리 밖 멀리 세움 (창·유리문 너머로 보임, 걸으면 각도 따라 달라짐)
     addStreetView((FRONT_X0 + FRONT_X1) / 2 + 1.5, R.d, FRONT.nx, FRONT.nz, FRONT_X1 - FRONT_X0 + 10, 6, 4.2, 91, R.outside?.[FRONT.i] || "street");
     inner.rotation.y = Math.PI;
@@ -946,7 +993,7 @@ let timeK = nightAmount();
 setInterval(() => { timeK = nightAmount(); }, 60000);
 const NIGHT_TINT = new THREE.Color("#4b4f8f"), DUSK_TINT = new THREE.Color("#e0a3a0"), WHITE = new THREE.Color("#ffffff");
 // 매장 안: 밤엔 은은한 분홍빛으로 어둡게 (사진 속 밤 분위기)
-const IN_NIGHT = new THREE.Color("#b88a72"), IN_DUSK = new THREE.Color("#f0cdb2");
+const IN_NIGHT = new THREE.Color("#b88a72"), IN_DUSK = new THREE.Color("#f6c2a4");
 const tmpIn = new THREE.Color();
 const tmpC = new THREE.Color();
 let lastTint = -1;
@@ -971,6 +1018,12 @@ function applyTime(outside, time) {
   for (const h of nightGlow.halos) h.material.opacity = h.userData.inner ? 0.08 + glow * 0.42 : glow * 0.38;
   for (const m of nightGlow.windows) m.color.copy(WHITE).lerp(WIN_NIGHT, glow * 0.85);
   for (const [m, lo, hi] of innerGlows) m.opacity = lo + (hi - lo) * glow;
+  const dayAmt = 1 - THREE.MathUtils.smoothstep(k, 0.2, 0.7);
+  const duskAmt = Math.max(0, 1 - Math.abs(k - 0.45) / 0.3);
+  for (const m of sunPatches) {
+    m.color.copy(SUN_DAY).lerp(SUN_DUSK, duskAmt / (dayAmt + duskAmt + 1e-6));
+    m.opacity = 0.22 * dayAmt + 0.42 * duskAmt;
+  }
   for (const s of nightGlow.sky) {
     const tw = s.userData.tw != null ? 0.6 + 0.4 * Math.sin(time * 2 + s.userData.tw) : 1;
     s.material.opacity = glow * tw;
