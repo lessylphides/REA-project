@@ -1510,10 +1510,36 @@ function buildTables() {
     const H = 0.74;
     const local = []; // [x, z] 테이블 기준 의자 위치
     if (t.shape === "round") addObstacle(t.x, t.z, t.r, t.r, t.rot);
+    else if (t.shape === "dropleaf") { const [ox, oz] = rotXZ(0, (t.r ?? t.w / 2) / 2, t.rot); addObstacle(t.x + ox, t.z + oz, t.w / 2, (t.d + (t.r ?? t.w / 2)) / 2, t.rot); }
     else if (t.shape === "half") { const [ox, oz] = rotXZ(0, t.r / 2, t.rot); addObstacle(t.x + ox, t.z + oz, t.r, t.r / 2, t.rot); }
     else addObstacle(t.x, t.z, t.w / 2, t.d / 2, t.rot);
     const topCol = t.color || "#f1dcc2", leg = t.leg || COLOR.woodDark;
-    if (t.shape === "half") {
+    if (t.shape === "dropleaf") {
+      // 사각 상판 + 접었다 펼 수 있는 반원 날개 (평평한 쪽이 테이블 기준 -z)
+      const r = t.r ?? t.w / 2;
+      mk(box(t.w, 0.05, t.d), topCol, [0, H, 0], g, { outline: 0.018 });
+      for (const [sx, sz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) mk(box(0.05, H, 0.05), leg, [sx * (t.w / 2 - 0.07), H / 2, sz * (t.d / 2 - 0.07)], g, { outline: 0.008 });
+      const pivot = new THREE.Group();
+      pivot.position.set(0, H + 0.025, t.d / 2);
+      g.add(pivot);
+      const half = (rr, h) => new THREE.CylinderGeometry(rr, rr, h, 36, 1, false, -Math.PI / 2, Math.PI);
+      const leaf = new THREE.Mesh(half(r, 0.045), typeof topCol === "string" ? toon(topCol) : topCol);
+      leaf.position.set(0, -0.0225, 0.004);
+      pivot.add(leaf);
+      const k = 0.02 * OL;
+      const lo = new THREE.Mesh(half(r + k, 0.045 + k * 2), outlineMat);
+      lo.position.set(0, -0.0225, 0.004 - k / 2);
+      lo.raycast = () => {};
+      pivot.add(lo);
+      // 접힌 날개를 받쳐 주는 경첩 선
+      mk(box(t.w * 0.9, 0.012, 0.012), "#3a281f", [0, H - 0.01, t.d / 2], g, { outline: 0, shadow: false });
+      leaves.push({ pivot, open: 1, target: 1 });
+      const lf = leaves[leaves.length - 1];
+      // 손님이 누르면 날개를 접었다 폈다
+      addSayHit({ ...t, type: "dropleaf", say: t.say || "반원 날개를 접었다 펼 수 있는 테이블이에요" }, g, [t.w + 0.2, 0.3, t.d + r, H], H + 0.45);
+      sayProps[sayProps.length - 1].onTap = () => { lf.target = lf.target ? 0 : 1; };
+      if (!t.chairs) local.push([-(t.w / 2 + 0.4), 0.05], [0, t.d / 2 + r + 0.34], [t.w / 2 + 0.4, 0.05]);
+    } else if (t.shape === "half") {
       // 반원 테이블: 평평한 쪽이 테이블 기준 -z (layout 에서 rot 로 방향), 둥근 쪽에 의자
       const half = (r, h) => new THREE.CylinderGeometry(r, r, h, 40, 1, false, -Math.PI / 2, Math.PI);
       mk(half(t.r, 0.05), topCol, [0, H, 0], g, { outline: 0 });
@@ -1959,6 +1985,7 @@ function interact(ev) {
 
 function tapProp(u) {
   u.wiggle = 1;
+  u.onTap?.();
   const p = u.prop;
   popBubble(p.say, p.x, u.sayY ?? SAY_HEIGHT[p.type] ?? 1.5, p.z);
   if (!found.has(u.idx)) {
@@ -2366,6 +2393,7 @@ function tick() {
   renderer.render(scene, camera);
 }
 
+const leaves = []; // 접이식 테이블 날개
 let steamT = 0;
 const steamGeo = new THREE.SphereGeometry(0.05, 8, 6);
 const DAY = { sky: new THREE.Color("#fff6ea"), ground: new THREE.Color("#c9a88a") };
@@ -2388,6 +2416,11 @@ function updateWorld(dt, time) {
     for (const p of doorPanels) p.g.position.x = p.x0 + p.dir * p.half * 0.92 * doorOpen;
   }
   for (const l of labelSprites) l.visible = !fpGroup.visible; // 1인칭에선 번호표 숨김
+  // 접이식 테이블 날개 (펴짐 0° ↔ 접힘 아래로 90°)
+  for (const lf of leaves) {
+    lf.open += (lf.target - lf.open) * Math.min(1, dt * 5);
+    lf.pivot.rotation.x = (1 - lf.open) * Math.PI / 2;
+  }
   // 누른 소품 흔들기
   for (const u of sayProps) {
     if (u.wiggle <= 0) continue;
