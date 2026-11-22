@@ -1647,7 +1647,7 @@ function buildInteriorProp(p, g) {
       g.userData.hit = [0.5, 1.1, 0.5, 0.55]; g.userData.sayY = 1.35;
       return true;
     }
-    case "bartender": { // 바텐더 (50대, 날카로운 인상, 흰 셔츠 + 검정 좁은 넥타이, 넘긴 긴 머리, 뿔테 안경)
+    case "bartender": { // 바텐더 (50대, 날카로운 인상, 흰 셔츠 + 검정 나비넥타이, 넘긴 긴 머리, 뿔테 안경)
       const skin = "#f0c9a6", hair = "#2a211d", jacket = "#fbfaf6", pants = "#1f1f22"; // jacket = 셔츠 소매 색
       const body = new THREE.Group(); g.add(body);
       g.userData.bt = body;
@@ -1665,10 +1665,13 @@ function buildInteriorProp(p, g) {
         const col = mk(box(0.09, 0.05, 0.02), jacket, [sx * 0.045, 1.33, 0.12], body, { outline: 0.006 });
         col.rotation.z = sx * -0.5;
       }
-      // 검정 좁은 넥타이 (매듭 + 길게)
-      mk(box(0.04, 0.035, 0.03), "#111113", [0, 1.3, 0.14], body, { outline: 0.004 });
-      const tie = mk(box(0.032, 0.36, 0.015), "#111113", [0, 1.1, 0.152], body, { outline: 0.004 });
-      tie.rotation.x = -0.04;
+      // 검정 나비넥타이 (가운데 매듭 + 양쪽 날개)
+      mk(box(0.03, 0.035, 0.03), "#111113", [0, 1.3, 0.145], body, { outline: 0.004 });
+      for (const sx of [-1, 1]) {
+        const wing = mk(new THREE.ConeGeometry(0.035, 0.07, 4), "#111113", [sx * 0.045, 1.3, 0.14], body, { outline: 0.004 });
+        wing.rotation.z = sx * Math.PI / 2; // 뾰족한 쪽이 매듭을 향함
+        wing.scale.set(1, 1, 0.5);
+      }
       // 한 손은 옆으로 내리고, 다른 손은 앞으로 위스키 병을 들고 있음
       mk(new THREE.CapsuleGeometry(0.06, 0.36, 4, 10), jacket, [-0.25, 1.04, 0], body, { outline: 0.012 }).rotation.z = -0.08;
       mk(new THREE.SphereGeometry(0.045, 8, 6), skin, [-0.27, 0.8, 0.01], body, { outline: 0.006 });
