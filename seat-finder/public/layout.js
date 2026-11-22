@@ -51,15 +51,15 @@ export default {
     { type: "backbar", path: [[0.3, 0.3], [0.3, 5.48], [4.02, 9.2], [7.0, 9.2]] },
     { type: "floorlamp", x: 0.3, z: 0.75, y0: 0.99, h: 0.85, say: "주름 갓 스탠드\n은은한 분홍빛이 포인트예요" },
     { type: "floorlamp", x: 4.7, z: 9.2, y0: 0.99, h: 0.85 },
-    { type: "floorlamp", x: 9.1, z: 8.95, h: 1.45 },
+    { type: "floorlamp", x: 9.15, z: 9.1, h: 1.45 },
     { type: "coffee", x: 6.4, z: 9.2, rot: 180, say: "커피도 내려 드려요\n원두 향이 솔솔" },
     // 조명
     { type: "pendant", kind: "linear", x: 1.5, z: 2.9, rot: 90, len: 1.8, y: 2.2 },
     { type: "pendant", kind: "linear", x: 3.0, z: 6.48, rot: 45, len: 1.8, y: 2.2 },
     { type: "pendant", kind: "linear", x: 5.6, z: 8.0, rot: 0, len: 1.6, y: 2.2, say: "바 위 나무 조명\n잔이 반짝이게 비춰 줘요" },
     { type: "pendant", kind: "rattan", x: 5.2, z: 3.4, y: 2.15, say: "라탄 조명\n직접 골라 단 등이에요" },
-    { type: "pendant", kind: "rattan", x: 7.9, z: 6.9, y: 2.15 },
-    { type: "pendant", kind: "beehive", x: 8.75, z: 1.9, y: 2.1, say: "벌집 모양 원목 조명" },
+    { type: "pendant", kind: "rattan", x: 7.4, z: 7.6, y: 2.15 },
+    { type: "pendant", kind: "beehive", x: 8.75, z: 6.3, y: 2.1, say: "벌집 모양 원목 조명" },
     { type: "projector", x: 5.3, z: 5.4 },
     // 안쪽 벽 TV 장식장 (TV 는 아래 screens)
     { type: "tvshelf", x: 5.2, z: 0, w: 3.8, h: 2.6, tvW: 2.35, tvY: 1.55, tvH: 1.32, say: "전자칠판 영상\n화분 사이로 숲을 보며 쉬어 가세요" },
@@ -68,12 +68,12 @@ export default {
     { type: "bigplant", kind: "palm", x: 4.35, z: 1.35, h: 1.95, say: "야자 화분이에요\n잎 사이로 영상이 살짝" },
     { type: "bigplant", kind: "palm", x: 5.2, z: 1.2, h: 2.1 },
     { type: "bigplant", kind: "palm", x: 6.05, z: 1.35, h: 1.85 },
-    { type: "bigplant", kind: "norfolk", x: 8.95, z: 4.7, h: 1.7, say: "노퍽 소나무예요\n겨울엔 트리가 돼요" },
-    { type: "bigplant", kind: "tree", x: 8.95, z: 6.0, h: 2.0, say: "홍콩야자 나무\n매장의 터줏대감이에요" },
+    { type: "bigplant", kind: "norfolk", x: 8.95, z: 1.1, h: 1.7, say: "노퍽 소나무예요\n겨울엔 트리가 돼요" },
+    { type: "bigplant", kind: "tree", x: 8.95, z: 8.0, h: 2.0, say: "홍콩야자 나무\n매장의 터줏대감이에요" },
     // 오른쪽 벽
-    { type: "curtain", walkOnly: true, x: 9.46, z: 1.0, rot: 90, w: 1.1, h: 1.2, y: 1.65, say: "나뭇잎 가림막 뒤엔\n작은 창이 숨어 있어요" },
-    { type: "coatrack", x: 9.1, z: 3.7, rot: 90, say: "외투는 여기에\n걸어 주세요" },
-    { type: "sign", walkOnly: true, x: 9.46, z: 6.6, rot: 90, y: 2.1, text: "WELCOME", say: "WELCOME!\n오늘도 와 주셔서 고마워요" },
+    { type: "curtain", walkOnly: true, x: 9.46, z: 2.6, rot: 90, w: 1.1, h: 1.2, y: 1.65, say: "나뭇잎 가림막 뒤엔\n작은 창이 숨어 있어요" },
+    { type: "coatrack", x: 9.1, z: 4.0, rot: 90, say: "외투는 여기에\n걸어 주세요" },
+    { type: "sign", walkOnly: true, x: 9.46, z: 7.3, rot: 90, y: 2.1, text: "WELCOME", say: "WELCOME!\n오늘도 와 주셔서 고마워요" },
   ],
 
   // 테이블: shape = "oval" | "round" | "rect", chair = "rattan" | "windsor" | "chair"
@@ -82,7 +82,7 @@ export default {
     // 반원 테이블: 홀 가운데에서 조금 TV 쪽, 평평한 쪽이 TV(안쪽 벽)를 봄, 의자 3개는 둥근 쪽
     { id: "T1", shape: "half", x: 5.2, z: 2.55, r: 0.8, seats: 3, chair: "rattan", color: "#b8743f", leg: "#7a4a2a" },
     // 벽 테이블: 입구에서 봤을 때 오른쪽 벽에 붙음, 의자 3개 (벽 쪽 빼고)
-    { id: "T2", shape: "rect", x: 9.08, z: 2.2, w: 0.8, d: 0.9, seats: 3, chair: "windsor", color: "#4a3328", leg: "#3a281f",
+    { id: "T2", shape: "rect", x: 9.08, z: 6.3, w: 0.8, d: 0.9, seats: 3, chair: "windsor", color: "#4a3328", leg: "#3a281f",
       chairs: [[-0.66, 0], [0, -0.68], [0, 0.68]], lamp: [0.22, -0.25] },
   ],
 
