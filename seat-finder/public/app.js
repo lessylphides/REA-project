@@ -1077,6 +1077,12 @@ function buildCurvedBar(b) {
     addSeat(id, p.x + n.x * off, p.z + n.z * off, Math.atan2(-n.x, -n.z), b.chair || "barstool");
     ids.push(id);
   }
+  // 따로 지정한 자리 (예: 바 안쪽에서 마주 보는 자리). face = 바라보는 방향 [x, z]
+  for (const [x, z, fx, fz] of b.extraSeats || []) {
+    const id = `${b.id}-${ids.length + 1}`;
+    addSeat(id, x, z, Math.atan2(fx, fz), b.chair || "barstool");
+    ids.push(id);
+  }
   tableGroups.push({ id: b.id, seatIds: ids });
   if (b.say) addSayHit({ ...b, type: "bar", x: mid.x, z: mid.z }, null, [1.2, 1.1, 1.2, 0.6], 1.5, mid);
 }
