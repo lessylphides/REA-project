@@ -56,31 +56,34 @@ export default {
     { type: "backbar", path: [[1.75, 6.93], [3.4, 8.58]] }, // 안 쓰는 문 때문에 짧음
     { type: "backbar", path: [[4.6, 9.2], [7.0, 9.2]] },
     // 바텐더 (곡선 바 안쪽, 손님 쪽을 바라봄)
-    { type: "bartender", x: 2.95, z: 6.95, rot: -135, say: "어서 오세요!\n오늘은 어떤 한 잔 드릴까요?" },
+    { type: "bartender", x: 2.95, z: 6.95, rot: -135,
+      walkPath: [[1.15, 1.7], [1.15, 5.05], [4.4, 8.3], [5.4, 8.3]], // 바 안쪽 통로 (바와 뒷장 사이)
+      say: "어서 오세요!\n오늘은 어떤 한 잔 드릴까요?" },
     // 대각선 창 쪽 안 쓰는 출입문 + 문 앞 나무 스툴 (반죽기 / 가습기)
     { type: "door", x: 0.66, z: 6.26, rot: 45, w: 1.0, say: "지금은 안 쓰는 문이에요\n대신 창밖 골목이 예뻐요" },
-    { type: "sidetable", item: "mixer", x: 0.78, z: 5.88, rot: 45, say: "반죽기예요\n직접 만드는 안주가 있어요" },
-    { type: "sidetable", item: "humidifier", x: 1.25, z: 6.35, rot: 45, say: "가습기가 촉촉하게\n공기를 지켜 줘요" },
+    { type: "sidetable", item: "humidifier", x: 0.78, z: 5.88, rot: 45, say: "가습기가 촉촉하게\n공기를 지켜 줘요" },
+    { type: "sidetable", item: "mixer", itemRot: 90, x: 1.25, z: 6.35, rot: 45, say: "반죽기예요\n직접 만드는 안주가 있어요" },
     { type: "floorlamp", x: 0.38, z: 0.45, h: 1.75, say: "주름 갓 스탠드\n은은한 분홍빛이 포인트예요" },
     { type: "floorlamp", x: 0.4, z: 5.3, h: 1.75 }, // 왼쪽 장 ↔ 대각선 장 사이 틈
     { type: "floorlamp", x: 4.02, z: 9.0, h: 1.75 }, // 대각선 장 ↔ 정면 장 사이 틈
     { type: "floorlamp", x: 9.15, z: 9.1, h: 1.75 },
-    { type: "coffee", x: 6.4, z: 9.2, rot: 180, say: "커피도 내려 드려요\n원두 향이 솔솔" },
+    { type: "coffee", x: 1.68, z: 1.55, rot: 90, y0: 1.04, shelf: true, say: "커피도 내려 드려요\n원두 향이 솔솔" },
+    // 정면 창 아래 장 위 양초
+    { type: "candles", x: 6.3, z: 9.2, y0: 0.99, say: "은은한 촛불\n밤이 되면 더 예뻐요" },
     // 조명
     { type: "pendant", kind: "linear", x: 2.1, z: 2.8, rot: 90, len: 1.8, y: 2.2 },
     { type: "pendant", kind: "linear", x: 3.43, z: 6.06, rot: 45, len: 1.8, y: 2.2 },
     { type: "pendant", kind: "linear", x: 6.05, z: 7.4, rot: 0, len: 1.8, y: 2.2, say: "바 위 나무 조명\n잔이 반짝이게 비춰 줘요" },
     { type: "pendant", kind: "rattan", x: 5.8, z: 3.2, y: 2.15, say: "라탄 조명\n직접 골라 단 등이에요" },
-    { type: "pendant", kind: "rattan", x: 7.6, z: 6.7, y: 2.15 },
-    { type: "pendant", kind: "beehive", x: 8.75, z: 5.4, y: 2.1, say: "벌집 모양 원목 조명" },
-    { type: "projector", x: 5.9, z: 5.4 },
+
+    { type: "projector", x: 5.9, z: 5.4, rot: -90, say: "프로젝터가 벽에\n영상을 비춰요" },
     // 안쪽 벽 TV 장식장 (TV 는 아래 screens)
-    { type: "tvshelf", standOnly: true, x: 5.8, z: 1.13, w: 3.8, h: 2.6, tvW: 2.35, tvY: 1.55, tvH: 1.32, say: "전자칠판 영상\n화분 사이로 숲을 보며 쉬어 가세요" },
+    { type: "tvshelf", standOnly: true, x: 5.8, z: 1.5, w: 3.8, h: 2.6, tvW: 2.35, tvY: 1.55, tvH: 1.32, say: "전자칠판 영상\n화분 사이로 숲을 보며 쉬어 가세요" },
     // 식물
     // 반원 테이블 바로 뒤 화분 3개 → 전자칠판 영상을 은은히 가림
-    { type: "bigplant", kind: "palm", x: 4.95, z: 2.13, h: 1.95, say: "야자 화분이에요\n잎 사이로 영상이 살짝" },
-    { type: "bigplant", kind: "palm", x: 5.8, z: 2.03, h: 2.1 },
-    { type: "bigplant", kind: "palm", x: 6.65, z: 2.13, h: 1.85 },
+    { type: "bigplant", kind: "palm", front: true, x: 4.95, z: 2.13, h: 1.95, say: "야자 화분이에요\n잎 사이로 영상이 살짝" },
+    { type: "bigplant", kind: "palm", front: true, x: 5.8, z: 2.03, h: 2.1 },
+    { type: "bigplant", kind: "palm", front: true, x: 6.65, z: 2.13, h: 1.85 },
     { type: "bigplant", kind: "norfolk", x: 8.95, z: 1.1, h: 1.7, say: "노퍽 소나무예요\n겨울엔 트리가 돼요" },
     { type: "bigplant", kind: "tree", x: 8.95, z: 8.0, h: 2.0, say: "홍콩야자 나무\n매장의 터줏대감이에요" },
     // 오른쪽 벽
@@ -107,7 +110,7 @@ export default {
   //   link 를 넣으면 손님이 화면을 눌렀을 때 그 주소로 이동 (광고 클릭)
   screens: [
     {
-      wall: "back", x: 5.8, z: 1.13, y: 1.55, w: 2.25, h: 1.27, interval: 7,
+      wall: "back", x: 5.8, z: 1.5, y: 1.55, w: 2.25, h: 1.27, interval: 7,
       slides: [
         { scene: "forest", duration: 14 },
         { title: "오늘의 위스키", sub: "바텐더에게 추천을 받아 보세요", bg: "#7a3b2e", fg: "#ffffff" },
@@ -115,8 +118,18 @@ export default {
         { title: "이 화면에 광고하세요", sub: "우리 동네 가게를 소개해 드려요", bg: "#3d405b", fg: "#ffffff" },
       ],
     },
+    // 프로젝터가 오른쪽 벽(벽 테이블 위)에 비추는 화면 — 여기에도 광고
+    {
+      wall: "right", projected: true, from: [6.07, 2.63, 5.4], z: 5.4, y: 1.95, w: 1.7, h: 0.96, interval: 8,
+      slides: [
+        { title: "DIVE HIDE AWAY", sub: "오늘 밤도 천천히 쉬어 가세요", bg: "#2b2448", fg: "#f4e7d6" },
+        { title: "이 벽에 광고하세요", sub: "동네 가게 소식을 비춰 드려요", bg: "#5b3a2e", fg: "#ffffff" },
+        { title: "이번 주 추천 한 잔", sub: "바텐더에게 물어보세요", bg: "#3f5a4f", fg: "#ffffff" },
+      ],
+    },
   ],
 
+  // (위 screens 에 프로젝터 화면도 있음)
   // 바: path 를 주면 그 길을 따라 휘어진 바 (창을 따라 곡선), seats = 바 의자 수
   bars: [
     // 창에서 2.1m 안쪽 (바텐더 공간 넓게), depth = 바 몸통 두께
@@ -124,7 +137,8 @@ export default {
       // 바 끝 창 쪽(커피머신 앞)에서 바를 사이에 두고 마주 보는 자리 → BAR-9
       extraSeats: [[6.3, 8.32, 0, -1]],
       // 바 안쪽으로 못 들어가게 막는 곳 [x, z, 반폭, 반깊이]: 안쪽 벽 쪽 끝 / 입구 쪽 끝
-      block: [[2.1, 0.45, 0.4, 0.45]], // 입구 쪽 끝은 열려 있어 바 안쪽으로 들어갈 수 있음,
+      // 입구 쪽 끝은 막고, 안쪽 벽 쪽 끝은 열어 둠 (그쪽으로 바 안쪽에 들어감)
+      block: [[7.42, 8.45, 0.14, 0.85]],
       say: "곡선 바 9석\n바텐더와 이야기 나누기 좋은 자리" },
   ],
 };
