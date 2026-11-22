@@ -1647,6 +1647,62 @@ function buildInteriorProp(p, g) {
       g.userData.hit = [0.5, 1.1, 0.5, 0.55]; g.userData.sayY = 1.35;
       return true;
     }
+    case "bartender": { // 바텐더 (크림 퀼팅 재킷, 체크 셔츠, 긴 웨이브 머리, 동그란 뿔테 안경, 팔짱)
+      const skin = "#f0c9a6", hair = "#2a211d", jacket = "#fffaf0", pants = "#8f9096";
+      const plaid = new THREE.MeshBasicMaterial({ map: canvasTex(64, 64, (c) => {
+        c.fillStyle = "#8a2f35"; c.fillRect(0, 0, 64, 64);
+        c.fillStyle = "rgba(255,255,255,.55)"; for (let i = 0; i < 64; i += 16) { c.fillRect(i, 0, 3, 64); c.fillRect(0, i, 64, 3); }
+        c.fillStyle = "rgba(40,20,30,.45)"; for (let i = 8; i < 64; i += 16) { c.fillRect(i, 0, 5, 64); c.fillRect(0, i, 64, 5); }
+      }, [2, 2]) });
+      const body = new THREE.Group(); g.add(body);
+      g.userData.bt = body;
+      // 다리
+      for (const sx of [-1, 1]) mk(new THREE.CapsuleGeometry(0.075, 0.62, 4, 10), pants, [sx * 0.1, 0.42, 0], body, { outline: 0.012 });
+      for (const sx of [-1, 1]) mk(box(0.12, 0.06, 0.22), "#2a2522", [sx * 0.1, 0.03, 0.04], body, { outline: 0.006 });
+      // 몸통: 체크 셔츠 + 크림 재킷 (앞은 열려 셔츠가 보임)
+      mk(new THREE.CapsuleGeometry(0.17, 0.42, 6, 14), plaid, [0, 1.07, 0], body, { outline: 0.012 });
+      for (const sx of [-1, 1]) {
+        const j = mk(box(0.17, 0.62, 0.34), jacket, [sx * 0.12, 1.05, -0.01], body, { outline: 0.012 });
+        j.rotation.y = sx * -0.12;
+      }
+      mk(box(0.4, 0.62, 0.12), jacket, [0, 1.05, -0.12], body, { outline: 0.01 }); // 등판
+      // 퀼팅 무늬 (재킷에 가는 선)
+      for (let i = 0; i < 4; i++) for (const sx of [-1, 1]) mk(box(0.15, 0.008, 0.01), "#d9cdb2", [sx * 0.13, 0.85 + i * 0.13, 0.165], body, { outline: 0, shadow: false });
+      // 팔짱 (가슴 앞으로 겹친 두 팔)
+      for (const [sx, y, z] of [[1, 1.12, 0.17], [-1, 1.07, 0.2]]) {
+        const a = mk(new THREE.CapsuleGeometry(0.065, 0.3, 4, 10), jacket, [0, y, z], body, { outline: 0.012 });
+        a.rotation.z = Math.PI / 2 + sx * 0.18;
+      }
+      for (const sx of [-1, 1]) mk(new THREE.CapsuleGeometry(0.065, 0.22, 4, 10), jacket, [sx * 0.22, 1.2, 0.06], body, { outline: 0.012 }).rotation.x = 0.6;
+      for (const sx of [-1, 1]) mk(new THREE.SphereGeometry(0.045, 8, 6), skin, [sx * 0.2, 1.1 + (sx > 0 ? 0.03 : -0.02), 0.2], body, { outline: 0.006 });
+      // 머리
+      const head = new THREE.Group(); head.position.set(0, 1.55, 0); body.add(head);
+      g.userData.btHead = head;
+      mk(new THREE.SphereGeometry(0.17, 20, 16), skin, [0, 0, 0], head, { outline: 0.02 });
+      const cap = mk(new THREE.SphereGeometry(0.182, 20, 12, 0, Math.PI * 2, 0, Math.PI * 0.52), hair, [0, 0.02, -0.02], head, { outline: 0 });
+      cap.rotation.x = -0.35;
+      // 뒤로 묶은 긴 웨이브 머리 + 양옆으로 흘러내린 머리
+      const tail = mk(new THREE.CapsuleGeometry(0.075, 0.28, 6, 10), hair, [0, -0.18, -0.15], head, { outline: 0.012 });
+      tail.rotation.x = 0.25;
+      for (const sx of [-1, 1]) {
+        const side = mk(new THREE.CapsuleGeometry(0.05, 0.16, 4, 8), hair, [sx * 0.16, -0.08, -0.03], head, { outline: 0.01 });
+        side.rotation.z = sx * 0.2;
+      }
+      // 동그란 갈색 뿔테 안경
+      const frame = "#6b3f24";
+      for (const sx of [-1, 1]) {
+        mk(new THREE.TorusGeometry(0.045, 0.011, 6, 18), frame, [sx * 0.062, 0.01, 0.16], head, { outline: 0, shadow: false });
+        mk(new THREE.CircleGeometry(0.04, 16), new THREE.MeshBasicMaterial({ color: "#cfe3ec", transparent: true, opacity: 0.35 }), [sx * 0.062, 0.01, 0.158], head, { outline: 0, shadow: false });
+        mk(new THREE.SphereGeometry(0.014, 8, 6), new THREE.MeshBasicMaterial({ color: "#1b1b1f" }), [sx * 0.062, 0.005, 0.15], head, { outline: 0, shadow: false });
+        mk(box(0.012, 0.012, 0.15), frame, [sx * 0.11, 0.015, 0.09], head, { outline: 0, shadow: false });
+      }
+      mk(box(0.03, 0.01, 0.01), frame, [0, 0.02, 0.165], head, { outline: 0, shadow: false });
+      mk(box(0.05, 0.008, 0.01), "#9a5a4a", [0, -0.075, 0.158], head, { outline: 0, shadow: false }); // 입
+      addObstacle(p.x, p.z, 0.22, 0.22);
+      g.userData.hit = [0.6, 1.8, 0.6, 0.9]; g.userData.sayY = 2.0;
+      bartenders.push(g);
+      return true;
+    }
     case "projector": {
       mk(box(0.6, 0.04, 0.5), "#8a6a4a", [0, H - 0.18, 0], g, { outline: 0.008, shadow: false });
       mk(box(0.34, 0.12, 0.28), "#f1f1f1", [0, H - 0.27, 0], g, { outline: 0.008, shadow: false });
@@ -2763,6 +2819,7 @@ function tick() {
 }
 
 const leaves = []; // 접이식 테이블 날개
+const bartenders = []; // 숨 쉬듯 살짝 움직이는 바텐더
 let steamT = 0;
 const steamGeo = new THREE.SphereGeometry(0.05, 8, 6);
 const DAY = { sky: new THREE.Color("#fff6ea"), ground: new THREE.Color("#c9a88a") };
@@ -2785,6 +2842,11 @@ function updateWorld(dt, time) {
     for (const p of doorPanels) p.g.position.x = p.x0 + p.dir * p.half * 0.92 * doorOpen;
   }
   for (const l of labelSprites) l.visible = !fpGroup.visible; // 1인칭에선 번호표 숨김
+  for (const b of bartenders) {
+    b.userData.bt.position.y = Math.sin(time * 1.6) * 0.008;
+    b.userData.btHead.rotation.y = Math.sin(time * 0.5) * 0.35;
+    b.userData.btHead.rotation.z = Math.sin(time * 0.8) * 0.04;
+  }
   // 접이식 테이블 날개 (펴짐 0° ↔ 접힘 아래로 90°)
   for (const lf of leaves) {
     lf.open += (lf.target - lf.open) * Math.min(1, dt * 5);
