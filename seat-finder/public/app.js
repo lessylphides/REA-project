@@ -1046,17 +1046,18 @@ function buildCurvedBar(b) {
   const curve = roundedPath(b.path, b.radius ?? 1.0);
   const S = pathSamples(curve, 0.15);
   // 몸통 (주황빛 원목) + 상판 (짙은 원목, 손님 쪽으로 튀어나옴)
-  ribbon(S, 0.22, 0.98, 0, b.body || "#b8693d", roomGroup, 0.012);
-  ribbon(S, 0.3, 0.06, 0.98, b.top || "#6e4127", roomGroup, 0.018, 0.08);
+  const bh = (b.depth ?? 0.44) / 2; // 몸통 두께의 절반
+  ribbon(S, bh, 0.98, 0, b.body || "#b8693d", roomGroup, 0.012);
+  ribbon(S, bh + 0.1, 0.06, 0.98, b.top || "#6e4127", roomGroup, 0.018, 0.08);
   // LED: 상판 아래로 은은하게
   const led = new THREE.MeshBasicMaterial({ map: ledTex, transparent: true, side: THREE.DoubleSide, depthWrite: false, opacity: 0.6 });
-  stripAlong(S, 0.226, 0.02, 0.96, led, roomGroup);
+  stripAlong(S, bh + 0.006, 0.02, 0.96, led, roomGroup);
   innerGlows.push([led, 0.45, 0.95]);
   // 부딪힘
   for (let i = 0; i < S.length - 1; i += 3) {
     const a = S[i], c = S[Math.min(i + 3, S.length - 1)];
     const len = a.p.distanceTo(c.p);
-    addObstacle((a.p.x + c.p.x) / 2, (a.p.z + c.p.z) / 2, len / 2 + 0.05, 0.3, THREE.MathUtils.radToDeg(Math.atan2(c.p.z - a.p.z, c.p.x - a.p.x)));
+    addObstacle((a.p.x + c.p.x) / 2, (a.p.z + c.p.z) / 2, len / 2 + 0.05, bh + 0.12, THREE.MathUtils.radToDeg(Math.atan2(c.p.z - a.p.z, c.p.x - a.p.x)));
   }
   // 이름표
   const mid = curve.getPointAt(0.5);
@@ -1072,7 +1073,8 @@ function buildCurvedBar(b) {
     const p = curve.getPointAt(u), t = curve.getTangentAt(u);
     const n = { x: t.z, z: -t.x };
     const id = `${b.id}-${i + 1}`;
-    addSeat(id, p.x + n.x * 0.62, p.z + n.z * 0.62, Math.atan2(-n.x, -n.z), b.chair || "barstool");
+    const off = bh + 0.4; // 상판 바깥으로 의자
+    addSeat(id, p.x + n.x * off, p.z + n.z * off, Math.atan2(-n.x, -n.z), b.chair || "barstool");
     ids.push(id);
   }
   tableGroups.push({ id: b.id, seatIds: ids });

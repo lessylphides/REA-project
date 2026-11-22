@@ -54,11 +54,11 @@ export default {
     { type: "floorlamp", x: 9.15, z: 9.1, h: 1.45 },
     { type: "coffee", x: 6.4, z: 9.2, rot: 180, say: "커피도 내려 드려요\n원두 향이 솔솔" },
     // 조명
-    { type: "pendant", kind: "linear", x: 1.5, z: 2.9, rot: 90, len: 1.8, y: 2.2 },
-    { type: "pendant", kind: "linear", x: 3.0, z: 6.48, rot: 45, len: 1.8, y: 2.2 },
-    { type: "pendant", kind: "linear", x: 5.6, z: 8.0, rot: 0, len: 1.6, y: 2.2, say: "바 위 나무 조명\n잔이 반짝이게 비춰 줘요" },
+    { type: "pendant", kind: "linear", x: 2.1, z: 2.8, rot: 90, len: 1.8, y: 2.2 },
+    { type: "pendant", kind: "linear", x: 3.43, z: 6.06, rot: 45, len: 1.8, y: 2.2 },
+    { type: "pendant", kind: "linear", x: 5.75, z: 7.4, rot: 0, len: 1.6, y: 2.2, say: "바 위 나무 조명\n잔이 반짝이게 비춰 줘요" },
     { type: "pendant", kind: "rattan", x: 5.2, z: 2.9, y: 2.15, say: "라탄 조명\n직접 골라 단 등이에요" },
-    { type: "pendant", kind: "rattan", x: 7.4, z: 7.6, y: 2.15 },
+    { type: "pendant", kind: "rattan", x: 7.6, z: 6.7, y: 2.15 },
     { type: "pendant", kind: "beehive", x: 8.75, z: 5.4, y: 2.1, say: "벌집 모양 원목 조명" },
     { type: "projector", x: 5.3, z: 5.4 },
     // 안쪽 벽 TV 장식장 (TV 는 아래 screens)
@@ -104,7 +104,8 @@ export default {
 
   // 바: path 를 주면 그 길을 따라 휘어진 바 (창을 따라 곡선), seats = 바 의자 수
   bars: [
-    { id: "BAR", path: [[1.5, 0.9], [1.5, 4.98], [4.52, 8.0], [6.7, 8.0]], radius: 1.1, seats: 8, chair: "barstool",
+    // 창에서 2.1m 안쪽 (바텐더 공간 넓게), depth = 바 몸통 두께
+    { id: "BAR", path: [[2.1, 0.9], [2.1, 4.73], [4.77, 7.4], [6.7, 7.4]], radius: 1.2, depth: 0.66, seats: 8, chair: "barstool",
       say: "곡선 바 8석\n바텐더와 이야기 나누기 좋은 자리" },
   ],
 };
