@@ -73,6 +73,7 @@ const gradientMap = (() => {
 const matCache = new Map();
 // 시간대(밤) 색 변화를 받을 재질들 — 가게 바깥을 만들 때만 모음. 빛나는 것(조명·창 불빛)은 제외
 const tintables = new Set();
+let tintSplit = false; // 실내/바깥 재질을 나눴는지
 let tintCollect = false;
 const registerTint = (m) => {
   if (!tintCollect || !LINE || !m.color) return m;
@@ -90,6 +91,35 @@ const toon = (color, { unique = false, ...extra } = {}) => {
 const outlineMat = new THREE.MeshBasicMaterial({ color: LINE ? "#1b1b1f" : COLOR.outline, side: THREE.BackSide });
 // 매장 안: 어스름한 실내에 맞춰 가늘고 짙은 갈색 선 (바깥은 그대로)
 const outlineMatIn = new THREE.MeshBasicMaterial({ color: "#24170f", side: THREE.BackSide });
+/** 실내(roomGroup)와 바깥(fpGroup)이 같은 재질을 쓰면 실내 쪽은 복제해서, 각자 다른 시간대 색을 받게 함 */
+function splitInteriorTints() {
+  // 각 물체의 실제 위치로 실내/바깥을 나눔 (매장 윤곽 안 + 천장 높이 이하 = 실내). 아주 큰 바닥판 등은 바깥
+  const v = new THREE.Vector3(), cls = new Map(); // material -> Set("in"/"out")
+  const meshes = [];
+  scene.updateMatrixWorld(true);
+  scene.traverse((o) => {
+    if (!o.isMesh || !o.material || Array.isArray(o.material) || !tintables.has(o.material)) return;
+    o.getWorldPosition(v);
+    if (!o.geometry.boundingSphere) o.geometry.computeBoundingSphere();
+    const big = (o.geometry.boundingSphere?.radius ?? 0) * Math.max(o.scale.x, o.scale.z) > 12;
+    let a = o, outdoor = false;
+    while (a) { if (a.userData?.outdoor) { outdoor = true; break; } a = a.parent; }
+    const inside = !outdoor && !big && storeSD(v.x, v.z) > -0.08 && v.y < R.wallH + 0.4; // storeSD: 매장 안쪽이 + 
+    meshes.push([o, inside]);
+    const set = cls.get(o.material) || new Set(); set.add(inside ? "in" : "out"); cls.set(o.material, set);
+  });
+  const clones = new Map();
+  for (const [o, inside] of meshes) {
+    const m = o.material, set = cls.get(m);
+    if (set.size === 1) { m.userData.inside = inside; continue; }
+    if (!inside) { m.userData.inside = false; continue; }
+    let c = clones.get(m);
+    if (!c) { c = m.clone(); c.userData = { ...m.userData, base: m.userData.base.clone(), inside: true }; tintables.add(c); clones.set(m, c); }
+    o.material = c;
+  }
+  tintSplit = true;
+  lastTint = -1;
+}
 function softenInteriorOutlines(root, f = 0.5) {
   root.traverse((o) => {
     if (o.material !== outlineMat) return;
@@ -418,6 +448,22 @@ function buildRoom() {
 }
 
 const BLIND_BOTTOM = 1.12; // 블라인드는 이 높이 위로만
+// 유리 바깥면의 하늘·거리 비침: 낮엔 진해서 안이 잘 안 보이고, 밤엔 거의 없어 안이 또렷이 보임 (바깥에서만 보임)
+const glassRefl = [];
+const reflTex = canvasTex(128, 256, (c, w, h) => {
+  const grd = c.createLinearGradient(0, 0, 0, h);
+  grd.addColorStop(0, "#d9e6f2"); grd.addColorStop(0.55, "#c4d2de"); grd.addColorStop(1, "#9aa6ae");
+  c.fillStyle = grd; c.fillRect(0, 0, w, h);
+  c.fillStyle = "rgba(255,255,255,.35)"; // 사선 반짝임
+  for (const [x0, ww] of [[10, 26], [60, 10], [90, 18]]) { c.beginPath(); c.moveTo(x0, h); c.lineTo(x0 + ww, h); c.lineTo(x0 + ww + 70, 0); c.lineTo(x0 + 70, 0); c.fill(); }
+});
+function addGlassRefl(parent, w, h, pos, rotY) {
+  const mat = new THREE.MeshBasicMaterial({ map: reflTex, transparent: true, opacity: 0, depthWrite: false });
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), mat);
+  m.position.set(pos[0], pos[1], pos[2]); m.rotation.y = rotY; m.renderOrder = 4;
+  m.raycast = () => {};
+  parent.add(m); glassRefl.push(mat);
+}
 const clearGlass = () => { const m = new THREE.MeshBasicMaterial({ color: "#cfe6f0", transparent: true, opacity: 0.12, depthWrite: false, side: THREE.DoubleSide }); return m; };
 /** 유리 구간 (변 로컬 x, -len/2 = a 쪽). room.pillars: [{ edge, end: "a"|"b", w }] */
 function glassSpan(e) {
@@ -472,6 +518,7 @@ function buildEdge(e, group, h, T) {
   registerTint(mat);
   mk(new THREE.PlaneGeometry(gw, top - bl0), mat, [gc, (top + bl0) / 2, 0], g, { outline: 0, shadow: false });
   mk(new THREE.PlaneGeometry(gw, bl0 - sill), clearGlass(), [gc, (bl0 + sill) / 2, 0], g, { outline: 0, shadow: false });
+  if (group === roomGroup) addGlassRefl(g, gw, top - sill, [gc, (top + sill) / 2, -T / 2 - 0.006], Math.PI); // 바깥쪽(-z)을 향함
   // 흰 창틀
   const white = "#f4f1ec";
   for (const mx of mullionXs(e)) mk(box(0.06, top - sill, T * 0.8), white, [mx, (top + sill) / 2, 0], g, { outline: 0.01, shadow: false });
@@ -969,6 +1016,7 @@ function buildInsideShell(T) {
     registerTint(bm);
     const inner = mk(new THREE.PlaneGeometry(winW, 2.75 - BLIND_BOTTOM), bm, [(wx0 + wx1) / 2, (2.75 + BLIND_BOTTOM) / 2, R.d - 0.005], fpGroup, { outline: 0, shadow: false });
     mk(new THREE.PlaneGeometry(winW, BLIND_BOTTOM - 0.12), clearGlass(), [(wx0 + wx1) / 2, (BLIND_BOTTOM + 0.12) / 2, R.d + 0.02], fpGroup, { outline: 0, shadow: false });
+    addGlassRefl(fpGroup, winW, 2.75 - 0.12, [(wx0 + wx1) / 2, (2.75 + 0.12) / 2, R.d + 0.04], 0);
     for (const y of [0.14, 2.73]) mk(box(winW, 0.05, 0.12), "#f4f1ec", [(wx0 + wx1) / 2, y, R.d + 0.02], fpGroup, { outline: 0.008, shadow: false });
     inner.renderOrder = 3;
     {
@@ -995,6 +1043,7 @@ function buildInsideShell(T) {
       mk(box(0.04, 0.8, 0.04), "#a8743f", [-dw + 0.12, 1.1, side * 0.08], pg, { outline: 0.006, shadow: false });
       for (const hy of [0.75, 1.45]) mk(box(0.02, 0.02, 0.06), "#a8743f", [-dw + 0.12, hy, side * 0.05], pg, { outline: 0, shadow: false });
     }
+    addGlassRefl(pg, dw - 0.08, dh - 0.08, [-dw / 2, dh / 2, 0.025], 0);
     doorPanels.push({ g: pg, swing: true, w: dw });
     mk(box(door.w + 0.12, 0.08, 0.1), "#5a4a40", [door.x, dh, zF], fpGroup, { outline: 0, shadow: false });
     const was = tintCollect;
@@ -1451,11 +1500,12 @@ function applyTime(outside, time) {
     else tmpC.copy(DUSK_TINT).lerp(NIGHT_TINT, (k - 0.5) / 0.5);
     if (k < 0.5) tmpIn.copy(IN_DAY).lerp(IN_DUSK, k / 0.5);
     else tmpIn.copy(IN_DUSK).lerp(IN_NIGHT, (k - 0.5) / 0.5);
-    tmpIn.lerp(tmpC, outside);
+    // 매장 안 재질은 손님이 어디 있든 늘 실내 색, 바깥 재질은 늘 바깥 하늘 색
     const gk = Math.max(0.85, THREE.MathUtils.smoothstep(k, 0.3, 1)); // 안은 늘 조명 분위기
     for (const m of tintables) {
-      m.color.copy(m.userData.base).multiply(tmpIn);
-      if (m.userData.extraDark) m.color.multiplyScalar(1 - m.userData.extraDark * gk * (1 - outside));
+      const inside = m.userData.inside ?? tintSplit === false;
+      m.color.copy(m.userData.base).multiply(inside ? tmpIn : tmpC);
+      if (m.userData.extraDark && inside) m.color.multiplyScalar(1 - m.userData.extraDark * gk);
     }
   }
   const glow = THREE.MathUtils.smoothstep(k, 0.3, 1);
@@ -1465,10 +1515,8 @@ function applyTime(outside, time) {
   for (const [m, lo, hi] of innerGlows) m.opacity = Math.min(1, (lo + (hi - lo) * gIn) * 1.4); // 조명 둘레 빛을 조금 더 진하게
   const dayAmt = 1 - THREE.MathUtils.smoothstep(k, 0.2, 0.7);
   const duskAmt = Math.max(0, 1 - Math.abs(k - 0.45) / 0.3);
-  for (const m of sunPatches) {
-    m.color.copy(SUN_DAY).lerp(SUN_DUSK, duskAmt / (dayAmt + duskAmt + 1e-6));
-    m.opacity = 0.22 * dayAmt + 0.42 * duskAmt;
-  }
+  for (const m of sunPatches) m.opacity = 0; // 매장 안은 늘 어스름한 조명 분위기: 바닥 햇살 줄무늬 없음
+  for (const m of glassRefl) m.opacity = 0.05 + 0.72 * dayAmt + 0.3 * duskAmt; // 낮엔 비침이 진해 안이 잘 안 보임
   for (const s of nightGlow.sky) {
     const tw = s.userData.tw != null ? 0.6 + 0.4 * Math.sin(time * 2 + s.userData.tw) : 1;
     s.material.opacity = glow * tw;
@@ -1924,9 +1972,8 @@ const beamFadeTex = canvasTex(64, 128, (c, w, h) => {
 const bandTex = canvasTex(256, 64, (c, w, h) => {
   const img = c.createImageData(w, h);
   for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
-    const ex = Math.min(1, Math.min(x, w - 1 - x) / (w * 0.12));
-    const dy = (y - (h - 1) / 2) / ((h - 1) / 2);
-    const a = ex * Math.exp(-dy * dy * 2.2);
+    const dx = (x - (w - 1) / 2) / ((w - 1) / 2), dy = (y - (h - 1) / 2) / ((h - 1) / 2);
+    const a = Math.exp(-dx * dx * 1.6) * Math.exp(-dy * dy * 3.0) * (1 - Math.pow(Math.abs(dx), 6)); // 테두리 없이 사라짐
     const i = (y * w + x) * 4; img.data[i] = img.data[i + 1] = img.data[i + 2] = 255; img.data[i + 3] = Math.round(a * 255);
   }
   c.putImageData(img, 0, 0);
@@ -1961,26 +2008,13 @@ function buildInteriorProp(p, g) {
         mk(new THREE.PlaneGeometry(len - 0.06, 0.05), m, [0, y - 0.061, 0], g, { outline: 0, shadow: false }).rotation.x = Math.PI / 2;
         addHalo(g, -len * 0.25, y - 0.2, 0, 1.0, "#ffd08a", true);
         addHalo(g, len * 0.25, y - 0.2, 0, 1.0, "#ffd08a", true);
-        // 조명 아래 옅은 빛 기둥: 조명 폭에서 시작해 상판에서 약 1/3 폭으로 넓어짐
+        // 상판에 고이는 부드러운 빛 (조명 아래가 가장 밝고 둘레로 서서히 사라짐, 폭 ≈ 상판 1/3)
         {
-          const L1 = len - 0.06, L2 = p.glowLen ?? len + 1.2, off = p.glowOff ?? 0, w1 = 0.05, w2 = 0.19, yT = y - 0.065, yB = 1.05;
-          const T = [[-L1 / 2, -w1], [L1 / 2, -w1], [L1 / 2, w1], [-L1 / 2, w1]], B = [[off - L2 / 2, -w2], [off + L2 / 2, -w2], [off + L2 / 2, w2], [off - L2 / 2, w2]];
-          const pos = [], uv = [];
-          for (let i = 0; i < 4; i++) {
-            const j = (i + 1) % 4;
-            pos.push(T[i][0], yT, T[i][1], T[j][0], yT, T[j][1], B[j][0], yB, B[j][1], T[i][0], yT, T[i][1], B[j][0], yB, B[j][1], B[i][0], yB, B[i][1]);
-            uv.push(0, 1, 1, 1, 1, 0, 0, 1, 1, 0, 0, 0);
-          }
-          const bg = new THREE.BufferGeometry();
-          bg.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
-          bg.setAttribute("uv", new THREE.Float32BufferAttribute(uv, 2));
-          const bm = new THREE.MeshBasicMaterial({ map: beamFadeTex, color: "#ffc98a", transparent: true, opacity: 0.05, depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending });
-          const beam = new THREE.Mesh(bg, bm); beam.renderOrder = 3; g.add(beam);
-          innerGlows.push([bm, 0.02, 0.07]);
-          // 상판 위 곧은 띠 (빛 기둥 끝과 같은 폭, 끝만 부드럽게)
+          const L2 = p.glowLen ?? len + 1.2, off = p.glowOff ?? 0, w2 = 0.24;
+          // (공중 빛 기둥 도형은 없앰: 판처럼 보여 부자연스러움)
           const band = new THREE.Mesh(new THREE.PlaneGeometry(L2, w2 * 2), new THREE.MeshBasicMaterial({ map: bandTex, color: "#ffb065", transparent: true, opacity: 0.2, depthWrite: false, blending: THREE.AdditiveBlending, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -2 }));
           band.rotation.x = -Math.PI / 2; band.position.set(off, 1.046, 0); band.renderOrder = 2; g.add(band);
-          innerGlows.push([band.material, 0.07, 0.28]);
+          innerGlows.push([band.material, 0.06, 0.22]);
         }
         // (예전: 바 상판 위 가늘고 긴 한 줄기 빛)
         lightPool(g, 0, 0.015, 0, len + 1.2, 1.6, "#ff9a55", 0.03, 0.22);
@@ -2410,18 +2444,18 @@ function buildInteriorProp(p, g) {
       cap.rotation.x = -0.6; cap.scale.set(0.95, 1.1, 1);
       for (const sx of [-0.06, 0.04]) mk(box(0.012, 0.01, 0.16), "#8e8a86", [sx, 0.19, -0.04], head, { outline: 0, shadow: false }).rotation.x = -0.4;
       // 파마 단발: 매끈한 윤곽 + 크고 납작한 웨이브 몇 겹 (이마는 드러남, 턱선 길이)
-      const shellGeo = new THREE.SphereGeometry(0.185, 24, 14, Math.PI * 0.5 + 1.05, Math.PI * 2 - 2.1, 0, Math.PI * 0.64);
+      const shellGeo = new THREE.SphereGeometry(0.2, 24, 14, Math.PI * 0.5 + 1.05, Math.PI * 2 - 2.1, 0, Math.PI * 0.66);
       const shell = mk(shellGeo, toon(hair, { side: THREE.DoubleSide }), [0, 0.0, -0.01], head, { outline: 0.008, shadow: false });
-      shell.scale.set(1.02, 1.12, 1.0);
-      const waveGeo = new THREE.SphereGeometry(0.06, 12, 8);
+      shell.scale.set(1.1, 1.12, 1.06); // 부피 있게
+      const waveGeo = new THREE.SphereGeometry(0.085, 12, 8);
       let wi = 0;
-      for (const [y, R, front, n] of [[0.1, 0.17, 62, 7], [0.0, 0.192, 66, 8], [-0.1, 0.19, 70, 8]]) {
+      for (const [y, R, front, n] of [[0.09, 0.2, 64, 6], [-0.03, 0.225, 68, 6], [-0.14, 0.215, 72, 6]]) {
         for (let i = 0; i < n; i++) {
           const th = (i / n) * Math.PI * 2 + y * 3 + 0.2;
           const deg = Math.abs(THREE.MathUtils.radToDeg(Math.atan2(Math.sin(th), Math.cos(th))));
           if (deg < front) continue;
           const w = mk(waveGeo, wi++ % 7 === 3 ? "#6f6a66" : hair, [Math.sin(th) * R, y, Math.cos(th) * R - 0.01], head, { outline: 0.005, shadow: false });
-          w.rotation.y = th; w.scale.set(1.15, 0.6, 0.45); // 납작한 웨이브
+          w.rotation.y = th; w.scale.set(1.25, 0.72, 0.55); // 굵고 두툼한 물결
         }
       }
       const ink = new THREE.MeshBasicMaterial({ color: "#1b1b1f" });
@@ -3403,6 +3437,7 @@ function makeWalker(seed, kind) {
     g.add(new THREE.Line(lg, new THREE.LineBasicMaterial({ color: "#c8392b" })));
   }
   g.scale.setScalar(0.95);
+  g.userData.outdoor = true; // 실내/바깥 색 나눌 때 늘 바깥
   return { g, body, legs, arms, dog };
 }
 
@@ -3415,14 +3450,13 @@ function buildWalkers() {
   const AL = (d, o = 0) => [A.mx + A.nx * d + px * o, A.mz + A.nz * d + pz * o];
   const I = AL(4.6); // 삼거리 한가운데
   const lanes = [
-    [[-5, front - 0.35], [15, front - 0.35]],            // 정면 골목 (가게 앞)
-    [[15, front + 0.45], [-5, front + 0.45]],
-    [[-1.9, -4], [-1.9, 10]],                            // 왼쪽 골목
-    [[-3.6, 11], [-3.6, -4]],
-    [AL(26, 0.8), AL(6, 0.8), I, [15, front - 0.35]],    // 골목 저 끝에서 걸어와 → 삼거리 → 가게 앞으로
-    [AL(26, -0.9), AL(6, -0.9), I, [-1.9, -4]],          // 골목 끝 → 삼거리 → 왼쪽 골목
-    [[15, front + 0.45], I, AL(6, -0.2), AL(26, -0.2)],  // 가게 앞 → 삼거리 → 골목 저 끝으로 멀어짐
-    [[-3.6, -4], [-3.6, 9], I, AL(6, 1.4), AL(26, 1.4)], // 왼쪽 골목 → 삼거리 → 골목 끝으로
+    // 모든 길은 골목 저 끝(멀리, 잘 안 보이는 곳)에서 시작하고 끝남 → 길 한가운데서 갑자기 나타나지 않음
+    [[18, front - 0.35], [-2.0, front - 0.35], [-2.0, -7]],          // 가게 앞 골목 끝 → 모퉁이 → 왼쪽 골목 끝
+    [[-3.4, -7], [-3.4, front + 0.45], [18, front + 0.45]],          // 왼쪽 골목 끝 → 모퉁이 → 가게 앞 골목 끝
+    [AL(24, 0.8), AL(6, 0.8), I, [18, front - 0.35]],    // 대각선 골목 끝 → 삼거리 → 가게 앞 골목 끝
+    [AL(24, -0.9), AL(6, -0.9), I, [-1.9, -7]],          // 대각선 골목 끝 → 삼거리 → 왼쪽 골목 끝
+    [[18, front + 0.45], I, AL(6, -0.2), AL(24, -0.2)],  // 가게 앞 골목 끝 → 삼거리 → 대각선 골목 끝
+    [[-3.6, -7], [-3.6, 9], I, AL(6, 1.4), AL(24, 1.4)], // 왼쪽 골목 끝 → 삼거리 → 대각선 골목 끝
   ].map((pts) => {
     const seg = [];
     let len = 0;
@@ -3432,7 +3466,7 @@ function buildWalkers() {
   const plan = [
     // 지나가는 사람 (예전의 반, 우산 없음)
     [0, "normal", true, 0.1], [1, "dog", true, 0.3], [3, "dog", false, 0.5],
-    [4, "pair", false, 0.55], [6, "normal", true, 0.4], [7, "normal", false, 0.8],
+    [2, "pair", false, 0.55], [4, "normal", true, 0.4], [5, "normal", false, 0.8],
   ];
   plan.forEach(([li, kind, nightOk, t0], i) => {
     const lane = lanes[li];
@@ -3459,7 +3493,7 @@ function updateWalkers(dt, time) {
     w.t += (w.speed * dt) / w.len;
     if (w.t > 1) w.t -= 1;
     const { x, z, dx, dz } = lanePoint(w.lane, w.t);
-    const fade = Math.min(1, (w.t * w.len) / 1.2, ((1 - w.t) * w.len) / 1.2); // 길 끝에서 스르륵 나타나고 사라짐
+    const fade = Math.min(1, (w.t * w.len) / 0.4, ((1 - w.t) * w.len) / 0.4); // 길 끝(멀리)에서만 나타나고 사라짐
     const yaw = Math.atan2(dx, dz), sw = Math.sin(time * 6 * w.speed + w.phase);
     for (const p of w.group) {
       p.g.visible = show && fade > 0.02;
@@ -4062,6 +4096,7 @@ async function main() {
     buildWalkers();
     tintCollect = false;
     if (LINE) softenInteriorOutlines(roomGroup);
+    if (LINE) splitInteriorTints();
 
     controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
