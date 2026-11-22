@@ -557,7 +557,7 @@ function buildStorefront(T, door, dh) {
     g.strokeStyle = "rgba(170,110,110,.25)"; g.lineWidth = 3;
     for (let i = -h; i < w; i += 14) { g.beginPath(); g.moveTo(i, h); g.lineTo(i + h, 0); g.stroke(); }
   });
-  mk(new THREE.PlaneGeometry(winW - 0.08, 0.92), flat(panel), [wx, 0.12 + 0.46, wz], fpGroup, no);
+  nightGlow.windows.push(mk(new THREE.PlaneGeometry(winW - 0.08, 0.92), flat(panel), [wx, 0.12 + 0.46, wz], fpGroup, no).material);
   // 선반 + 주황 LED 줄조명 + 촛불
   mk(box(winW - 0.06, 0.05, 0.16), "#2b2522", [wx, 1.06, wz + 0.08], fpGroup, ol);
   mk(box(winW - 0.1, 0.03, 0.02), new THREE.MeshBasicMaterial({ color: "#ffad66" }), [wx, 1.02, wz + 0.15], fpGroup, no);
@@ -581,8 +581,8 @@ function buildStorefront(T, door, dh) {
     g.fillStyle = "rgba(255,255,255,.38)";
     for (let y = 0; y < h; y += h / rows) g.fillRect(0, y, w, h / rows * 0.55);
   });
-  mk(new THREE.PlaneGeometry(winW - 0.1, 1.15), flat(blinds(26)), [wx, 1.72, wz], fpGroup, no);
-  mk(new THREE.PlaneGeometry(winW - 0.1, 0.5), flat(blinds(12)), [wx, 2.55, wz], fpGroup, no);
+  nightGlow.windows.push(mk(new THREE.PlaneGeometry(winW - 0.1, 1.15), flat(blinds(26)), [wx, 1.72, wz], fpGroup, no).material);
+  nightGlow.windows.push(mk(new THREE.PlaneGeometry(winW - 0.1, 0.5), flat(blinds(12)), [wx, 2.55, wz], fpGroup, no).material);
   // 창틀 (흰색)
   
   mk(box(winW, 0.07, 0.06), white, [wx, 2.3, zO + 0.03], fpGroup, ol);
@@ -593,7 +593,7 @@ function buildStorefront(T, door, dh) {
 
   // ── 문 위: 작은 창 + 환풍기
   mk(box(door.w + 0.1, 0.06, 0.06), white, [door.x, dh + 0.02, zO + 0.03], fpGroup, ol);
-  mk(new THREE.PlaneGeometry(door.w * 0.55, 0.42), flat(blinds(6)), [door.x - door.w * 0.2, dh + 0.33, wz], fpGroup, no);
+  nightGlow.windows.push(mk(new THREE.PlaneGeometry(door.w * 0.55, 0.42), flat(blinds(6)), [door.x - door.w * 0.2, dh + 0.33, wz], fpGroup, no).material);
   const fan = canvasTex(128, 128, (g) => {
     g.fillStyle = "#e9e6e1"; g.beginPath(); g.arc(64, 64, 60, 0, Math.PI * 2); g.fill();
     g.strokeStyle = "#555"; g.lineWidth = 6; g.beginPath(); g.arc(64, 64, 48, 0, Math.PI * 2); g.stroke();
@@ -654,7 +654,7 @@ function buildStorefront(T, door, dh) {
   mk(box(upW, upH - 0.16, 0.06), toon(LINE ? "#bfe0f2" : "#2a3550"), [(opL + opR) / 2, upY, zO + 0.05], fpGroup, no);
   mk(box(0.07, upH - 0.16, 0.08), white, [(opL + opR) / 2, upY, zO + 0.07], fpGroup, no);
   // 밤이 되면 2층 창에 따뜻한 불이 켜짐
-  nightGlow.lit = mk(new THREE.PlaneGeometry(upW, upH - 0.16), new THREE.MeshBasicMaterial({ color: "#ffd98a", transparent: true, opacity: 0, depthWrite: false }), [(opL + opR) / 2, upY, zO + 0.085], fpGroup, no);
+  nightGlow.lit = mk(new THREE.PlaneGeometry(upW, upH - 0.16), new THREE.MeshBasicMaterial({ color: "#e9a35e", transparent: true, opacity: 0, depthWrite: false }), [(opL + opR) / 2, upY, zO + 0.085], fpGroup, no);
   // 오른쪽 이웃 건물 (흰 셔터)
   const nx0 = R.w + T + 0.02;
   mk(box(4, top - 0.4, 3), "#cfc9bf", [nx0 + 2, (top - 0.4) / 2, R.d - 1.5 + T], fpGroup, ol);
@@ -699,8 +699,8 @@ function buildStorefront(T, door, dh) {
   // 바닥에 비치는 분홍빛
   const pool = nightGlow.pool = mk(new THREE.CircleGeometry(0.9, 32), new THREE.MeshBasicMaterial({ color: "#ff9fb0", transparent: true, opacity: 0.22, depthWrite: false }), [0, 0.005, 0], lantern, no);
   pool.rotation.x = -Math.PI / 2;
-  addHalo(lantern, 0, 0.62, 0, 1.6, "#ffc4d6");
-  addHalo(fpGroup, wx, 1.6, zO + 0.3, 3.2, "#ffcf9a");
+  addHalo(lantern, 0, 0.62, 0, 1.3, "#ffb98f");
+  addHalo(fpGroup, wx, 1.4, zO + 0.3, 2.6, "#ff9f5a");
   const lampLight = new THREE.PointLight("#ffb3c0", 3, 4, 1.6);
   lampLight.position.set(0, 0.7, 0.2);
   lantern.add(lampLight);
@@ -725,7 +725,8 @@ function buildStorefront(T, door, dh) {
 }
 
 // ───────── 시간대 (낮 → 노을 → 밤 조명) ─────────
-const nightGlow = { strip: null, pool: null, lit: null, halos: [], sky: [] };
+const nightGlow = { strip: null, pool: null, lit: null, halos: [], sky: [], windows: [] };
+const WIN_NIGHT = new THREE.Color("#c98a62"); // 밤의 쇼윈도: 은은한 오렌지
 const haloTex = canvasTex(128, 128, (g) => {
   const grd = g.createRadialGradient(64, 64, 0, 64, 64, 64);
   grd.addColorStop(0, "rgba(255,255,255,.9)"); grd.addColorStop(0.35, "rgba(255,255,255,.35)"); grd.addColorStop(1, "rgba(255,255,255,0)");
@@ -808,15 +809,16 @@ function applyTime(outside, time) {
     for (const m of tintables) m.color.copy(m.userData.base).multiply(tmpIn);
   }
   const glow = THREE.MathUtils.smoothstep(k, 0.3, 1);
-  for (const h of nightGlow.halos) h.material.opacity = h.userData.inner ? 0.08 + glow * 0.42 : glow * 0.85;
+  for (const h of nightGlow.halos) h.material.opacity = h.userData.inner ? 0.08 + glow * 0.42 : glow * 0.38;
+  for (const m of nightGlow.windows) m.color.copy(WHITE).lerp(WIN_NIGHT, glow * 0.85);
   for (const [m, lo, hi] of innerGlows) m.opacity = lo + (hi - lo) * glow;
   for (const s of nightGlow.sky) {
     const tw = s.userData.tw != null ? 0.6 + 0.4 * Math.sin(time * 2 + s.userData.tw) : 1;
     s.material.opacity = glow * tw;
   }
-  if (nightGlow.strip) nightGlow.strip.material.opacity = 0.35 + glow * 0.45;
-  if (nightGlow.pool) nightGlow.pool.material.opacity = 0.22 + glow * 0.4;
-  if (nightGlow.lit) nightGlow.lit.material.opacity = glow * 0.85;
+  if (nightGlow.strip) nightGlow.strip.material.opacity = 0.3 + glow * 0.25;
+  if (nightGlow.pool) nightGlow.pool.material.opacity = 0.15 + glow * 0.18;
+  if (nightGlow.lit) nightGlow.lit.material.opacity = glow * 0.55;
 }
 
 /** 손그림 그림체: 하늘의 구름 + 이웃 건물 뒤 큰 나무 */
