@@ -1742,8 +1742,46 @@ function buildCurvedBar(b) {
   const S = pathSamples(curve, 0.15);
   // 몸통 (주황빛 원목) + 상판 (짙은 원목, 손님 쪽으로 튀어나옴)
   const bh = (b.depth ?? 0.44) / 2; // 몸통 두께의 절반
-  ribbon(S, bh, 0.98, 0, b.body || "#8e4a2c", roomGroup, 0.012);
-  ribbon(S, bh + 0.1, 0.06, 0.98, b.top || "#6e4127", roomGroup, 0.018, 0.08);
+  // 몸통: 손님 쪽은 막힌 판, 바텐더 쪽(-n)은 움푹 들어간 2단 선반 (비워 둠: 제빙기·냉장고 자리)
+  const body = b.body || "#8e4a2c", RD = 0.45, back = -bh + RD; // 선반 안쪽 깊이, 뒤판 위치
+  ribbon(S, (bh - back) / 2, 0.98, 0, body, roomGroup, 0.012, (bh + back) / 2);  // 손님 쪽 막힌 부분
+  ribbon(S, RD / 2, 0.08, 0, body, roomGroup, 0.008, (-bh + back) / 2);       // 아래 받침
+  ribbon(S, RD / 2, 0.05, 0.93, body, roomGroup, 0.006, (-bh + back) / 2);    // 상판 바로 아래 띠
+  const inner = toon("#3b2418", { side: THREE.DoubleSide });
+  stripAlong(S, back - 0.002, 0.08, 0.93, inner, roomGroup).renderOrder = 0;   // 안쪽 뒤판 (짙게)
+  ribbon(S, (RD - 0.04) / 2, 0.025, 0.49, "#6a3a22", roomGroup, 0.005, (-bh + back) / 2 + 0.02); // 가운데 선반
+  // 3구역 칸막이: 양 끝 + 통창 모서리 두 곳 (경로 꺾이는 점에 가장 가까운 곳)
+  const near = (pt) => S.reduce((bi, s, i) => (Math.hypot(s.p.x - pt[0], s.p.z - pt[1]) < Math.hypot(S[bi].p.x - pt[0], S[bi].p.z - pt[1]) ? i : bi), 0);
+  const cuts = [0, ...b.path.slice(1, -1).map(near), S.length - 1];
+  for (const ci of cuts) {
+    const s0 = S[ci], c = (-bh + back) / 2;
+    const m = mk(box(0.04, 0.85, RD), body, [s0.p.x + s0.n.x * c, 0.08 + 0.425, s0.p.z + s0.n.z * c], roomGroup, { outline: 0.006, shadow: false });
+    m.rotation.y = Math.atan2(-s0.t.z, s0.t.x);
+  }
+  // 구역마다 상판 아래 은은한 선반 조명 (위가 밝고 아래로 사라짐)
+  for (let k = 0; k < cuts.length - 1; k++) {
+    const sub = S.slice(cuts[k] + 1, cuts[k + 1]);
+    if (sub.length < 2) continue;
+    const wash = new THREE.MeshBasicMaterial({ map: ledTex, color: "#ffd2a0", transparent: true, side: THREE.DoubleSide, depthWrite: false, opacity: 0.1, blending: THREE.AdditiveBlending });
+    stripAlong(sub, back - 0.006, 0.09, 0.925, wash, roomGroup);
+    innerGlows.push([wash, 0.3, 0.75]);
+    for (const fy of [0.081, 0.504]) { // 선반 바닥에 고이는 불빛
+      const fm = new THREE.MeshBasicMaterial({ map: ledFloorTex, color: "#ffc890", transparent: true, depthWrite: false, opacity: 0.3, blending: THREE.AdditiveBlending, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -4 });
+      floorStripAlong(sub, back - 0.01, -bh + 0.02, fy, fm, roomGroup);
+      innerGlows.push([fm, fy > 0.3 ? 0.25 : 0.15, fy > 0.3 ? 0.6 : 0.4]);
+    }
+    { // 선반 불빛이 바텐더 쪽 바닥으로 살짝 새어 나옴
+      const fl = new THREE.MeshBasicMaterial({ map: ledFloorTex, color: "#ffc890", transparent: true, depthWrite: false, opacity: 0.15, blending: THREE.AdditiveBlending, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -4 });
+      floorStripAlong(sub, -bh - 0.01, -bh - 0.55, 0.013, fl, roomGroup);
+      innerGlows.push([fl, 0.08, 0.3]);
+    }
+    const line = new THREE.MeshBasicMaterial({ color: "#ffd9a8", transparent: true, opacity: 0.3, side: THREE.DoubleSide, depthWrite: false });
+    stripAlong(sub, -bh + 0.06, 0.915, 0.928, line, roomGroup);
+    innerGlows.push([line, 0.5, 1]);
+  }
+  // 상판: 손님 쪽 처마 그대로 + 바텐더 쪽도 처마처럼 늘림
+  const topIn = bh + 0.15, topOut = bh + 0.18;
+  ribbon(S, (topIn + topOut) / 2, 0.06, 0.98, b.top || "#6e4127", roomGroup, 0.018, (topOut - topIn) / 2);
   // LED: 상판 아래로 은은하게
   const led = new THREE.MeshBasicMaterial({ map: ledTex, transparent: true, side: THREE.DoubleSide, depthWrite: false, opacity: 0.1 });
   stripAlong(S, bh + 0.006, 0.02, 0.965, led, roomGroup);
@@ -2118,7 +2156,6 @@ function buildInteriorProp(p, g) {
         geo.rotateY(Math.PI / 4); geo.scale(wTop, 1, d);
         return geo;
       };
-      const wood = "#8a5e3a";
       mk(box(0.48, 0.035, 0.5), "#9a6a42", [0, y0 + 0.0175, 0], g, { outline: 0.008 }); // 나무 받침판
       const by = y0 + 0.035, bh = 0.4, MW = 0.4; // 1구 머신
       mk(frustum(MW, 0.33, bh, 0.46), black, [0, by + bh / 2, 0], g, { outline: 0.012 });
@@ -2171,27 +2208,25 @@ function buildInteriorProp(p, g) {
       scr.position.set(0, 0, 0.0085); pad.add(scr);
       window.__ipad = { canvas: ipadCanvas, texture: ipadTex, redraw: drawIpad };
       // 그라인더 2대 (손님 기준 머신 오른쪽 = 로컬 -x)
-      const G1 = -0.42, G2 = -0.74;
-      mk(box(0.17, 0.32, 0.22), black, [G1, y0 + 0.16, 0.02], g, { outline: 0.008 }); // 키 큰 네모 그라인더
-      mk(box(0.12, 0.04, 0.08), "#3a3a3e", [G1, y0 + 0.12, 0.15], g, { outline: 0.004 });
-      mk(cyl(0.035, 0.05, 0.05, 10), "#2e2e32", [G1, y0 + 0.345, 0.02], g, { outline: 0.004 });
-      mk(cyl(0.09, 0.04, 0.22, 14), toon("#e8f2f5", { transparent: true, opacity: 0.35 }), [G1, y0 + 0.48, 0.02], g, { outline: 0.006, shadow: false });
-      mk(cyl(0.075, 0.036, 0.16, 12), "#4a2c1c", [G1, y0 + 0.45, 0.02], g, { outline: 0, shadow: false }); // 원두 가득
-      mk(cyl(0.095, 0.095, 0.02, 14), "#1b1b1e", [G1, y0 + 0.6, 0.02], g, { outline: 0.004 });
-      mk(cyl(0.075, 0.085, 0.22, 16), black, [G2, y0 + 0.11, 0.02], g, { outline: 0.008 }); // 작은 둥근 그라인더
-      mk(box(0.06, 0.03, 0.06), "#3a3a3e", [G2, y0 + 0.08, 0.1], g, { outline: 0.004 });
+      const G1 = -0.42, G2 = -0.74, GZ = -0.25; // 그라인더는 바 상판 위 (손님 쪽으로 들어감)
+      mk(box(0.17, 0.32, 0.22), black, [G1, y0 + 0.16, GZ], g, { outline: 0.008 }); // 키 큰 네모 그라인더
+      mk(box(0.12, 0.04, 0.08), "#3a3a3e", [G1, y0 + 0.12, GZ + 0.13], g, { outline: 0.004 });
+      mk(cyl(0.035, 0.05, 0.05, 10), "#2e2e32", [G1, y0 + 0.345, GZ], g, { outline: 0.004 });
+      mk(cyl(0.09, 0.04, 0.22, 14), toon("#e8f2f5", { transparent: true, opacity: 0.35 }), [G1, y0 + 0.48, GZ], g, { outline: 0.006, shadow: false });
+      mk(cyl(0.075, 0.036, 0.16, 12), "#4a2c1c", [G1, y0 + 0.45, GZ], g, { outline: 0, shadow: false }); // 원두 가득
+      mk(cyl(0.095, 0.095, 0.02, 14), "#1b1b1e", [G1, y0 + 0.6, GZ], g, { outline: 0.004 });
+      mk(cyl(0.075, 0.085, 0.22, 16), black, [G2, y0 + 0.11, GZ], g, { outline: 0.008 }); // 작은 둥근 그라인더
+      mk(box(0.06, 0.03, 0.06), "#3a3a3e", [G2, y0 + 0.08, GZ + 0.08], g, { outline: 0.004 });
       const hop = glowMat("#ffe9c8", 0.55);
-      mk(cyl(0.065, 0.045, 0.12, 14), hop, [G2, y0 + 0.28, 0.02], g, { outline: 0.005, shadow: false });
-      mk(cyl(0.05, 0.035, 0.07, 12), "#5a3622", [G2, y0 + 0.26, 0.02], g, { outline: 0, shadow: false });
+      mk(cyl(0.065, 0.045, 0.12, 14), hop, [G2, y0 + 0.28, GZ], g, { outline: 0.005, shadow: false });
+      mk(cyl(0.05, 0.035, 0.07, 12), "#5a3622", [G2, y0 + 0.26, GZ], g, { outline: 0, shadow: false });
       innerGlows.push([hop, 0.4, 0.8]);
       { const [sx, sz] = rotXZ(0.17, 0.3, p.rot); steamSources.push(new THREE.Vector3(p.x + sx, by + 0.2, p.z + sz)); } // 김은 스팀 노즐에서
-      if (p.shelf) { // 바에 1/3 만 걸친 머신·그라인더를 받쳐 주는 나무 선반 (로컬 +z = 바텐더 쪽)
-        const x0 = -0.92, x1 = 0.28, cx = (x0 + x1) / 2, wx = x1 - x0;
-        mk(box(wx, 0.04, 0.5), wood, [cx, y0 - 0.02, 0.02], g, { outline: 0.008 });
-        for (const lx of [x0 + 0.04, x1 - 0.04]) mk(box(0.04, y0 - 0.04, 0.04), wood, [lx, (y0 - 0.04) / 2, 0.22], g, { outline: 0.006 });
-        mk(box(wx - 0.1, 0.03, 0.03), wood, [cx, 0.3, 0.22], g, { outline: 0.004 });
-        const [ox, oz] = rotXZ(cx, 0.12, p.rot);
-        addObstacle(p.x + ox, p.z + oz, wx / 2, 0.17, p.rot);
+      if (p.shelf) { // 바 상판에서 바텐더 쪽으로 이어져 나온 머신 크기 판 (다리 없음, 밑에 작은 받침쇠)
+        mk(box(0.5, 0.04, 0.5), "#6e4127", [0, y0 - 0.02, 0], g, { outline: 0.008 });
+        for (const lx of [-0.2, 0.2]) mk(box(0.03, 0.12, 0.2), "#2a2522", [lx, y0 - 0.1, 0.12], g, { outline: 0.004, shadow: false });
+        const [ox, oz] = rotXZ(0, 0.1, p.rot);
+        addObstacle(p.x + ox, p.z + oz, 0.25, 0.17, p.rot);
       }
       g.userData.hit = [0.9, 0.8, 0.6, y0 + 0.35]; g.userData.sayY = y0 + 0.85;
       return true;
