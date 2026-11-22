@@ -658,6 +658,7 @@ function buildInsideShell(T) {
   cg.rotateX(Math.PI / 2);
   const ceilMat = new THREE.MeshBasicMaterial({ color: R.ceiling || "#f3eaee", side: THREE.DoubleSide });
   registerTint(ceilMat);
+  ceilMat.userData.extraDark = 0.45; // 천장엔 조명이 없어 밤에 더 어둡게
   const ceil = new THREE.Mesh(cg, ceilMat);
   ceil.position.y = H + 0.001;
   fpGroup.add(ceil);
@@ -993,7 +994,7 @@ let timeK = nightAmount();
 setInterval(() => { timeK = nightAmount(); }, 60000);
 const NIGHT_TINT = new THREE.Color("#4b4f8f"), DUSK_TINT = new THREE.Color("#e0a3a0"), WHITE = new THREE.Color("#ffffff");
 // 매장 안: 밤엔 은은한 분홍빛으로 어둡게 (사진 속 밤 분위기)
-const IN_NIGHT = new THREE.Color("#b88a72"), IN_DUSK = new THREE.Color("#f6c2a4");
+const IN_NIGHT = new THREE.Color("#94705f"), IN_DUSK = new THREE.Color("#f6c2a4");
 const tmpIn = new THREE.Color();
 const tmpC = new THREE.Color();
 let lastTint = -1;
@@ -1012,7 +1013,11 @@ function applyTime(outside, time) {
     if (k < 0.5) tmpIn.copy(WHITE).lerp(IN_DUSK, k / 0.5);
     else tmpIn.copy(IN_DUSK).lerp(IN_NIGHT, (k - 0.5) / 0.5);
     tmpIn.lerp(tmpC, outside);
-    for (const m of tintables) m.color.copy(m.userData.base).multiply(tmpIn);
+    const gk = THREE.MathUtils.smoothstep(k, 0.3, 1);
+    for (const m of tintables) {
+      m.color.copy(m.userData.base).multiply(tmpIn);
+      if (m.userData.extraDark) m.color.multiplyScalar(1 - m.userData.extraDark * gk * (1 - outside));
+    }
   }
   const glow = THREE.MathUtils.smoothstep(k, 0.3, 1);
   for (const h of nightGlow.halos) h.material.opacity = h.userData.inner ? 0.08 + glow * 0.42 : glow * 0.38;
@@ -1186,6 +1191,27 @@ function buildProps() {
 // ───────── 실내 가구/소품 (DIVE HIDE AWAY 사진 참고) ─────────
 const glowMat = (color, opacity = 1) => new THREE.MeshBasicMaterial({ color, transparent: opacity < 1, opacity, depthWrite: opacity >= 1 });
 const innerGlows = []; // 밤에 더 밝아지는 실내 불빛 (재질, 기본 밝기)
+const poolTex = canvasTex(128, 128, (g) => {
+  const grd = g.createRadialGradient(64, 64, 0, 64, 64, 64);
+  grd.addColorStop(0, "rgba(255,255,255,1)"); grd.addColorStop(0.45, "rgba(255,255,255,.45)"); grd.addColorStop(1, "rgba(255,255,255,0)");
+  g.fillStyle = grd; g.fillRect(0, 0, 128, 128);
+});
+const beamTex = canvasTex(32, 128, (g, w, h) => {
+  const grd = g.createLinearGradient(0, 0, 0, h);
+  grd.addColorStop(0, "rgba(255,255,255,1)"); grd.addColorStop(1, "rgba(255,255,255,.15)");
+  g.fillStyle = grd; g.fillRect(0, 0, w, h);
+});
+/** 조명 아래 바닥/상판에 비치는 불빛 (parent 로컬 좌표) */
+function lightPool(parent, x, y, z, w, d, color = "#ffad66", lo = 0.08, hi = 0.55) {
+  const mat = new THREE.MeshBasicMaterial({ map: poolTex, color, transparent: true, opacity: lo, depthWrite: false, blending: THREE.AdditiveBlending });
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(w, d), mat);
+  m.rotation.x = -Math.PI / 2;
+  m.position.set(x, y, z);
+  m.renderOrder = 2;
+  parent.add(m);
+  innerGlows.push([mat, lo, hi]);
+  return m;
+}
 
 /** 모서리를 둥글린 경로 */
 function roundedPath(pts, r) {
@@ -1363,6 +1389,7 @@ function buildInteriorProp(p, g) {
       const big = h > 1.2; // 바닥에 세운 긴 스탠드는 갓도 크게
       mk(new THREE.CylinderGeometry(big ? 0.17 : 0.14, big ? 0.28 : 0.23, big ? 0.42 : 0.34, 28, 1, true), shade, [0, y0 + h - 0.05, 0], g, { outline: 0.012, shadow: false });
       addHalo(g, 0, y0 + h - 0.1, 0, 1.4, "#ffc2c8", true);
+      lightPool(g, 0, y0 + 0.018, 0, 1.9, 1.9);
       g.userData.hit = [0.5, h, 0.5, y0 + h / 2]; g.userData.sayY = y0 + h + 0.3;
       return true;
     }
@@ -1377,6 +1404,16 @@ function buildInteriorProp(p, g) {
         mk(new THREE.PlaneGeometry(len - 0.06, 0.05), m, [0, y - 0.061, 0], g, { outline: 0, shadow: false }).rotation.x = Math.PI / 2;
         addHalo(g, -len * 0.25, y - 0.2, 0, 1.0, "#ffd08a", true);
         addHalo(g, len * 0.25, y - 0.2, 0, 1.0, "#ffd08a", true);
+        lightPool(g, 0, 1.047, 0, len + 0.5, 0.75, "#ffb065", 0.15, 0.75); // 바 상판 위 길쭉한 불빛
+        lightPool(g, 0, 0.015, 0, len + 1.2, 1.6, "#ff9a55", 0.03, 0.22);
+        // 위에서 아래로 은은한 빛줄기
+        const beamMat = new THREE.MeshBasicMaterial({ map: beamTex, color: "#ffc47e", transparent: true, opacity: 0.05, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide });
+        for (const ry of [0, Math.PI / 2]) {
+          const b = new THREE.Mesh(new THREE.PlaneGeometry(ry ? 0.5 : len, y - 1.1), beamMat);
+          b.position.set(0, (y + 1.1) / 2 - 0.03, 0); b.rotation.y = ry; b.renderOrder = 2;
+          g.add(b);
+        }
+        innerGlows.push([beamMat, 0.03, 0.22]);
         g.userData.hit = [len, 0.3, 0.3, y]; g.userData.sayY = y + 0.15;
       } else if (p.kind === "beehive") { // 벌집 모양 원목 펜던트
         mk(cyl(0.006, 0.006, cordTop - y - 0.2, 4), dark, [0, (cordTop + y + 0.2) / 2, 0], g, { outline: 0, shadow: false });
@@ -1384,6 +1421,7 @@ function buildInteriorProp(p, g) {
         [0.12, 0.2, 0.25, 0.27, 0.25, 0.2].forEach((r, i) => mk(new THREE.CylinderGeometry(r, r + 0.02, 0.05, 24, 1, true), m, [0, y + 0.18 - i * 0.07, 0], g, { outline: 0.008, shadow: false }));
         mk(new THREE.SphereGeometry(0.07, 10, 8), glowMat("#ffd49a"), [0, y - 0.15, 0], g, { outline: 0, shadow: false });
         addHalo(g, 0, y - 0.05, 0, 1.6, "#ffc98f", true);
+        lightPool(g, 0, 0.016, 0, 2.2, 2.2);
         g.userData.hit = [0.6, 0.5, 0.6, y]; g.userData.sayY = y + 0.35;
       } else { // 라탄 펜던트
         mk(cyl(0.006, 0.006, cordTop - y - 0.25, 4), dark, [0, (cordTop + y + 0.25) / 2, 0], g, { outline: 0, shadow: false });
@@ -1393,6 +1431,7 @@ function buildInteriorProp(p, g) {
         for (const [r, yy] of [[0.08, 0.26], [0.31, -0.12], [0.14, -0.24]]) mk(new THREE.TorusGeometry(r, 0.008 * OL, 5, 28), "#2b2522", [0, y + yy, 0], g, { outline: 0, shadow: false }).rotation.x = Math.PI / 2;
         mk(new THREE.SphereGeometry(0.06, 10, 8), glowMat("#ffd9a0"), [0, y - 0.02, 0], g, { outline: 0, shadow: false });
         addHalo(g, 0, y, 0, 1.8, "#ffcf96", true);
+        lightPool(g, 0, 0.017, 0, 2.4, 2.4);
         g.userData.hit = [0.7, 0.6, 0.7, y]; g.userData.sayY = y + 0.35;
       }
       return true;
@@ -1875,6 +1914,7 @@ function buildTables() {
       mk(new THREE.CylinderGeometry(0.05, 0.08, 0.1, 16, 1, true), toon("#1f1f22", { side: THREE.DoubleSide }), [lx, H + 0.25, lz], g, { outline: 0.005, shadow: false });
       mk(new THREE.SphereGeometry(0.03, 8, 6), glowMat("#fff1c0"), [lx, H + 0.21, lz], g, { outline: 0, shadow: false });
       addHalo(g, lx, H + 0.2, lz, 0.9, "#ffcf8a", true);
+      lightPool(g, lx, H + 0.03, lz, 1.1, 1.1, "#ffb36b", 0.1, 0.6);
     }
 
     const label = textSprite(t.id, { size: 0.26 });

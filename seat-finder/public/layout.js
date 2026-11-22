@@ -41,7 +41,7 @@ export default {
     floor: "#b9aaa6", // 콘크리트 바닥
     floorStyle: "concrete",
     wall: "#f2e6ec", // 은은한 분홍빛 흰 벽
-    ceiling: "#f1e7ec",
+    ceiling: "#ddd0d3", // 천장은 조명이 없어 벽보다 어둡게
     beams: [4.6, 6.6, 8.6],
   },
 
