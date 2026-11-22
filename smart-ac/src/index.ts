@@ -145,6 +145,19 @@ function analyzeResponse(hist: Array<{ temp: number; cmd?: string }>): { type: '
   return null;
 }
 
+// ---------- 그날만 연장/일찍 마감: 현재 값 + 지난 기록(그래프용) ----------
+interface OvStore { cur: BizOverride | null; log: BizOverride[] }
+async function readOv(env: Env): Promise<OvStore> {
+  const raw = await env.KV.get('override', 'json') as any;
+  if (!raw) return { cur: null, log: [] };
+  if (raw.type) return { cur: raw as BizOverride, log: [] }; // 예전 형식
+  return { cur: raw.cur ?? null, log: Array.isArray(raw.log) ? raw.log : [] };
+}
+async function writeOv(env: Env, st: OvStore): Promise<void> {
+  const keep = Date.now() - 48 * 3600 * 1000; // 그래프용으로 이틀치만
+  await env.KV.put('override', JSON.stringify({ cur: st.cur, log: st.log.filter((x) => x.until > keep).slice(-20) }));
+}
+
 // ---------- 날개 고정: 에어컨을 켜거나 난방/냉방 모드를 보냈으면 '대기'로 표시 ----------
 async function markVanePending(env: Env, cfg: Config, mode: string | undefined, temp?: number | null): Promise<void> {
   if (!cfg.vaneFix || (mode !== 'heat' && mode !== 'cool')) return;
@@ -249,7 +262,7 @@ async function runOnce(env: Env, opts: { force?: boolean; preview?: boolean; log
 
     const reading: Reading = { indoorTemp: temp, indoorHumidity: humidity ?? undefined, outdoorTemp: weather?.outdoorTemp ?? null };
     // 영업시간: 쾌적 목표(22/25) / 비영업: 최저기준(12)~여름경고(30)로 세트백해 절전
-    const ov = await env.KV.get('override', 'json') as BizOverride | null; // 그날만 연장/일찍 마감
+    const ov = (await readOv(env)).cur; // 그날만 연장/일찍 마감
     const sched = scheduleWithOverride(new Date(), cfg, ov);
     status.scheduleState = sched.state;
     status.nextTransition = nextTransitionWithOverride(new Date(), cfg, ov);
@@ -400,10 +413,12 @@ export default {
 
     // 상태
     if (url.pathname === '/api/status') {
-      const [cfg, st, creds, last] = await Promise.all([loadConfig(env), loadState(env).then((x) => x.status), hasCreds(env), env.KV.get('lastCommand', 'json')]);
+      const [cfg, st, creds, last, ovs] = await Promise.all([loadConfig(env), loadState(env).then((x) => x.status), hasCreds(env), env.KV.get('lastCommand', 'json'), readOv(env)]);
       const hasOwmKey = !!(cfg.owmKey || env.OWM_API_KEY);
       const acOn = last ? !!(last as DesiredAcState).power : null;
-      return json({ config: { ...cfg, owmKey: undefined }, hasOwmKey, hasCreds: creds, acOn, lastRun: st });
+      const since = Date.now() - 26 * 3600 * 1000; // 그래프(24시간)에 그릴 연장·마감 기록
+      const overrides = [...ovs.log, ...(ovs.cur ? [ovs.cur] : [])].filter((x) => x && x.until > since);
+      return json({ config: { ...cfg, owmKey: undefined }, hasOwmKey, hasCreds: creds, acOn, lastRun: st, overrides });
     }
     // 헤이홈 로그인 저장 + 즉시 검증 (비번은 저장만, 응답에 안 돌려줌)
     if (url.pathname === '/api/login' && req.method === 'POST') {
@@ -455,19 +470,28 @@ export default {
       try {
         const b = await req.json<{ action?: string; minutes?: number }>();
         const cfg = await loadConfig(env);
-        const now = new Date();
-        const ov = await env.KV.get('override', 'json') as BizOverride | null;
+        const now = new Date(), nowMs = now.getTime();
+        const store = await readOv(env);
+        const act = activeOverride(store.cur, now);
+        // 지금 값을 기록으로 넘김 (진행 중이면 지금 시각에서 끊음)
+        const retire = () => { if (store.cur) store.log.push(act ? { ...store.cur, until: nowMs } : store.cur); store.cur = null; };
         if (b.action === 'extend') {
           const mins = Number(b.minutes);
           if (!(mins > 0 && mins <= 360)) return json({ ok: false, error: '연장 시간이 올바르지 않아요' }, 400);
-          await env.KV.put('override', JSON.stringify({ type: 'extend', until: extendUntil(now, cfg, ov, mins) }));
+          const until = extendUntil(now, cfg, store.cur, mins);
+          let from: number;
+          if (act?.type === 'extend') from = act.from ?? nowMs;                       // 연장에 더하기: 시작은 그대로
+          else { const nt = nextTransition(now, cfg); from = scheduleState(now, cfg).state === 'open' && nt && !nt.opensNext ? nt.at : nowMs; retire(); }
+          store.cur = { type: 'extend', from, until };
         } else if (b.action === 'close') {
           const until = closeUntil(now, cfg);
           if (!until) return json({ ok: false, error: '지금은 마감할 영업이 없어요' }, 400);
-          await env.KV.put('override', JSON.stringify({ type: 'close', until }));
+          retire();
+          store.cur = { type: 'close', from: nowMs, until };
         } else if (b.action === 'cancel') {
-          if (ov) await env.KV.delete('override');
+          retire();
         } else return json({ ok: false, error: '알 수 없는 동작' }, 400);
+        await writeOv(env, store);
         const st = await runOnce(env, {});
         return json({ ok: true, override: st.override ?? null, scheduleState: st.scheduleState, sent: st.sent ?? [] });
       } catch (e: any) { return json({ ok: false, error: String(e?.message ?? e) }, 500); }
@@ -618,7 +642,8 @@ function renderUI(token: string): string {
   .temp span{font-size:32px;font-weight:500;color:var(--sec)}
   .humid{color:var(--sec);font-size:17px;margin-top:2px}
   .sens2{color:var(--sec);font-size:13px;margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  #acwarn:empty{display:none}.sens2:empty{display:none}.sens2 b{font-weight:600;color:var(--label)}
+  #acwarn:empty{display:none}
+  .devline{color:var(--sec);font-size:13px;margin-top:4px;cursor:pointer}.devline:empty{display:none}.devline b{font-weight:600;color:var(--label)}.sens2:empty{display:none}.sens2 b{font-weight:600;color:var(--label)}
   .chip{display:inline-flex;align-items:center;gap:7px;margin-top:14px;padding:11px 18px;border-radius:999px;
     font-size:16px;font-weight:600;background:var(--field)}
   .chip .em{font-size:19px}
@@ -785,6 +810,7 @@ function renderUI(token: string): string {
   <div class="temp" id="temp" style="cursor:pointer">–<span>℃</span></div>
   <div class="humid" id="humid" style="cursor:pointer">습도 –</div>
   <div class="sens2" id="sens2"></div>
+  <div class="devline" id="devline"></div>
   <div class="chip gray" id="chip"><span class="em">⏳</span><span id="chipt">불러오는 중…</span></div>
   <div class="chipsub" id="chipsub"></div>
   <div class="chipsub" id="acwarn" style="color:var(--red);font-weight:600"></div>
@@ -1006,7 +1032,22 @@ function kstHM(t){var k=new Date(t+9*3600e3);return String(k.getUTCHours()).padS
 /** t0~t1 사이 영업 구간 [{a,b}]과 전환 시점 [{t,open}] */
 function bizSegments(H,t0,t1){if(!H||H.length!==7)return null;var st=5*60000,segs=[],marks=[],cur=openAtKST(H,t0),start=cur?t0:null;
   for(var t=Math.ceil(t0/st)*st;t<=t1;t+=st){var o=openAtKST(H,t);if(o!==cur){marks.push({t:t,open:o});if(o)start=t;else{segs.push({a:start,b:t});start=null}cur=o}}
-  if(cur)segs.push({a:start,b:t1});return {segs:segs,marks:marks}}
+  if(cur)segs.push({a:start,b:t1});return {segs:segs,marks:marks,ext:[],early:[]}}
+/** 연장·일찍 마감 기록을 그래프 구간에 반영: 연장은 주황 구간 + 마감 표시를 연장 끝으로, 일찍 마감은 회색 구간 + 일찍 마감 표시 */
+function applyOverrides(biz,H,ovs,t0,t1){if(!biz||!ovs)return biz;var st=5*60000;
+  ovs.forEach(function(o){if(!o||!o.until)return;
+    if(o.type==='extend'){var from=o.from;
+      if(!from){for(var t=Math.floor(o.until/st)*st;t>o.until-12*3600e3;t-=st){if(openAtKST(H,t-st)&&!openAtKST(H,t)){from=t;break}}}  // 예전 기록: 연장 직전 원래 마감 시각
+      if(!from)from=o.until-3600e3;
+      var a=Math.max(from,t0),b=Math.min(o.until,t1);if(b<=a)return;
+      biz.ext.push({a:a,b:b});
+      biz.marks=biz.marks.filter(function(m){return m.open||m.t<from-60000||m.t>o.until});
+      if(o.until<=t1)biz.marks.push({t:o.until,open:false,label:'연장 마감 '});
+    }else if(o.type==='close'&&o.from){var a2=Math.max(o.from,t0),b2=Math.min(o.until,t1);if(b2<=a2)return;
+      biz.early.push({a:a2,b:b2});
+      biz.marks=biz.marks.filter(function(m){return m.open||Math.abs(m.t-o.until)>60000});
+      if(o.from>=t0)biz.marks.push({t:o.from,open:false,label:'일찍 마감 '});}
+  });return biz}
 function sparkSvg(d,blue,biz){
   const W=440,H=68,p=4,top=14;const temps=d.map(x=>x.temp);let lo=Math.min.apply(null,temps),hi=Math.max.apply(null,temps);if(hi-lo<2)hi=lo+2;
   const t0=d[0].t,t1=d[d.length-1].t;const X=t=>p+(t1===t0?0:(t-t0)/(t1-t0))*(W-2*p);const Y=v=>top+(1-(v-lo)/(hi-lo))*(H-top-p);
@@ -1015,17 +1056,20 @@ function sparkSvg(d,blue,biz){
   let bg='',mk='';
   if(biz){const css=getComputedStyle(document.documentElement),green=css.getPropertyValue('--green').trim()||'#34c759',sec=css.getPropertyValue('--sec').trim()||'#8e8e93';
     biz.segs.forEach(function(g){bg+='<rect x="'+X(g.a).toFixed(1)+'" y="'+top+'" width="'+Math.max(0,X(g.b)-X(g.a)).toFixed(1)+'" height="'+(H-top-p)+'" fill="'+green+'" opacity="0.10"/>';});
+    const orange=css.getPropertyValue('--orange').trim()||'#ff9500';
+    (biz.ext||[]).forEach(function(g){bg+='<rect x="'+X(g.a).toFixed(1)+'" y="'+top+'" width="'+Math.max(0,X(g.b)-X(g.a)).toFixed(1)+'" height="'+(H-top-p)+'" fill="'+orange+'" opacity="0.28"/>';});
+    (biz.early||[]).forEach(function(g){bg+='<rect x="'+X(g.a).toFixed(1)+'" y="'+top+'" width="'+Math.max(0,X(g.b)-X(g.a)).toFixed(1)+'" height="'+(H-top-p)+'" fill="'+sec+'" opacity="0.16"/>';});
     biz.marks.forEach(function(m){const x=X(m.t),anc=x<60?'start':(x>W-60?'end':'middle');
       mk+='<line x1="'+x.toFixed(1)+'" y1="'+(top-1)+'" x2="'+x.toFixed(1)+'" y2="'+(H-p)+'" stroke="'+(m.open?green:sec)+'" stroke-width="1" stroke-dasharray="2 2" opacity="0.8"/>'
-        +'<text x="'+x.toFixed(1)+'" y="10" font-size="10" text-anchor="'+anc+'" fill="'+(m.open?green:sec)+'">'+(m.open?'오픈 ':'마감 ')+kstHM(m.t)+'</text>';});}
+        +'<text x="'+x.toFixed(1)+'" y="10" font-size="10" text-anchor="'+anc+'" fill="'+(m.open?green:(m.label&&m.label.indexOf('연장')>=0?orange:sec))+'">'+(m.label||(m.open?'오픈 ':'마감 '))+kstHM(m.t)+'</text>';});}
   return '<svg viewBox="0 0 '+W+' '+H+'" style="width:100%;height:auto;display:block">'+bg+'<path d="'+area+'" fill="'+blue+'" opacity="0.08"/><path d="'+path+'" fill="none" stroke="'+blue+'" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>'+mk+'</svg>';
 }
-function drawSpark(all,cfg){
+function drawSpark(all,cfg,ovs){
   const box=document.getElementById('sparkBox'),meta=document.getElementById('sparkMeta');
   const cut=Date.now()-24*3600*1000;const d=(all||[]).filter(p=>p.t>=cut);
   if(d.length<2){box.innerHTML='<div class="mini" style="padding:10px 0">기록을 쌓는 중… (10분마다 한 점)</div>';meta.textContent='';return}
   const blue=getComputedStyle(document.documentElement).getPropertyValue('--blue').trim()||'#0a84ff';
-  const biz=(cfg&&cfg.useSchedule!==false)?bizSegments(cfg.hours,d[0].t,d[d.length-1].t):null;
+  const biz=(cfg&&cfg.useSchedule!==false)?applyOverrides(bizSegments(cfg.hours,d[0].t,d[d.length-1].t),cfg.hours,ovs,d[0].t,d[d.length-1].t):null;
   box.innerHTML=sparkSvg(d,blue,biz);const t=d.map(p=>p.temp);
   meta.textContent='최저 '+Math.min.apply(null,t).toFixed(0)+'℃ · 최고 '+Math.max.apply(null,t).toFixed(0)+'℃';
 }
@@ -1081,6 +1125,7 @@ document.querySelectorAll('#acMode button').forEach(b=>b.onclick=()=>{document.q
 document.getElementById('tUp').onclick=()=>{if(acTemp<30){acTemp++;showAcTemp();acSend({temperature:acTemp},acTemp+'℃')}};
 document.getElementById('tDown').onclick=()=>{if(acTemp>16){acTemp--;showAcTemp();acSend({temperature:acTemp},acTemp+'℃')}};
 document.getElementById('wxClose').onclick=()=>document.getElementById('wxModal').style.display='none';
+document.getElementById('devline').onclick=function(e){e.stopPropagation();document.getElementById('acTile').click();setTimeout(function(){var x=document.getElementById('circState');if(x)x.scrollIntoView({block:'center'})},250);};
 document.getElementById('humid').onclick=function(e){e.stopPropagation();document.getElementById('humModal').style.display='flex';document.getElementById('humMsg').textContent='';var h=lastPv&&lastPv.indoorHumidity;document.getElementById('humNow').textContent='지금 실내 습도 '+(h!=null?h+'%':'–');showHum(null);refreshHum();loadHum();};
 document.getElementById('humClose').onclick=()=>document.getElementById('humModal').style.display='none';
 function bizRender(){var pv=lastPv||{},o=pv.override,i=document.getElementById('bizInfo');
@@ -1149,7 +1194,7 @@ function fitLock(){var d=document.documentElement;d.classList.remove('lock');if(
 window.addEventListener('resize',fitLock);window.addEventListener('orientationchange',function(){window.scrollTo(0,0);setTimeout(fitLock,300);setTimeout(fitLock,800)});
 async function load(){
   const [s,pv,hist]=await Promise.all([fetch(q('/api/status')).then(r=>r.json()),fetch(q('/api/preview')).then(r=>r.json()).catch(()=>null),fetch(q('/api/history')).then(r=>r.json()).catch(()=>[])]);
-  lastPv=pv;drawSpark(hist,s.config);curAcOn=(s.acOn===false)?false:true;applyAcUI();
+  lastPv=pv;drawSpark(hist,s.config,s.overrides);curAcOn=(s.acOn===false)?false:true;applyAcUI();
   bizNext=pv&&pv.nextTransition?pv.nextTransition:null;bizState=pv?pv.scheduleState:'';updateClock();
   const c=s.config;
   // 설정값 채우기
@@ -1170,6 +1215,7 @@ async function load(){
   const f=friendly(pv,c.enabled);
   if(pv&&typeof pv.indoorTemp==='number'){
     document.getElementById('temp').innerHTML=pv.indoorTemp.toFixed(1)+'<span>℃</span>';
+    var dl=document.getElementById('devline');dl.innerHTML=pv.circ?('🌀 서큘레이터 <b>'+(pv.circ.on?'켜짐':'꺼짐')+'</b>'+(pv.circ.auto?' · 자동':'')+' ›'):'';
     var sv=pv.sensors||[],sb=document.getElementById('sens2');
     if(sv.length>1){var lab=function(x){return x.online&&x.temp!=null?('<b>'+x.temp.toFixed(1)+'℃</b> '+(x.hum!=null?x.hum+'%':'')):'<span style="color:var(--red)">연결 안 됨</span>'};
       var nm=function(x){var t=String(x.name||'').replace(/(온습도)? *(센서|계)/g,'').replace(/온습도/g,'').trim();return t||'센서'};

@@ -163,7 +163,7 @@ export function decide(reading: Reading, cfg: Config, comfort = true, prevCtl: C
 
 // ---------- 그날만 영업 연장 / 일찍 마감 ----------
 /** 사장님이 직접 정한 그날의 예외: extend=until까지 영업 중, close=until(원래 마감)까지 비영업 */
-export interface BizOverride { type: 'extend' | 'close'; until: number; }
+export interface BizOverride { type: 'extend' | 'close'; until: number; from?: number; }
 
 export function activeOverride(ov: BizOverride | null | undefined, now: Date): BizOverride | null {
   return ov && typeof ov.until === 'number' && ov.until > now.getTime() ? ov : null;
