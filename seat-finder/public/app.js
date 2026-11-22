@@ -1406,14 +1406,7 @@ function buildInteriorProp(p, g) {
         addHalo(g, len * 0.25, y - 0.2, 0, 1.0, "#ffd08a", true);
         lightPool(g, 0, 1.047, 0, len + 0.5, 0.75, "#ffb065", 0.15, 0.75); // 바 상판 위 길쭉한 불빛
         lightPool(g, 0, 0.015, 0, len + 1.2, 1.6, "#ff9a55", 0.03, 0.22);
-        // 위에서 아래로 은은한 빛줄기
-        const beamMat = new THREE.MeshBasicMaterial({ map: beamTex, color: "#ffc47e", transparent: true, opacity: 0.05, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide });
-        for (const ry of [0, Math.PI / 2]) {
-          const b = new THREE.Mesh(new THREE.PlaneGeometry(ry ? 0.5 : len, y - 1.1), beamMat);
-          b.position.set(0, (y + 1.1) / 2 - 0.03, 0); b.rotation.y = ry; b.renderOrder = 2;
-          g.add(b);
-        }
-        innerGlows.push([beamMat, 0.03, 0.22]);
+
         g.userData.hit = [len, 0.3, 0.3, y]; g.userData.sayY = y + 0.15;
       } else if (p.kind === "beehive") { // 벌집 모양 원목 펜던트
         mk(cyl(0.006, 0.006, cordTop - y - 0.2, 4), dark, [0, (cordTop + y + 0.2) / 2, 0], g, { outline: 0, shadow: false });
