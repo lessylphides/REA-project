@@ -1668,13 +1668,20 @@ function buildInteriorProp(p, g) {
       mk(box(0.4, 0.62, 0.12), jacket, [0, 1.05, -0.12], body, { outline: 0.01 }); // 등판
       // 퀼팅 무늬 (재킷에 가는 선)
       for (let i = 0; i < 4; i++) for (const sx of [-1, 1]) mk(box(0.15, 0.008, 0.01), "#d9cdb2", [sx * 0.13, 0.85 + i * 0.13, 0.165], body, { outline: 0, shadow: false });
-      // 팔짱 (가슴 앞으로 겹친 두 팔)
-      for (const [sx, y, z] of [[1, 1.12, 0.17], [-1, 1.07, 0.2]]) {
-        const a = mk(new THREE.CapsuleGeometry(0.065, 0.3, 4, 10), jacket, [0, y, z], body, { outline: 0.012 });
-        a.rotation.z = Math.PI / 2 + sx * 0.18;
-      }
-      for (const sx of [-1, 1]) mk(new THREE.CapsuleGeometry(0.065, 0.22, 4, 10), jacket, [sx * 0.22, 1.2, 0.06], body, { outline: 0.012 }).rotation.x = 0.6;
-      for (const sx of [-1, 1]) mk(new THREE.SphereGeometry(0.045, 8, 6), skin, [sx * 0.2, 1.1 + (sx > 0 ? 0.03 : -0.02), 0.2], body, { outline: 0.006 });
+      // 한 손은 옆으로 내리고, 다른 손은 앞으로 위스키 병을 들고 있음
+      mk(new THREE.CapsuleGeometry(0.06, 0.36, 4, 10), jacket, [-0.25, 1.04, 0], body, { outline: 0.012 }).rotation.z = -0.08;
+      mk(new THREE.SphereGeometry(0.045, 8, 6), skin, [-0.27, 0.8, 0.01], body, { outline: 0.006 });
+      mk(new THREE.CapsuleGeometry(0.06, 0.2, 4, 10), jacket, [0.25, 1.15, 0], body, { outline: 0.012 }); // 위팔
+      const fore = mk(new THREE.CapsuleGeometry(0.058, 0.2, 4, 10), jacket, [0.23, 1.13, 0.12], body, { outline: 0.012 }); // 아래팔 (앞으로, 위로)
+      fore.rotation.x = Math.PI / 2 - 0.75;
+      mk(new THREE.SphereGeometry(0.05, 8, 6), skin, [0.22, 1.24, 0.23], body, { outline: 0.006 }); // 손
+      // 위스키 병 (호박색, 라벨, 목, 뚜껑)
+      const bottle = new THREE.Group(); bottle.position.set(0.22, 1.33, 0.25); body.add(bottle);
+      mk(cyl(0.05, 0.052, 0.22, 14), new THREE.MeshBasicMaterial({ color: "#c7782c" }), [0, 0, 0], bottle, { outline: 0.008 });
+      mk(cyl(0.0515, 0.0535, 0.09, 14), "#f2ead6", [0, 0.01, 0], bottle, { outline: 0 });
+      mk(cyl(0.02, 0.04, 0.06, 10), new THREE.MeshBasicMaterial({ color: "#b0651f" }), [0, 0.14, 0], bottle, { outline: 0.005 });
+      mk(cyl(0.018, 0.018, 0.06, 8), new THREE.MeshBasicMaterial({ color: "#b0651f" }), [0, 0.2, 0], bottle, { outline: 0.004 });
+      mk(cyl(0.021, 0.021, 0.035, 8), "#2a2522", [0, 0.245, 0], bottle, { outline: 0.004 });
       // 머리
       const head = new THREE.Group(); head.position.set(0, 1.55, 0); body.add(head);
       g.userData.btHead = head;
