@@ -53,7 +53,8 @@ export default {
     { type: "backbar", path: [[0.6, 5.78], [3.4, 8.58]] },
     { type: "backbar", path: [[4.6, 9.2], [7.0, 9.2]] },
     { type: "floorlamp", x: 0.38, z: 0.45, h: 1.75, say: "주름 갓 스탠드\n은은한 분홍빛이 포인트예요" },
-    { type: "floorlamp", x: 4.02, z: 9.0, h: 1.75 },
+    { type: "floorlamp", x: 0.4, z: 5.3, h: 1.75 }, // 왼쪽 장 ↔ 대각선 장 사이 틈
+    { type: "floorlamp", x: 4.02, z: 9.0, h: 1.75 }, // 대각선 장 ↔ 정면 장 사이 틈
     { type: "floorlamp", x: 9.15, z: 9.1, h: 1.75 },
     { type: "coffee", x: 6.4, z: 9.2, rot: 180, say: "커피도 내려 드려요\n원두 향이 솔솔" },
     // 조명
