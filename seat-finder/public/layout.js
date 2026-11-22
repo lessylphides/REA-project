@@ -73,12 +73,12 @@ export default {
     { type: "pendant", kind: "beehive", x: 8.75, z: 5.4, y: 2.1, say: "벌집 모양 원목 조명" },
     { type: "projector", x: 5.3, z: 5.4 },
     // 안쪽 벽 TV 장식장 (TV 는 아래 screens)
-    { type: "tvshelf", x: 5.2, z: 0.55, w: 3.8, h: 2.6, tvW: 2.35, tvY: 1.55, tvH: 1.32, say: "전자칠판 영상\n화분 사이로 숲을 보며 쉬어 가세요" },
+    { type: "tvshelf", x: 5.2, z: 1.13, w: 3.8, h: 2.6, tvW: 2.35, tvY: 1.55, tvH: 1.32, say: "전자칠판 영상\n화분 사이로 숲을 보며 쉬어 가세요" },
     // 식물
     // 반원 테이블 바로 뒤 화분 3개 → 전자칠판 영상을 은은히 가림
-    { type: "bigplant", kind: "palm", x: 4.35, z: 1.55, h: 1.95, say: "야자 화분이에요\n잎 사이로 영상이 살짝" },
-    { type: "bigplant", kind: "palm", x: 5.2, z: 1.45, h: 2.1 },
-    { type: "bigplant", kind: "palm", x: 6.05, z: 1.55, h: 1.85 },
+    { type: "bigplant", kind: "palm", x: 4.35, z: 2.13, h: 1.95, say: "야자 화분이에요\n잎 사이로 영상이 살짝" },
+    { type: "bigplant", kind: "palm", x: 5.2, z: 2.03, h: 2.1 },
+    { type: "bigplant", kind: "palm", x: 6.05, z: 2.13, h: 1.85 },
     { type: "bigplant", kind: "norfolk", x: 8.95, z: 1.1, h: 1.7, say: "노퍽 소나무예요\n겨울엔 트리가 돼요" },
     { type: "bigplant", kind: "tree", x: 8.95, z: 8.0, h: 2.0, say: "홍콩야자 나무\n매장의 터줏대감이에요" },
     // 오른쪽 벽
@@ -105,7 +105,7 @@ export default {
   //   link 를 넣으면 손님이 화면을 눌렀을 때 그 주소로 이동 (광고 클릭)
   screens: [
     {
-      wall: "back", x: 5.2, z: 0.55, y: 1.55, w: 2.25, h: 1.27, interval: 7,
+      wall: "back", x: 5.2, z: 1.13, y: 1.55, w: 2.25, h: 1.27, interval: 7,
       slides: [
         { scene: "forest", duration: 14 },
         { title: "오늘의 위스키", sub: "바텐더에게 추천을 받아 보세요", bg: "#7a3b2e", fg: "#ffffff" },
