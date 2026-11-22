@@ -44,7 +44,7 @@ export default {
     ceiling: "#ddd0d3", // 천장은 조명이 없어 벽보다 어둡게
     beams: [4.6, 6.6, 8.6],
     // 모서리 흰 벽 기둥 (유리 구간을 그만큼 줄임): 왼쪽 창 ↔ 대각선 창 모서리
-    pillars: [{ edge: 3, end: "b", w: 0.4 }, { edge: 4, end: "a", w: 0.4 }],
+    pillars: [{ edge: 3, end: "b", w: 0.4 }, { edge: 4, end: "a", w: 0.4 }, { edge: 3, end: "a", w: 0.4 }], // + 정면 창 ↔ 대각선 창 모서리
   },
 
   door: { wall: "front", x: 8.1, w: 1.1 },

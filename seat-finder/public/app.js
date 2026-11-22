@@ -1039,8 +1039,9 @@ function decorateGlassFacade(e, g, top) {
   if (doorX != null) mk(box(1.25, 0.14, 0.5), "#b9b4ac", [doorX, 0.07 - 0.12, zo + 0.27], g, { outline: 0.01, shadow: false }); // 문 앞 돌계단
   // 대각선 면: 양옆 기둥 케이지 벽등, 흰 A형 입간판, 주차금지 원뿔
   if (diag) {
-    const pl = (R.pillars || []).find((q) => q.edge === e.i);
-    const lampXs = [L / 2 + 0.25, pl ? (pl.end === "a" ? L / 2 - pl.w / 2 : -L / 2 + pl.w / 2 - 0.05) : -L / 2 - 0.25];
+    const pls = (R.pillars || []).filter((q) => q.edge === e.i);
+    const pa = pls.find((q) => q.end === "a"), pb = pls.find((q) => q.end === "b");
+    const lampXs = [pa ? L / 2 - pa.w / 2 + 0.05 : L / 2 + 0.25, pb ? -L / 2 + pb.w / 2 - 0.05 : -L / 2 - 0.25];
     for (const x of lampXs) cageLamp(g, x, 2.45, zo + 0.04);
     if (doorX != null) { // A형 입간판 (흰색)
       const ab = new THREE.Group(); ab.position.set(doorX + 0.15, 0, zo + 0.95); g.add(ab);
