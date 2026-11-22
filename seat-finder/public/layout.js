@@ -72,7 +72,7 @@ export default {
     { type: "floorlamp", x: 0.45, z: 5.45, h: 1.75 }, // 왼쪽 장 ↔ 대각선 장 사이 틈
     { type: "floorlamp", x: 4.38, z: 9.15, h: 1.75 }, // 모서리 기둥 옆, 정면 장 시작 쪽
     { type: "floorlamp", x: 9.15, z: 9.1, h: 1.75 },
-    { type: "icemaker", x: 1.99, z: 1.31, rot: 90, say: "제빙기예요\n얼음이 쉬지 않고 나와요" }, // 그라인더 아래, 바 몸통 안 (바텐더 쪽)
+    { type: "icemaker", x: 1.91, z: 1.24, w: 0.64, rot: 90, say: "제빙기예요\n얼음이 쉬지 않고 나와요" }, // 그라인더 아래, 바 몸통 안 (바텐더 쪽)
     { type: "coffee", x: 1.7, z: 1.765, rot: 90, y0: 1.04, shelf: true, say: "커피도 내려 드려요\n원두 향이 솔솔" },
     // 정면 창 아래 장 위 양초
     { type: "candles", x: 6.3, z: 9.2, y0: 0.99, say: "은은한 촛불\n밤이 되면 더 예뻐요" },

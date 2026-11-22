@@ -231,7 +231,7 @@ function popBubble(text, x, y, z, opts) {
   for (const e of effects) if (e.key === `${x},${z}`) e.t = e.life;
   // 멀리 있어도 읽을 수 있게 거리만큼 키움
   const dist = Math.hypot(camera.position.x - x, camera.position.y - y, camera.position.z - z);
-  const sp = bubbleSprite(text, { ...opts, size: 0.11 * Math.max(1, dist / 2.8) });
+  const sp = bubbleSprite(text, { ...opts, size: 0.11 * (opts?.scale ?? 1) * Math.max(1, dist / 2.8) });
   sp.position.set(x, y, z);
   const base = sp.scale.clone();
   const follow = opts?.follow; // 움직이는 소품(바텐더)을 따라다니는 말풍선
@@ -1823,7 +1823,7 @@ function buildCurvedBar(b) {
   const bh = (b.depth ?? 0.44) / 2; // 몸통 두께의 절반
   // 몸통: 손님 쪽은 막힌 판, 바텐더 쪽(-n)은 움푹 들어간 2단 선반 (비워 둠: 제빙기·냉장고 자리)
   const body = b.body || "#8e4a2c", RD = 0.45, back = -bh + RD; // 선반 안쪽 깊이, 뒤판 위치
-  ribbon(S, (bh - back) / 2, 0.98, 0, body, roomGroup, 0.012, (bh + back) / 2);  // 손님 쪽 막힌 부분
+  aimBlockers.push(ribbon(S, (bh - back) / 2, 0.98, 0, body, roomGroup, 0.012, (bh + back) / 2));  // 손님 쪽 막힌 부분
   ribbon(S, RD / 2, 0.08, 0, body, roomGroup, 0.008, (-bh + back) / 2);       // 아래 받침
   ribbon(S, RD / 2, 0.05, 0.93, body, roomGroup, 0.006, (-bh + back) / 2);    // 상판 바로 아래 띠
   const inner = toon("#3b2418", { side: THREE.DoubleSide });
@@ -1996,6 +1996,53 @@ const bandTex = canvasTex(256, 64, (c, w, h) => {
   }
   c.putImageData(img, 0, 0);
 });
+
+const iceMakers = [];
+const iceGeo = new THREE.BoxGeometry(0.045, 0.045, 0.045);
+const iceMat = new THREE.MeshBasicMaterial({ color: "#d8f1fb", transparent: true, opacity: 0.8 });
+/** 제빙기 3번 누르면: 문이 덜컥 열리고 네모 얼음이 드르륵 밀려 나와 쏟아짐 */
+function spillIce(g) {
+  const u = g.userData.ice;
+  if (u.t >= 0) return;
+  u.t = 0;
+  const cubes = [];
+  for (let i = 0; i < 26; i++) {
+    const c = mk(iceGeo, iceMat, [0, 0, 0], g, { outline: 0.003, shadow: false });
+    c.visible = false;
+    cubes.push({ c, d: 0.35 + Math.random() * 0.7, x: (Math.random() - 0.5) * (u.W - 0.12), vy: 0, y: 0, z: 0, fall: Math.random() < 0.35, spin: (Math.random() - 0.5) * 6 });
+  }
+  u.cubes = cubes;
+  if (!store.get("ice-spill")) { store.set("ice-spill", "1"); setTimeout(() => toast("숨은 재미 발견!\n얼음이 드르륵", 1600), 900); }
+}
+function updateIce(dt) {
+  for (const g of iceMakers) {
+    const u = g.userData.ice;
+    if (u.t < 0) continue;
+    u.t += dt;
+    const t = u.t;
+    const want = t < 4.6 ? 1 : 0;
+    u.open += (want - u.open) * Math.min(1, dt * (want ? 9 : 4));
+    u.door.rotation.x = u.open * 1.35; // 바텐더 쪽으로 아래로 열림
+    for (const k of u.cubes) {
+      const s0 = t - k.d; // 차례로 밀려 나옴
+      if (s0 < 0) continue;
+      k.c.visible = t < 5.2;
+      if (!k.c.visible) continue;
+      const slide = Math.min(1, s0 / 0.35); // 드르륵: 문 위로 미끄러져 나옴
+      const doorZ = Math.sin(u.door.rotation.x) * u.dh, doorY = Math.cos(u.door.rotation.x) * u.dh;
+      if (!k.fall || slide < 1) {
+        k.z = u.fz + slide * doorZ * (0.4 + 0.5 * (k.x + 0.3)); k.y = u.dy0 + 0.03 + (1 - slide) * 0.05 + slide * doorY * 0.05;
+      } else { // 문 끝에서 바닥으로 떨어져 데굴
+        k.vy -= 9.8 * dt; k.y = Math.max(0.023, k.y + k.vy * dt); k.z += dt * 0.6;
+        if (k.y <= 0.023) k.vy = 0;
+      }
+      k.c.position.set(k.x + (k.fall ? 0 : Math.sin(s0 * 30) * 0.003), k.y, k.z);
+      k.c.rotation.set(k.spin * Math.min(s0, 0.6), k.spin * 0.5 * Math.min(s0, 0.6), 0);
+      if (t > 4.4) k.c.scale.setScalar(Math.max(0.001, 1 - (t - 4.4) / 0.8)); // 스르륵 사라짐
+    }
+    if (t > 6.2) { for (const k of u.cubes) { g.remove(k.c); } u.cubes = []; u.t = -1; u.door.rotation.x = 0; u.open = 0; }
+  }
+}
 
 /** 실내 소품 만들기 (layout.props 의 새 종류들) */
 function buildInteriorProp(p, g) {
@@ -2340,15 +2387,21 @@ function buildInteriorProp(p, g) {
       g.userData.hit = [0.9, 0.8, 0.6, y0 + 0.35]; g.userData.sayY = y0 + 0.85;
       return true;
     }
-    case "icemaker": { // 바 몸통 안 언더카운터 제빙기 (로컬 +z = 바텐더 쪽 앞면)
-      const W = 0.5, D = 0.42, y0 = 0.08, Hh = 0.84, steel = "#b8bcc2";
+    case "icemaker": { // 바 몸통 안 언더카운터 제빙기 (로컬 +z = 바텐더 쪽 앞면, 로컬 x = 바 길이 방향)
+      const W = p.w ?? 0.64, D = 0.42, y0 = 0.02, Hh = 0.88, steel = "#b8bcc2";
       mk(box(W, Hh, D), steel, [0, y0 + Hh / 2, 0], g, { outline: 0.008, shadow: false });
-      const fz = D / 2 + 0.003;
-      mk(box(W - 0.06, Hh * 0.55, 0.01), "#c9cdd2", [0, y0 + Hh * 0.32, fz], g, { outline: 0.004, shadow: false }); // 아래 문
-      mk(box(W - 0.16, 0.025, 0.03), "#8e939a", [0, y0 + Hh * 0.62, fz + 0.012], g, { outline: 0.003, shadow: false }); // 손잡이
+      const fz = D / 2 + 0.003, dh = Hh * 0.55, dy0 = y0 + 0.03;
+      // 아래 문: 아래쪽 경첩으로 바텐더 쪽으로 열림
+      const door = new THREE.Group(); door.position.set(0, dy0, fz); g.add(door);
+      mk(box(W - 0.06, dh, 0.012), "#c9cdd2", [0, dh / 2, 0.006], door, { outline: 0.004, shadow: false });
+      mk(box(W - 0.16, 0.025, 0.03), "#8e939a", [0, dh - 0.02, 0.02], door, { outline: 0.003, shadow: false }); // 손잡이
+      mk(box(W - 0.08, dh - 0.02, 0.01), "#3a4046", [0, dy0 + dh / 2, fz - 0.004], g, { outline: 0, shadow: false }); // 문 안쪽 (열리면 보임)
       for (let i = 0; i < 5; i++) mk(box(W - 0.12, 0.008, 0.006), "#7d828a", [0, y0 + Hh * 0.75 + i * 0.022, fz + 0.002], g, { outline: 0, shadow: false }); // 환기 그릴
       mk(new THREE.SphereGeometry(0.008, 8, 6), glowMat("#5dff9a"), [W / 2 - 0.05, y0 + Hh - 0.05, fz + 0.004], g, { outline: 0, shadow: false }); // 전원 불빛
-      g.userData.hit = [W, Hh, D, y0 + Hh / 2]; g.userData.sayY = 1.25;
+      g.userData.ice = { door, dh, dy0, fz, W, open: 0, t: -1 };
+      g.userData.hit = [W, Hh, D, y0 + Hh / 2]; g.userData.sayY = dy0 + dh + 0.12; g.userData.sayScale = 0.5;
+      const [ox, oz] = rotXZ(0, fz + 0.15, p.rot); g.userData.sayPos = [p.x + ox, p.z + oz]; // 문 바로 앞
+      iceMakers.push(g);
       return true;
     }
     case "speaker": { // JBL 4312A 우드 (호두나무 통 + 파란 앞판 + 흰 우퍼). 로컬 +z = 앞
@@ -2560,6 +2613,7 @@ function addSayHit(p, g, hit, sayY, pos) {
   hb.userData = info;
   g.add(hb);
   interactives.push(hb);
+  if (!g.userData.path) aimBlockers.push(hb); // 바텐더는 막지 않음
   sayProps.push(info);
 }
 
@@ -2604,6 +2658,7 @@ const emptyTagTex = (() => {
 const gemMat = new THREE.MeshBasicMaterial({ color: "#2fc489" });
 const gemShine = new THREE.MeshBasicMaterial({ color: "#bff5dc" });
 const aimBoxes = [];
+const aimBlockers = []; // 조준을 막는 것: 바 몸통·소품
 /** @type {Map<string, any>} */
 const seats = new Map();
 const hitboxes = [];
@@ -3319,6 +3374,12 @@ const BT_LINES = [
 function tapProp(u) {
   const bu = u.group.userData;
   let line = null;
+  if (bu.ice) { // 제빙기: 3번 연달아 누르면 얼음
+    const now = performance.now() / 1000;
+    if (!bu.lastTap || now - bu.lastTap > 3) bu.tapN = 0;
+    bu.lastTap = now; bu.tapN = (bu.tapN || 0) + 1;
+    if (bu.tapN >= 3) { bu.tapN = 0; spillIce(u.group); }
+  }
   if (bu.path) { // 바텐더: 나를 쳐다보고, 누를 때마다 멘트가 바뀌다가 10번째엔 보틀을 던짐
     bu.lookT = 3.6;
     const now = performance.now() / 1000;
@@ -3336,7 +3397,8 @@ function tapProp(u) {
   u.wiggle = 1;
   u.onTap?.();
   const p = u.prop;
-  popBubble(line || p.say, u.group.position.x, u.sayY ?? SAY_HEIGHT[p.type] ?? 1.5, u.group.position.z, u.group.userData.path ? { follow: u.group } : undefined);
+  const sp = bu.sayPos || [u.group.position.x, u.group.position.z];
+  popBubble(line || p.say, sp[0], u.sayY ?? SAY_HEIGHT[p.type] ?? 1.5, sp[1], bu.path ? { follow: u.group } : bu.sayScale ? { scale: bu.sayScale } : undefined);
   if (!found.has(u.idx)) {
     found.add(u.idx);
     store.set("seat-found", JSON.stringify([...found]));
@@ -3863,7 +3925,7 @@ function updateWalk(dt, time) {
   if (++walk.frame % 4 === 0) {
     ray.setFromCamera(ndc.set(0, 0), camera);
     ray.far = 2.5; // 가까이(약 2.5m)에서 의자를 똑바로 볼 때만 안내
-    const hit = ray.intersectObjects(aimBoxes, false)[0];
+    const hit = ray.intersectObjects([...aimBoxes, ...aimBlockers], false)[0]; // 앞에 물건이 있으면 그 뒤 의자는 조준 안 됨
     ray.far = Infinity;
     setAim(hit?.object.userData.seatId || null);
     updateActBtns();
@@ -4116,6 +4178,7 @@ function updateWorld(dt, time) {
   }
   for (const l of labelSprites) l.visible = !fpGroup.visible; // 1인칭에선 번호표 숨김
   for (const b of bartenders) updateBartender(b, dt, time);
+  updateIce(dt);
   updateWalkers(dt, time);
   for (const d of dustClouds) { // 먼지가 천천히 떠다님
     const a = d.geometry.attributes.position, b = d.userData.base, sd = d.userData.seed;
