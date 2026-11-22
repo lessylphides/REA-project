@@ -412,7 +412,8 @@ function buildEdge(e, group, h, T) {
     sunPatches[sunPatches.length - 1].userData.edge = e.i;
   }
   // 창밖 거리 (1인칭에서만, 블라인드 틈으로 보임)
-  if (group === fpGroup || group === roomGroup) addStreetView((e.ax + e.bx) / 2, (e.az + e.bz) / 2, e.nx, e.nz, e.len + 6, 5, 3.5, 17 + e.i * 31, R.outside?.[e.i] || "street");
+  if (R.outside?.[e.i] === "alley") ALLEY = buildAlley3D(e); // 창에서 길게 뻗은 3D 골목
+  else addStreetView((e.ax + e.bx) / 2, (e.az + e.bz) / 2, e.nx, e.nz, e.len + 6, 5, 3.5, 17 + e.i * 31, R.outside?.[e.i] || "street");
 }
 
 // ───────── 창밖 거리 풍경 (블라인드 틈으로 은은하게) ─────────
@@ -596,15 +597,90 @@ function drawAlley(g, W, H, phase, seed) {
   if (C.night) { g.fillStyle = "rgba(120,110,160,.14)"; g.fillRect(0, 0, W, H); }
 }
 
-/** 창 바깥에 거리 풍경 판 세우기 (방 안을 향하게) */
-function addStreetView(cx, cz, nx, nz, w, h, dist, seed, kind = "street") {
+// ───────── 대각선 창 밖으로 길게 뻗은 3D 주택가 골목 (사람이 저 끝에서 걸어옴) ─────────
+const alleyWindows = []; // 밤에 켜지는 창문
+function buildAlley3D(e) {
+  const nx = -e.nx, nz = -e.nz; // 바깥 방향
+  const mx = (e.ax + e.bx) / 2, mz = (e.az + e.bz) / 2;
+  const L0 = 3.2, L1 = 27, W = 3.2; // 골목: 창에서 3.2m(삼거리) ~ 27m, 폭 3.2m
+  const g = new THREE.Group();
+  g.position.set(mx + nx * L0, 0, mz + nz * L0);
+  g.rotation.y = Math.atan2(nx, nz); // 로컬 +z = 골목 안쪽(멀어지는 방향)
+  fpGroup.add(g);
+  const len = L1 - L0;
+  let s = 41;
+  const rnd = () => ((s = (s * 16807) % 2147483647) / 2147483647);
+  const no = { outline: 0, shadow: false }, ol = { outline: 0.02, shadow: false };
+  // 바닥 (콘크리트) + 가운데 이음 선
+  mk(box(W, 0.03, len), LINE ? "#b9b3c4" : "#8e8a85", [0, -0.1, len / 2], g, no).receiveShadow = true;
+  for (let z = 2; z < len; z += 3) mk(box(W * 0.9, 0.005, 0.03), "#9a93a6", [0, -0.08, z], g, no);
+  const walls = ["#c46a4f", "#e6dccb", "#b9c3cf", "#d8a27a", "#cfc2a8", "#a8b4a0"];
+  for (const side of [-1, 1]) {
+    // 담장 (벽돌색, 군데군데 대문) — 삼거리(앞 3m)는 비워 둠
+    let z = 3;
+    while (z < len) {
+      const seg = 2.2 + rnd() * 2.5, h = 1.1 + rnd() * 0.4;
+      mk(box(0.18, h, Math.min(seg, len - z) - 0.05), "#b56a4d", [side * (W / 2 + 0.09), h / 2 - 0.1, z + seg / 2], g, ol);
+      if (rnd() < 0.5) mk(box(0.06, 1.3, 0.8), "#5d6b72", [side * (W / 2 + 0.03), 0.55, z + seg - 0.5], g, ol); // 철 대문
+      z += seg;
+    }
+    // 낮은 주택 / 빌라 (담장 뒤)
+    z = 3.2;
+    while (z < len) {
+      const dep = 4 + rnd() * 3, wid = 3.5 + rnd() * 3, floors = 2 + (rnd() < 0.4 ? 1 : 0), h = floors * 2.7 + 0.4;
+      const cx = side * (W / 2 + 0.4 + dep / 2), cz = z + wid / 2;
+      mk(box(dep, h, wid - 0.2), walls[Math.floor(rnd() * walls.length)], [cx, h / 2 - 0.1, cz], g, ol);
+      mk(box(dep + 0.3, 0.2, wid), "#6f5a52", [cx, h, cz], g, ol); // 지붕 처마
+      // 골목 쪽 창문 (밤엔 일부 켜짐)
+      for (let f = 0; f < floors; f++) for (let k = 0; k < Math.floor(wid / 1.5); k++) {
+        const wz = z + 0.8 + k * 1.5, wy = 1.4 + f * 2.7;
+        const wm = new THREE.MeshBasicMaterial({ color: "#2b3150" });
+        registerTint(wm);
+        const win = mk(new THREE.PlaneGeometry(0.7, 0.8), wm, [side * (W / 2 + 0.39), wy, wz], g, no);
+        win.rotation.y = -side * Math.PI / 2;
+        if (rnd() < 0.5) { const lit = new THREE.MeshBasicMaterial({ color: "#f3c27a", transparent: true, opacity: 0 }); const lw = mk(new THREE.PlaneGeometry(0.7, 0.8), lit, [side * (W / 2 + 0.38), wy, wz], g, no); lw.rotation.y = -side * Math.PI / 2; alleyWindows.push(lit); }
+      }
+      z += wid + 0.2;
+    }
+  }
+  // 전봇대 + 작은 가로등 (한쪽), 전깃줄
+  const poles = [];
+  for (let z = 4; z < len; z += 7) {
+    const x = (W / 2 - 0.15);
+    mk(cyl(0.1, 0.12, 7, 8), "#9c958c", [x, 3.4, z], g, ol);
+    mk(box(1.0, 0.1, 0.1), "#9c958c", [x, 6.6, z], g, ol);
+    mk(box(0.5, 0.06, 0.06), "#2a2522", [x - 0.25, 3.6, z], g, no);
+    const lamp = mk(new THREE.SphereGeometry(0.1, 8, 6), new THREE.MeshBasicMaterial({ color: "#fff2c0" }), [x - 0.5, 3.55, z], g, no);
+    addHalo(g, x - 0.5, 3.5, z, 3.0, "#ffe0a0");
+    poles.push(new THREE.Vector3(x, 6.6, z));
+    void lamp;
+  }
+  for (let k = -1; k <= 1; k++) {
+    const pts = [];
+    for (let i = 0; i < poles.length - 1; i++) for (let t = 0; t <= 1; t += 0.1) {
+      const a = poles[i], b = poles[i + 1];
+      pts.push(new THREE.Vector3(a.x + k * 0.4, a.y - Math.sin(t * Math.PI) * 0.5, a.z + (b.z - a.z) * t));
+    }
+    g.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), new THREE.LineBasicMaterial({ color: "#1b1b1f" })));
+  }
+  // 화분 몇 개
+  for (let i = 0; i < 5; i++) { const side = rnd() < 0.5 ? -1 : 1; makePlant(g, side * (W / 2 - 0.3), 4 + rnd() * (len - 6), 0.7); }
+  // 골목 맨 끝: 마주 보이는 주택가 (그림)
+  const far = L1 + 0.5;
+  addStreetView(mx + nx * far, mz + nz * far, -nx, -nz, 16, 9, 0, 17 + e.i * 31, "street", 0.2);
+  return { mx, mz, nx, nz, L0, L1 };
+}
+
+let ALLEY = null;
+/** 창 바깥에 거리 풍경 판 세우기 (방 안을 향하게). groundAt: 그림의 땅 높이 비율(아래에서) → 실제 바닥에 맞춤 */
+function addStreetView(cx, cz, nx, nz, w, h, dist, seed, kind = "street", groundAt = 0) {
   const c = document.createElement("canvas");
   c.width = 1024; c.height = 512;
   const ctx = c.getContext("2d");
   const tex = new THREE.CanvasTexture(c);
   tex.colorSpace = THREE.SRGBColorSpace;
   const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ map: tex }));
-  m.position.set(cx - nx * dist, h / 2 - 0.3, cz - nz * dist);
+  m.position.set(cx - nx * dist, groundAt ? h / 2 - h * groundAt - 0.08 : h / 2 - 0.3, cz - nz * dist);
   m.rotation.y = Math.atan2(nx, nz); // 판의 앞면(+z)이 방 안쪽(n)을 봄
   fpGroup.add(m);
   streetViews.push({ ctx, tex, seed, W: 1024, H: 512, kind });
@@ -1078,6 +1154,7 @@ function applyTime(outside, time) {
   if (nightGlow.strip) nightGlow.strip.material.opacity = 0.3 + glow * 0.25;
   if (nightGlow.pool) nightGlow.pool.material.opacity = 0.15 + glow * 0.18;
   if (nightGlow.lit) nightGlow.lit.material.opacity = glow * 0.55;
+  for (const m of alleyWindows) m.opacity = glow * 0.9;
 }
 
 /** 손그림 그림체: 하늘의 구름 + 이웃 건물 뒤 큰 나무 */
@@ -2724,29 +2801,48 @@ function makeWalker(seed, kind) {
 function buildWalkers() {
   const T = 0.14;
   const front = R.d + T + 1.85;
-  const diagMid = [1.95, 7.55], dn = [-Math.SQRT1_2, Math.SQRT1_2]; // 대각선 창 바깥 방향
+  // 대각선 창 밖 골목: 창에서 d 미터, 옆으로 o 미터
+  const A = ALLEY || { mx: 1.95, mz: 7.55, nx: -Math.SQRT1_2, nz: Math.SQRT1_2 };
+  const px = A.nz, pz = -A.nx; // 골목 가로 방향
+  const AL = (d, o = 0) => [A.mx + A.nx * d + px * o, A.mz + A.nz * d + pz * o];
+  const I = AL(4.6); // 삼거리 한가운데
   const lanes = [
-    { a: [-5, front - 0.35], b: [15, front - 0.35] },            // 정면 골목 (가게 앞)
-    { a: [15, front + 0.45], b: [-5, front + 0.45] },
-    { a: [-1.4, -4], b: [-1.4, 10] },                            // 왼쪽 골목
-    { a: [-2.3, 11], b: [-2.3, -4] },
-    { a: [diagMid[0] + dn[0] * 3.6 + 0.3, diagMid[1] + dn[1] * 3.6 + 0.3], b: [diagMid[0] + dn[0] * 0.9 + 0.3, diagMid[1] + dn[1] * 0.9 + 0.3] }, // 대각선 골목 (다가옴)
-    { a: [diagMid[0] + dn[0] * 0.9 - 0.3, diagMid[1] + dn[1] * 0.9 - 0.3], b: [diagMid[0] + dn[0] * 3.6 - 0.3, diagMid[1] + dn[1] * 3.6 - 0.3] },  // (멀어짐)
-  ];
+    [[-5, front - 0.35], [15, front - 0.35]],            // 정면 골목 (가게 앞)
+    [[15, front + 0.45], [-5, front + 0.45]],
+    [[-1.4, -4], [-1.4, 10]],                            // 왼쪽 골목
+    [[-2.3, 11], [-2.3, -4]],
+    [AL(26, 0.5), AL(6, 0.5), I, [15, front - 0.35]],    // 골목 저 끝에서 걸어와 → 삼거리 → 가게 앞으로
+    [AL(26, -0.6), AL(6, -0.6), I, [-1.4, -4]],          // 골목 끝 → 삼거리 → 왼쪽 골목
+    [[15, front + 0.45], I, AL(6, -0.2), AL(26, -0.2)],  // 가게 앞 → 삼거리 → 골목 저 끝으로 멀어짐
+    [[-2.3, -4], [-2.3, 9], I, AL(6, 0.9), AL(26, 0.9)], // 왼쪽 골목 → 삼거리 → 골목 끝으로
+  ].map((pts) => {
+    const seg = [];
+    let len = 0;
+    for (let i = 0; i < pts.length - 1; i++) { const l = Math.hypot(pts[i + 1][0] - pts[i][0], pts[i + 1][1] - pts[i][1]); seg.push(l); len += l; }
+    return { pts, seg, len };
+  });
   const plan = [
-    [0, "normal", true, 0.1], [0, "pair", false, 0.6], [1, "dog", true, 0.3], [1, "normal", false, 0.8],
-    [2, "umbrella", false, 0.2], [2, "normal", true, 0.7], [3, "dog", false, 0.5],
-    [4, "normal", true, 0.0], [5, "pair", false, 0.5],
+    [0, "normal", true, 0.1], [1, "dog", true, 0.3], [2, "umbrella", false, 0.2], [3, "dog", false, 0.5],
+    [4, "normal", true, 0.05], [4, "pair", false, 0.55], [5, "dog", true, 0.3], [5, "normal", false, 0.8],
+    [6, "normal", true, 0.4], [7, "pair", false, 0.1], [7, "umbrella", false, 0.65],
   ];
   plan.forEach(([li, kind, nightOk, t0], i) => {
     const lane = lanes[li];
     const make = (k, off) => { const w = makeWalker(97 + i * 31 + off * 7, k); fpGroup.add(w.g); return { ...w, off }; };
     const group = kind === "pair" ? [make("normal", -0.28), make("normal", 0.28)] : [make(kind, 0)];
-    const len = Math.hypot(lane.b[0] - lane.a[0], lane.b[1] - lane.a[1]);
-    walkers.push({ lane, len, t: t0, speed: 0.55 + (i % 3) * 0.12, phase: i * 1.7, nightOk, group });
+    walkers.push({ lane, len: lane.len, t: t0, speed: 0.55 + (i % 3) * 0.12, phase: i * 1.7, nightOk, group });
   });
 }
-
+function lanePoint(lane, t) {
+  let d = t * lane.len;
+  for (let i = 0; i < lane.seg.length; i++) {
+    if (d <= lane.seg[i] || i === lane.seg.length - 1) {
+      const [ax, az] = lane.pts[i], [bx, bz] = lane.pts[i + 1], k = Math.min(1, d / lane.seg[i]);
+      return { x: ax + (bx - ax) * k, z: az + (bz - az) * k, dx: (bx - ax) / lane.seg[i], dz: (bz - az) / lane.seg[i] };
+    }
+    d -= lane.seg[i];
+  }
+}
 function updateWalkers(dt, time) {
   if (!fpGroup.visible) return;
   const nightish = timeK > 0.6;
@@ -2754,10 +2850,8 @@ function updateWalkers(dt, time) {
     const show = !nightish || w.nightOk;
     w.t += (w.speed * dt) / w.len;
     if (w.t > 1) w.t -= 1;
-    const { a, b } = w.lane;
-    const dx = (b[0] - a[0]) / w.len, dz = (b[1] - a[1]) / w.len;
-    const x = a[0] + (b[0] - a[0]) * w.t, z = a[1] + (b[1] - a[1]) * w.t;
-    const fade = Math.min(1, w.t / 0.06, (1 - w.t) / 0.06); // 골목 끝에서 스르륵 나타나고 사라짐
+    const { x, z, dx, dz } = lanePoint(w.lane, w.t);
+    const fade = Math.min(1, (w.t * w.len) / 1.2, ((1 - w.t) * w.len) / 1.2); // 길 끝에서 스르륵 나타나고 사라짐
     const yaw = Math.atan2(dx, dz), sw = Math.sin(time * 6 * w.speed + w.phase);
     for (const p of w.group) {
       p.g.visible = show && fade > 0.02;
