@@ -405,6 +405,52 @@ const blindsTex = canvasTex(64, 256, (g, w, h) => {
   }
 });
 blindsTex.wrapS = blindsTex.wrapT = THREE.RepeatWrapping;
+// 블라인드 3단계: 0 반쯤 열림(기본) / 1 거의 닫힘 / 2 완전히 닫힘(바깥 빛 차단)
+const blindLevelTex = [blindsTex, ...[[15, 0.92], [16, 1]].map(([slat, a]) => {
+  const t = canvasTex(64, 256, (g, w, h) => {
+    g.clearRect(0, 0, w, h);
+    for (let y = 0; y < h; y += 16) {
+      g.fillStyle = `rgba(240,233,228,${a})`; g.fillRect(0, y, w, slat);
+      g.fillStyle = LINE ? "rgba(27,27,31,.4)" : "rgba(120,110,110,.4)"; g.fillRect(0, y + 14, w, 1.5);
+    }
+  });
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  return t;
+})];
+const blindFaces = new Map(); // 면 이름 → { mats: [], level }
+function blindFace(key) { if (!blindFaces.has(key)) blindFaces.set(key, { mats: [], level: 0 }); return blindFaces.get(key); }
+function setBlindLevel(face, lv) {
+  face.level = lv;
+  for (const m of face.mats) {
+    const rep = m.map.repeat.clone();
+    m.map = blindLevelTex[lv].clone(); m.map.repeat.copy(rep); m.map.needsUpdate = true;
+    m.color.copy(m.userData.base || m.color);
+    m.needsUpdate = true;
+  }
+  lastTint = -1; // 시간대 색 다시 칠하기
+}
+/** 블라인드 조절 줄 (parent 로컬: x = 창 방향, +z = 방 안쪽) — 누를 때마다 3단계 */
+function addBlindCord(parent, x, top, face, zIn = 0.14) {
+  parent.updateMatrixWorld(true);
+  const wp = parent.localToWorld(new THREE.Vector3(x, 0, zIn));
+  const g = new THREE.Group(); g.position.copy(wp); g.rotation.y = parent.rotation.y;
+  roomGroup.add(g);
+  const sw = new THREE.Group(); sw.position.y = top - 0.04; g.add(sw); // 위에 매달려 흔들림
+  const len = top - 1.15;
+  for (const dx of [-0.012, 0.012]) mk(cyl(0.004, 0.004, len, 5), "#e8e2da", [dx, -len / 2, 0], sw, { outline: 0.002, shadow: false });
+  mk(cyl(0.012, 0.016, 0.07, 10), "#d9d2c8", [0, -len - 0.03, 0], sw, { outline: 0.004, shadow: false }); // 손잡이
+  g.userData.wiggler = sw;
+  const prop = { type: "blindcord", x: wp.x, z: wp.z, say: "블라인드 줄\n당겨 볼까요?" };
+  addSayHit(prop, g, [0.16, len + 0.15, 0.16, 1.1 + len / 2], 1.6);
+  g.userData.sayPos = [wp.x, wp.z]; g.userData.sayScale = 0.7;
+  const info = sayProps[sayProps.length - 1];
+  info.onTap = () => {
+    const lv = (face.level + 1) % 3;
+    setBlindLevel(face, lv);
+    prop.say = ["블라인드를 반쯤 열었어요\n바깥 골목이 보여요", "블라인드를 거의 닫았어요\n조금 더 아늑하게", "블라인드를 꼭 닫았어요\n바깥 빛은 이제 그만"][lv];
+    if (!store.get("blind-cord")) { store.set("blind-cord", "1"); setTimeout(() => toast("숨은 재미 발견!\n블라인드 줄로 빛을 조절해요", 1700), 900); }
+  };
+}
 
 function buildRoom() {
   const T = 0.14;
@@ -519,6 +565,7 @@ function buildEdge(e, group, h, T) {
   registerTint(mat);
   mat.userData.forceOutside = true; // 세 면 모두 바깥 하늘빛 기준 (낮엔 햇빛 받아 밝게)
   mk(new THREE.PlaneGeometry(gw, top - bl0), mat, [gc, (top + bl0) / 2, 0], g, { outline: 0, shadow: false });
+  { const face = blindFace("edge" + e.i); face.mats.push(mat); addBlindCord(g, g1 - 0.3, top, face); } // 조절 줄 (면 한쪽 끝)
   mk(new THREE.PlaneGeometry(gw, bl0 - sill), clearGlass(), [gc, (bl0 + sill) / 2, 0], g, { outline: 0, shadow: false });
   { // 창틀로 나뉜 칸마다 같은 비침 (키 큰 창이 어느 묶음에 있든) (바깥쪽 -z 를 향함)
     const xs = mullionXs(e);
@@ -1028,6 +1075,9 @@ function buildInsideShell(T) {
     addGlassRefl(fpGroup, winW, 2.75 - 0.12, [(wx0 + wx1) / 2, (2.75 + 0.12) / 2, R.d + 0.04], 0);
     for (const y of [0.14, 2.73]) mk(box(winW, 0.05, 0.12), "#f4f1ec", [(wx0 + wx1) / 2, y, R.d + 0.02], fpGroup, { outline: 0.008, shadow: false });
     inner.renderOrder = 3;
+    { const face = blindFace("front"); face.mats.push(bm); // 입구 쪽 창 조절 줄 (문 쪽 끝)
+      const cg = new THREE.Group(); cg.position.set(wx1 - 0.1, 0, R.d); cg.rotation.y = Math.PI; fpGroup.add(cg);
+      addBlindCord(cg, 0, 2.75, face, 0.08); }
     {
       const sg = new THREE.Group();
       sg.position.set((wx0 + wx1) / 2, 0, R.d);
@@ -1828,7 +1878,12 @@ function buildCurvedBar(b) {
   ribbon(S, RD / 2, 0.05, 0.93, body, roomGroup, 0.006, (-bh + back) / 2);    // 상판 바로 아래 띠
   const inner = toon("#3b2418", { side: THREE.DoubleSide });
   stripAlong(S, back - 0.002, 0.08, 0.93, inner, roomGroup).renderOrder = 0;   // 안쪽 뒤판 (짙게)
-  ribbon(S, (RD - 0.04) / 2, 0.025, 0.49, "#6a3a22", roomGroup, 0.005, (-bh + back) / 2 + 0.02); // 가운데 선반
+  // 가운데 선반 (제빙기·냉장고가 들어간 자리는 비움)
+  const apps = (LAYOUT.props || []).filter((q) => q.type === "icemaker" || q.type === "fridge");
+  const freeAt = (sm) => { const c = (-bh + back) / 2, x = sm.p.x + sm.n.x * c, z = sm.p.z + sm.n.z * c;
+    return !apps.some((a) => { const [lx, lz] = rotXZ(x - a.x, z - a.z, -(a.rot || 0)); return Math.abs(lx) < (a.w ?? 0.64) / 2 + 0.04 && Math.abs(lz) < 0.4; }); };
+  const runs = (arr) => { const out = []; let cur = []; for (const sm of arr) { if (freeAt(sm)) cur.push(sm); else { if (cur.length > 1) out.push(cur); cur = []; } } if (cur.length > 1) out.push(cur); return out; };
+  for (const run of runs(S)) ribbon(run, (RD - 0.04) / 2, 0.025, 0.49, "#6a3a22", roomGroup, 0.005, (-bh + back) / 2 + 0.02);
   // 3구역 칸막이: 양 끝 + 통창 모서리 두 곳 (경로 꺾이는 점에 가장 가까운 곳)
   const near = (pt) => S.reduce((bi, s, i) => (Math.hypot(s.p.x - pt[0], s.p.z - pt[1]) < Math.hypot(S[bi].p.x - pt[0], S[bi].p.z - pt[1]) ? i : bi), 0);
   const cuts = [0, ...b.path.slice(1, -1).map(near), S.length - 1];
@@ -1847,7 +1902,7 @@ function buildCurvedBar(b) {
     // (polygonOffset 은 비스듬히 볼 때 바 몸통을 뚫고 보여서 쓰지 않고, 면 위로 살짝 띄움)
     for (const fy of [0.085, 0.52]) { // 선반 바닥에 고이는 불빛
       const fm = new THREE.MeshBasicMaterial({ map: ledFloorTex, color: "#ffc890", transparent: true, depthWrite: false, opacity: 0.3, blending: THREE.AdditiveBlending });
-      floorStripAlong(sub, back - 0.01, -bh + 0.02, fy, fm, roomGroup);
+      for (const run of fy > 0.3 ? runs(sub) : [sub]) floorStripAlong(run, back - 0.01, -bh + 0.02, fy, fm, roomGroup);
       innerGlows.push([fm, fy > 0.3 ? 0.25 : 0.15, fy > 0.3 ? 0.6 : 0.4]);
     }
     { // 선반 불빛이 바텐더 쪽 바닥으로 살짝 새어 나옴
@@ -2009,7 +2064,7 @@ function spillIce(g) {
   for (let i = 0; i < 26; i++) {
     const c = mk(iceGeo, iceMat, [0, 0, 0], g, { outline: 0.003, shadow: false });
     c.visible = false;
-    cubes.push({ c, d: 0.35 + Math.random() * 0.7, x: (Math.random() - 0.5) * (u.W - 0.12), vy: 0, y: 0, z: 0, fall: Math.random() < 0.35, spin: (Math.random() - 0.5) * 6 });
+    cubes.push({ c, d: 0.25 + Math.random() * 0.8, x: (Math.random() - 0.5) * (u.W - 0.12), vy: 0, y: 0, z: 0, fall: Math.random() < 0.35, stop: 0.25 + Math.random() * 0.7, spin: (Math.random() - 0.5) * 6 });
   }
   u.cubes = cubes;
   if (!store.get("ice-spill")) { store.set("ice-spill", "1"); setTimeout(() => toast("숨은 재미 발견!\n얼음이 드르륵", 1600), 900); }
@@ -2022,28 +2077,66 @@ function updateIce(dt) {
     const t = u.t;
     const want = t < 4.6 ? 1 : 0;
     u.open += (want - u.open) * Math.min(1, dt * (want ? 9 : 4));
-    u.door.rotation.x = u.open * 1.35; // 바텐더 쪽으로 아래로 열림
+    const r = u.open * 1.45; u.door.rotation.x = r; // 아래 경첩으로 바텐더 쪽 아래로 열림
+    const dz = Math.sin(r) * u.dh, dy = Math.cos(r) * u.dh;
     for (const k of u.cubes) {
-      const s0 = t - k.d; // 차례로 밀려 나옴
+      const s0 = t - k.d; // 얼음 더미 앞쪽에서 차례로 밀려 나옴
       if (s0 < 0) continue;
       k.c.visible = t < 5.2;
       if (!k.c.visible) continue;
-      const slide = Math.min(1, s0 / 0.35); // 드르륵: 문 위로 미끄러져 나옴
-      const doorZ = Math.sin(u.door.rotation.x) * u.dh, doorY = Math.cos(u.door.rotation.x) * u.dh;
-      if (!k.fall || slide < 1) {
-        k.z = u.fz + slide * doorZ * (0.4 + 0.5 * (k.x + 0.3)); k.y = u.dy0 + 0.03 + (1 - slide) * 0.05 + slide * doorY * 0.05;
-      } else { // 문 끝에서 바닥으로 떨어져 데굴
-        k.vy -= 9.8 * dt; k.y = Math.max(0.023, k.y + k.vy * dt); k.z += dt * 0.6;
+      if (!k.fall || s0 < 0.45) { // 드르륵: 더미 앞 → 열린 문 위로 미끄러짐
+        const q = Math.min(1, s0 / 0.45) * (k.fall ? 1 : k.stop);
+        k.z = u.fz - 0.06 + 0.06 * Math.min(1, s0 / 0.15) + q * dz; k.y = u.dyb + 0.03 + q * dy * 0.98 + (1 - Math.min(1, s0 / 0.15)) * 0.06;
+      } else { // 문 끝에서 바닥으로
+        k.vy -= 9.8 * dt; k.y = Math.max(0.023, k.y + k.vy * dt); k.z += dt * 0.5;
         if (k.y <= 0.023) k.vy = 0;
       }
-      k.c.position.set(k.x + (k.fall ? 0 : Math.sin(s0 * 30) * 0.003), k.y, k.z);
+      k.c.position.set(k.x + Math.sin(s0 * 30) * 0.002 * (s0 < 0.45 ? 1 : 0), k.y, k.z);
       k.c.rotation.set(k.spin * Math.min(s0, 0.6), k.spin * 0.5 * Math.min(s0, 0.6), 0);
-      if (t > 4.4) k.c.scale.setScalar(Math.max(0.001, 1 - (t - 4.4) / 0.8)); // 스르륵 사라짐
+      if (t > 4.4) k.c.scale.setScalar(Math.max(0.001, 1 - (t - 4.4) / 0.8));
     }
-    if (t > 6.2) { for (const k of u.cubes) { g.remove(k.c); } u.cubes = []; u.t = -1; u.door.rotation.x = 0; u.open = 0; }
+    if (t > 6.2) { for (const k of u.cubes) g.remove(k.c); u.cubes = []; u.t = -1; u.door.rotation.x = 0; u.open = 0; }
+  }
+  for (const g of fridges) updateFridge(g, dt);
+}
+const fridges = [];
+function spillMilk(g) {
+  const u = g.userData.fr;
+  if (u.t >= 0) return;
+  u.t = 0;
+  if (!store.get("milk-spill")) { store.set("milk-spill", "1"); setTimeout(() => toast("숨은 재미 발견!\n앗, 우유가 쏟아졌어요", 1700), 1300); }
+}
+function freezerPuff(g) {
+  const u = g.userData.fr;
+  if (u.ft >= 0) return;
+  u.ft = 0;
+  for (let i = 0; i < 6; i++) { // 하얀 냉기가 흘러나와 아래로 퍼짐
+    const m = new THREE.Mesh(steamGeo, new THREE.MeshBasicMaterial({ color: "#eef8ff", transparent: true, opacity: 0, depthWrite: false }));
+    const x0 = -0.3 + (Math.random() - 0.5) * 0.4, y0 = u.cyb + 0.1 + Math.random() * 0.4;
+    m.position.set(x0, y0, u.fz + 0.05); g.add(m);
+    addEffect(m, g, 2.2, (e) => { const k = e.t / e.life; m.position.set(x0 + k * 0.1, Math.max(0.05, y0 - k * 0.45), u.fz + 0.05 + k * 0.4); m.scale.setScalar(0.6 + k * 1.6); m.material.opacity = 0.55 * Math.sin(Math.PI * Math.min(1, k + 0.05)); });
   }
 }
-
+function updateFridge(g, dt) {
+  const u = g.userData.fr;
+  if (u.ft >= 0) { u.ft += dt; const a = u.ft < 1.6 ? Math.min(1, u.ft / 0.3) : Math.max(0, 1 - (u.ft - 1.6) / 0.4); u.doors[0].rotation.y = -0.55 * a; if (u.ft > 2.1) { u.ft = -1; u.doors[0].rotation.y = 0; } }
+  if (u.t < 0) return;
+  u.t += dt;
+  const t = u.t;
+  const open = t < 5.2 ? Math.min(1, t / 0.3) : Math.max(0, 1 - (t - 5.2) / 0.5);
+  u.doors[1].rotation.y = 1.7 * open; // 냉장 문 활짝
+  // 우유: 기우뚱 → 앞으로 쓰러짐 (5.2초 뒤 문 닫히며 다시 섬)
+  let tilt = 0;
+  if (t > 0.4 && t < 5.2) tilt = t < 0.7 ? Math.sin((t - 0.4) * 40) * 0.12 : Math.min(Math.PI / 2, ((t - 0.7) / 0.35) ** 2 * (Math.PI / 2));
+  u.milkPivot.rotation.x = tilt;
+  // 우유가 졸졸 흘러 바닥에 웅덩이
+  const leaking = t > 1.1 && t < 5.0;
+  u.stream.visible = leaking;
+  if (leaking) { const top = u.cyb + 0.03; u.stream.scale.y = top; u.stream.position.set(0.3, top / 2, u.fz + 0.2); }
+  const pz = t < 1.1 ? 0 : t < 5.2 ? Math.min(1, (t - 1.1) / 3) : Math.max(0, 1 - (t - 5.2) / 1.0);
+  u.puddle.scale.setScalar(Math.max(0.001, pz));
+  if (t > 6.3) { u.t = -1; u.milkPivot.rotation.x = 0; u.doors[1].rotation.y = 0; u.puddle.scale.setScalar(0.001); u.stream.visible = false; }
+}
 /** 실내 소품 만들기 (layout.props 의 새 종류들) */
 function buildInteriorProp(p, g) {
   const H = R.wallH;
@@ -2387,21 +2480,84 @@ function buildInteriorProp(p, g) {
       g.userData.hit = [0.9, 0.8, 0.6, y0 + 0.35]; g.userData.sayY = y0 + 0.85;
       return true;
     }
-    case "icemaker": { // 바 몸통 안 언더카운터 제빙기 (로컬 +z = 바텐더 쪽 앞면, 로컬 x = 바 길이 방향)
-      const W = p.w ?? 0.64, D = 0.42, y0 = 0.02, Hh = 0.88, steel = "#b8bcc2";
-      mk(box(W, Hh, D), steel, [0, y0 + Hh / 2, 0], g, { outline: 0.008, shadow: false });
-      const fz = D / 2 + 0.003, dh = Hh * 0.55, dy0 = y0 + 0.03;
-      // 아래 문: 아래쪽 경첩으로 바텐더 쪽으로 열림
-      const door = new THREE.Group(); door.position.set(0, dy0, fz); g.add(door);
-      mk(box(W - 0.06, dh, 0.012), "#c9cdd2", [0, dh / 2, 0.006], door, { outline: 0.004, shadow: false });
-      mk(box(W - 0.16, 0.025, 0.03), "#8e939a", [0, dh - 0.02, 0.02], door, { outline: 0.003, shadow: false }); // 손잡이
-      mk(box(W - 0.08, dh - 0.02, 0.01), "#3a4046", [0, dy0 + dh / 2, fz - 0.004], g, { outline: 0, shadow: false }); // 문 안쪽 (열리면 보임)
-      for (let i = 0; i < 5; i++) mk(box(W - 0.12, 0.008, 0.006), "#7d828a", [0, y0 + Hh * 0.75 + i * 0.022, fz + 0.002], g, { outline: 0, shadow: false }); // 환기 그릴
-      mk(new THREE.SphereGeometry(0.008, 8, 6), glowMat("#5dff9a"), [W / 2 - 0.05, y0 + Hh - 0.05, fz + 0.004], g, { outline: 0, shadow: false }); // 전원 불빛
-      g.userData.ice = { door, dh, dy0, fz, W, open: 0, t: -1 };
-      g.userData.hit = [W, Hh, D, y0 + Hh / 2]; g.userData.sayY = dy0 + dh + 0.12; g.userData.sayScale = 0.5;
-      const [ox, oz] = rotXZ(0, fz + 0.15, p.rot); g.userData.sayPos = [p.x + ox, p.z + oz]; // 문 바로 앞
+    case "icemaker": { // 바 몸통 안 언더카운터 제빙기 (로컬 +z = 바텐더 쪽 앞면): 위 = 문(안에 얼음 더미), 아래 = 환기 그릴
+      const W = p.w ?? 0.64, D = 0.42, y0 = 0.02, Hh = 0.88, steel = "#b8bcc2", no = { outline: 0, shadow: false };
+      const fz = D / 2, dyb = y0 + 0.3, dh = Hh - 0.36, cav = 0.3; // 문 아래끝, 문 높이, 안쪽 깊이
+      mk(box(W, dyb - y0, D), steel, [0, (y0 + dyb) / 2, 0], g, { outline: 0.008, shadow: false });              // 아래 (그릴)
+      mk(box(W, y0 + Hh - (dyb + dh), D), steel, [0, (dyb + dh + y0 + Hh) / 2, 0], g, { outline: 0.008, shadow: false }); // 위 띠
+      mk(box(W, dh, D - cav), steel, [0, dyb + dh / 2, -fz + (D - cav) / 2], g, { outline: 0.008, shadow: false }); // 뒤
+      for (const sx of [-1, 1]) mk(box(0.03, dh, cav), steel, [sx * (W / 2 - 0.015), dyb + dh / 2, fz - cav / 2], g, { outline: 0.006, shadow: false }); // 옆
+      const inner = "#3a4148";
+      mk(new THREE.PlaneGeometry(W - 0.06, dh), inner, [0, dyb + dh / 2, fz - cav + 0.001], g, no);
+      mk(new THREE.PlaneGeometry(W - 0.06, cav), inner, [0, dyb + 0.001, fz - cav / 2], g, no).rotation.x = -Math.PI / 2;
+      // 안에 수북이 쌓인 얼음
+      let sd = 11; const rr = () => ((sd = (sd * 16807) % 2147483647) / 2147483647);
+      for (let i = 0; i < 70; i++) {
+        const lx = (rr() - 0.5) * (W - 0.12), lz = fz - cav + 0.03 + rr() * (cav - 0.06);
+        const hgt = 0.2 * (1 - (lz - (fz - cav)) / cav) * (0.6 + 0.4 * rr()); // 뒤가 높은 더미
+        const c = mk(iceGeo, iceMat, [lx, dyb + 0.023 + hgt * rr(), lz], g, { outline: 0.002, shadow: false });
+        c.rotation.set(rr() * 3, rr() * 3, rr() * 3);
+      }
+      // 문: 아래 경첩, 바텐더 쪽으로 아래로 열림
+      const door = new THREE.Group(); door.position.set(0, dyb, fz + 0.006); g.add(door);
+      mk(box(W - 0.04, dh, 0.012), "#c9cdd2", [0, dh / 2, 0], door, { outline: 0.004, shadow: false });
+      mk(box(W - 0.16, 0.025, 0.03), "#8e939a", [0, dh - 0.04, 0.015], door, { outline: 0.003, shadow: false }); // 손잡이
+      for (let i = 0; i < 5; i++) mk(box(W - 0.12, 0.008, 0.006), "#7d828a", [0, y0 + 0.07 + i * 0.03, fz + 0.002], g, no); // 아래 환기 그릴
+      mk(new THREE.SphereGeometry(0.008, 8, 6), glowMat("#5dff9a"), [W / 2 - 0.05, y0 + Hh - 0.03, fz + 0.004], g, no); // 전원 불빛
+      g.userData.ice = { door, dh, dyb, fz, W, open: 0, t: -1 };
+      g.userData.hit = [W, Hh, D, y0 + Hh / 2]; g.userData.sayY = dyb + dh + 0.1; g.userData.sayScale = 0.5;
+      const [ox, oz] = rotXZ(0, fz + 0.15, p.rot); g.userData.sayPos = [p.x + ox, p.z + oz];
       iceMakers.push(g);
+      return true;
+    }
+    case "fridge": { // 언더카운터 냉장고: 왼쪽 냉동 / 오른쪽 냉장, 가운데에서 양옆으로 열림 (로컬 +z = 바텐더 쪽)
+      const W = p.w ?? 1.2, D = 0.42, y0 = 0.02, Hh = 0.88, steel = "#b8bcc2", no = { outline: 0, shadow: false };
+      const fz = D / 2, cyb = y0 + 0.14, ch = Hh - 0.2, cav = 0.32;
+      mk(box(W, cyb - y0, D), steel, [0, (y0 + cyb) / 2, 0], g, { outline: 0.008, shadow: false });
+      mk(box(W, y0 + Hh - (cyb + ch), D), steel, [0, (cyb + ch + y0 + Hh) / 2, 0], g, { outline: 0.008, shadow: false });
+      mk(box(W, ch, D - cav), steel, [0, cyb + ch / 2, -fz + (D - cav) / 2], g, { outline: 0.008, shadow: false });
+      for (const sx of [-1, 0, 1]) mk(box(0.03, ch, cav), steel, [sx * (W / 2 - 0.015), cyb + ch / 2, fz - cav / 2], g, { outline: 0.006, shadow: false });
+      for (const [sx, col] of [[-1, "#cfe2ec"], [1, "#e9eef0"]]) { // 안쪽 (냉동은 서리빛)
+        mk(new THREE.PlaneGeometry(W / 2 - 0.05, ch), col, [sx * W / 4, cyb + ch / 2, fz - cav + 0.001], g, no);
+        mk(new THREE.PlaneGeometry(W / 2 - 0.05, cav), col, [sx * W / 4, cyb + 0.002, fz - cav / 2], g, no).rotation.x = -Math.PI / 2;
+        mk(box(W / 2 - 0.05, 0.01, cav - 0.02), "#d4d8dc", [sx * W / 4, cyb + ch * 0.5, fz - cav / 2], g, { outline: 0.002, shadow: false }); // 선반
+      }
+      for (let i = 0; i < 6; i++) mk(box(0.12, 0.07, 0.14), i % 2 ? "#f4f7f9" : "#bcd6e6", [-W / 2 + 0.12 + (i % 3) * 0.16, cyb + 0.04 + Math.floor(i / 3) * ch * 0.5, fz - cav + 0.1], g, { outline: 0.003, shadow: false }); // 냉동 상자
+      const milkGeo = box(0.075, 0.19, 0.075), milkTop = new THREE.ConeGeometry(0.055, 0.05, 4);
+      const carton = (parent, x, y, z) => { const c = new THREE.Group(); c.position.set(x, y, z); parent.add(c);
+        mk(milkGeo, "#fbfbf8", [0, 0.095, 0], c, { outline: 0.003, shadow: false });
+        mk(box(0.077, 0.05, 0.077), "#3d79c9", [0, 0.11, 0], c, no);
+        mk(milkTop, "#fbfbf8", [0, 0.215, 0], c, { outline: 0.002, shadow: false }).rotation.y = Math.PI / 4;
+        return c; };
+      for (const [x, z] of [[0.12, -0.08], [0.22, -0.1], [0.4, -0.08]]) carton(g, x, cyb + 0.002, fz - cav + 0.08 + 0.04 + z * 0);
+      for (const x of [0.15, 0.25, 0.35, 0.45]) mk(cyl(0.022, 0.022, 0.13, 8), ["#7a3b2e", "#c9a54a", "#3f6b4a", "#e9e2c8"][Math.round(x * 10) % 4], [x, cyb + ch * 0.5 + 0.07, fz - cav + 0.1], g, { outline: 0.003, shadow: false });
+      // 쓰러질 맨 앞 우유: 앞쪽 아래 모서리가 회전축
+      const milkPivot = new THREE.Group(); milkPivot.position.set(0.3, cyb + 0.002, fz - 0.03); g.add(milkPivot);
+      const milk = carton(milkPivot, 0, 0, -0.0375);
+      const puddle = mk(new THREE.CircleGeometry(0.3, 28), new THREE.MeshBasicMaterial({ color: "#f8f7f2", transparent: true, opacity: 0.9, depthWrite: false }), [0.3, 0.013, fz + 0.32], g, no);
+      puddle.rotation.x = -Math.PI / 2; puddle.scale.setScalar(0.001); puddle.renderOrder = 2;
+      const stream = mk(cyl(0.006, 0.01, 1, 6), "#f8f7f2", [0.3, 0, fz + 0.2], g, no); stream.visible = false;
+      // 문 2개 (바깥 끝 경첩)
+      const doors = [-1, 1].map((sx) => {
+        const hg = new THREE.Group(); hg.position.set(sx * W / 2, cyb, fz + 0.006); g.add(hg);
+        mk(box(W / 2 - 0.01, ch, 0.014), "#c9cdd2", [-sx * (W / 4 - 0.005), ch / 2, 0], hg, { outline: 0.004, shadow: false });
+        mk(box(0.022, ch * 0.5, 0.03), "#8e939a", [-sx * (W / 2 - 0.05), ch * 0.55, 0.018], hg, { outline: 0.003, shadow: false }); // 세로 손잡이
+        const lab = canvasTex(128, 48, (c, w, h) => { c.fillStyle = "#1e2226"; c.fillRect(0, 0, w, h); c.font = "bold 26px sans-serif"; c.textAlign = "center"; c.textBaseline = "middle";
+          c.fillStyle = sx < 0 ? "#8fd3ff" : "#7dffa6"; c.fillText(sx < 0 ? "냉동 -18°" : "냉장 3°", w / 2, h / 2 + 1); });
+        mk(new THREE.PlaneGeometry(0.12, 0.045), new THREE.MeshBasicMaterial({ map: lab }), [-sx * (W / 4), ch - 0.08, 0.008], hg, no);
+        return hg;
+      });
+      for (let i = 0; i < 4; i++) mk(box(W - 0.1, 0.008, 0.006), "#7d828a", [0, y0 + 0.03 + i * 0.026, fz + 0.002], g, no); // 아래 환기 그릴
+      g.userData.fr = { doors, milkPivot, milk, puddle, stream, fz, cyb, t: -1, ft: -1 };
+      fridges.push(g);
+      // 누르는 곳 2개 (냉동 / 냉장)
+      for (const sx of [-1, 1]) {
+        const hg = new THREE.Group(); hg.position.set(sx * W / 4, 0, 0); g.add(hg);
+        const [ox, oz] = rotXZ(sx * W / 4, fz + 0.18, p.rot);
+        hg.userData.sayPos = [p.x + ox, p.z + oz]; hg.userData.sayScale = 0.5;
+        addSayHit({ type: "fridge", x: p.x + ox, z: p.z + oz, say: sx < 0 ? "냉동칸이에요\n으슬으슬 -18°" : "냉장칸이에요\n어? 우유가…" }, hg, [W / 2, Hh, D, y0 + Hh / 2], cyb + ch + 0.08);
+        sayProps[sayProps.length - 1].onTap = () => (sx < 0 ? freezerPuff(g) : spillMilk(g));
+      }
       return true;
     }
     case "speaker": { // JBL 4312A 우드 (호두나무 통 + 파란 앞판 + 흰 우퍼). 로컬 +z = 앞
@@ -4041,7 +4197,7 @@ function drawMinimap() {
 }
 
 function initWalk() {
-  if (new URLSearchParams(location.search).has("debug")) { window.__walk = walk; window.__cam = camera; window.__seats = seats; window.__bt = bartenders; } // 확인용
+  if (new URLSearchParams(location.search).has("debug")) { window.__walk = walk; window.__cam = camera; window.__seats = seats; window.__bt = bartenders; window.__fx = { spillMilk, spillIce, freezerPuff, fridges, iceMakers, blindFaces, setBlindLevel, sayProps }; } // 확인용
   $("walkBtn").addEventListener("click", enterWalk);
   $("mapBtn").addEventListener("click", exitWalk);
   $("enterBtn").addEventListener("click", () => {
