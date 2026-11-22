@@ -43,6 +43,8 @@ export default {
     wall: "#f2e6ec", // 은은한 분홍빛 흰 벽
     ceiling: "#ddd0d3", // 천장은 조명이 없어 벽보다 어둡게
     beams: [4.6, 6.6, 8.6],
+    // 모서리 흰 벽 기둥 (유리 구간을 그만큼 줄임): 왼쪽 창 ↔ 대각선 창 모서리
+    pillars: [{ edge: 3, end: "b", w: 0.4 }, { edge: 4, end: "a", w: 0.4 }],
   },
 
   door: { wall: "front", x: 8.1, w: 1.1 },

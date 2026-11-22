@@ -403,6 +403,14 @@ function buildRoom() {
   buildInsideShell(T);
 }
 
+const BLIND_BOTTOM = 1.12; // 블라인드는 이 높이 위로만
+const clearGlass = () => { const m = new THREE.MeshBasicMaterial({ color: "#cfe6f0", transparent: true, opacity: 0.12, depthWrite: false, side: THREE.DoubleSide }); return m; };
+/** 유리 구간 (변 로컬 x, -len/2 = a 쪽). room.pillars: [{ edge, end: "a"|"b", w }] */
+function glassSpan(e) {
+  let g0 = -e.len / 2, g1 = e.len / 2;
+  for (const pl of R.pillars || []) if (pl.edge === e.i) { if (pl.end === "a") g0 += pl.w; else g1 -= pl.w; }
+  return [g0, g1];
+}
 /** 벽 한 면: wall(막힌 벽) / glass(블라인드 통유리) */
 function buildEdge(e, group, h, T) {
   const g = new THREE.Group();
@@ -414,19 +422,25 @@ function buildEdge(e, group, h, T) {
   const sill = 0.12, top = h - 0.32;
   wallBox(0, sill);
   wallBox(top, h);
-  // 블라인드 유리
+  // 모서리 기둥 (room.pillars): 유리는 기둥 사이만
+  const [g0, g1] = glassSpan(e);
+  const gw = g1 - g0, gc = (g0 + g1) / 2;
+  for (const [a, b] of [[-e.len / 2, g0], [g1, e.len / 2]]) if (b - a > 0.01) mk(box(b - a, top - sill, T), R.wall, [(a + b) / 2, (top + sill) / 2, 0], g, { outline: 0.02, shadow: false });
+  // 블라인드: 장 높이 위쪽에만 (아래는 맑은 유리 → 밖에서 장이 비쳐 보임)
+  const bl0 = BLIND_BOTTOM;
   const t = blindsTex.clone();
   t.needsUpdate = true;
-  t.repeat.set(e.len / 0.5, (top - sill) / 1.1);
+  t.repeat.set(gw / 0.5, (top - bl0) / 1.1);
   const mat = new THREE.MeshBasicMaterial({ map: t, color: "#fff6f2", transparent: true, side: THREE.DoubleSide, depthWrite: false });
   registerTint(mat);
-  mk(new THREE.PlaneGeometry(e.len, top - sill), mat, [0, (top + sill) / 2, 0], g, { outline: 0, shadow: false });
+  mk(new THREE.PlaneGeometry(gw, top - bl0), mat, [gc, (top + bl0) / 2, 0], g, { outline: 0, shadow: false });
+  mk(new THREE.PlaneGeometry(gw, bl0 - sill), clearGlass(), [gc, (bl0 + sill) / 2, 0], g, { outline: 0, shadow: false });
   // 흰 창틀
   const white = "#f4f1ec";
-  const n = Math.max(1, Math.round(e.len / 1.6));
-  for (let i = 0; i <= n; i++) mk(box(0.06, top - sill, T * 0.8), white, [-e.len / 2 + (e.len / n) * i, (top + sill) / 2, 0], g, { outline: 0.01, shadow: false });
-  mk(box(e.len, 0.05, T * 0.9), white, [0, top - 0.02, 0], g, { outline: 0.01, shadow: false });
-  mk(box(e.len, 0.05, T * 0.9), white, [0, sill + 0.02, 0], g, { outline: 0.01, shadow: false });
+  const n = Math.max(1, Math.round(gw / 1.6));
+  for (let i = 0; i <= n; i++) mk(box(0.06, top - sill, T * 0.8), white, [g0 + (gw / n) * i, (top + sill) / 2, 0], g, { outline: 0.01, shadow: false });
+  mk(box(gw, 0.05, T * 0.9), white, [gc, top - 0.02, 0], g, { outline: 0.01, shadow: false });
+  mk(box(gw, 0.05, T * 0.9), white, [gc, sill + 0.02, 0], g, { outline: 0.01, shadow: false });
   // 햇살 줄무늬 (방 안쪽 바닥)
   if (group === roomGroup || !sunPatches.some((m) => m.userData.edge === e.i)) {
     addSunPatch(g, e.len * 0.95, 2.6, 0, T / 2);
@@ -891,7 +905,7 @@ function buildInsideShell(T) {
     const dh = 2.2;
     // 정면 창 자리는 뚫어 둠 → 블라인드 틈으로 진짜 바깥(골목)이 보임
     const winW0 = LAYOUT.front?.windowW ?? 2.6;
-    const ox0 = door.x - door.w / 2 - 0.05 - winW0, ox1 = door.x - door.w / 2 - 0.05, oy0 = 0.55, oy1 = 2.45;
+    const ox0 = door.x - door.w / 2 - 0.05 - winW0, ox1 = door.x - door.w / 2 - 0.05, oy0 = 0.12, oy1 = 2.75;
     front(FRONT_X0 - T / 2, ox0, 0, H);
     front(ox0, ox1, 0, oy0);
     front(ox0, ox1, oy1, H);
@@ -903,10 +917,12 @@ function buildInsideShell(T) {
     const wx0 = door.x - door.w / 2 - 0.05 - winW, wx1 = door.x - door.w / 2 - 0.05;
     const t = blindsTex.clone();
     t.needsUpdate = true;
-    t.repeat.set(winW / 0.5, 1.9 / 1.1);
-    const bm = new THREE.MeshBasicMaterial({ map: t, color: "#fff6f2", transparent: true, depthWrite: false });
+    t.repeat.set(winW / 0.5, (2.75 - BLIND_BOTTOM) / 1.1);
+    const bm = new THREE.MeshBasicMaterial({ map: t, color: "#fff6f2", transparent: true, depthWrite: false, side: THREE.DoubleSide });
     registerTint(bm);
-    const inner = mk(new THREE.PlaneGeometry(winW, 1.9), bm, [(wx0 + wx1) / 2, 1.5, R.d - 0.005], fpGroup, { outline: 0, shadow: false });
+    const inner = mk(new THREE.PlaneGeometry(winW, 2.75 - BLIND_BOTTOM), bm, [(wx0 + wx1) / 2, (2.75 + BLIND_BOTTOM) / 2, R.d - 0.005], fpGroup, { outline: 0, shadow: false });
+    mk(new THREE.PlaneGeometry(winW, BLIND_BOTTOM - 0.12), clearGlass(), [(wx0 + wx1) / 2, (BLIND_BOTTOM + 0.12) / 2, R.d + 0.02], fpGroup, { outline: 0, shadow: false });
+    for (const y of [0.14, 2.73]) mk(box(winW, 0.05, 0.12), "#f4f1ec", [(wx0 + wx1) / 2, y, R.d + 0.02], fpGroup, { outline: 0.008, shadow: false });
     inner.renderOrder = 3;
     {
       const sg = new THREE.Group();
@@ -1013,40 +1029,19 @@ function decorateGlassFacade(e, g, top) {
   }
   const skip = (x, half = 0) => doorX != null && Math.abs(x - doorX) < 0.55 + half;
   addUpperWindows(g, -L / 2, L / 2, zo + 0.01, 77 + e.i * 13);
-  // 흰 창틀: 양 끝 기둥, 위 채광창 가로대, 중간 가로대
+  // 흰 창틀 (유리 구간만): 양 끝, 위 채광창 가로대, 중간 가로대 — 바깥 그룹은 로컬 x 가 반대
   const white = "#f2efe8";
-  for (const x of [-L / 2 + 0.03, L / 2 - 0.03]) mk(box(0.07, H - 0.3, 0.06), white, [x, (H - 0.3) / 2 + 0.06, zo], g, { outline: 0.008, shadow: false });
-  mk(box(L, 0.06, 0.06), white, [0, H - 0.33, zo], g, { outline: 0.008, shadow: false });
-  mk(box(L, 0.05, 0.06), white, [0, 2.3, zo], g, { outline: 0.006, shadow: false });
-  // 창 아래: 사선 무늬 나무 패널 + 주황 LED + 술병 선반 (바깥에서 보임, 문 자리는 비움)
-  const stripes = canvasTex(256, 64, (c, w, h) => {
-    c.fillStyle = "#c98a6a"; c.fillRect(0, 0, w, h);
-    c.strokeStyle = "rgba(120,60,40,.45)"; c.lineWidth = 3;
-    for (let i = -h; i < w; i += 12) { c.beginPath(); c.moveTo(i, h); c.lineTo(i + h, 0); c.stroke(); }
-  }, [L / 0.9, 1]);
-  const bottles = canvasTex(512, 64, (c, w, h) => {
-    const grd = c.createLinearGradient(0, 0, 0, h); grd.addColorStop(0, "#4a2a22"); grd.addColorStop(1, "#c8743e");
-    c.fillStyle = grd; c.fillRect(0, 0, w, h);
-    const cols = ["#f2c27a", "#c9a54a", "#e9e2c8", "#8a5a2b", "#f6d9a0", "#b8432f", "#d9c27a"];
-    for (let x = 6; x < w - 10; x += 14 + (x % 5)) { c.fillStyle = cols[(x * 7) % cols.length]; const bh = 26 + ((x * 13) % 20); c.fillRect(x, h - bh, 9, bh); c.fillRect(x + 3, h - bh - 8, 3, 8); }
-  }, [L / 2.2, 1]);
-  const segs = doorX == null ? [[-L / 2 + 0.07, L / 2 - 0.07]] : [[-L / 2 + 0.07, doorX - 0.55], [doorX + 0.55, L / 2 - 0.07]];
-  for (const [a, b] of segs) {
-    if (b - a < 0.2) continue;
-    const cx = (a + b) / 2, w = b - a;
-    const pm = new THREE.MeshBasicMaterial({ map: stripes }); registerTint(pm);
-    mk(new THREE.PlaneGeometry(w, 0.72), pm, [cx, 0.5, zo + 0.032], g, no);
-    const led = new THREE.MeshBasicMaterial({ color: "#ffb070", transparent: true, opacity: 0.3 });
-    mk(new THREE.PlaneGeometry(w, 0.035), led, [cx, 0.9, zo + 0.034], g, no);
-    innerGlows.push([led, 0.2, 1]);
-    const bm = new THREE.MeshBasicMaterial({ map: bottles, transparent: true, opacity: 0.85 });
-    mk(new THREE.PlaneGeometry(w, 0.42), bm, [cx, 1.13, zo + 0.033], g, no);
-    mk(box(w, 0.03, 0.08), white, [cx, 0.88, zo + 0.02], g, { outline: 0.004, shadow: false });
-  }
+  const [ga, gb] = glassSpan(e), G0 = -gb, G1 = -ga, GW = G1 - G0, GC = (G0 + G1) / 2;
+  for (const x of [G0 + 0.03, G1 - 0.03]) mk(box(0.07, H - 0.3, 0.06), white, [x, (H - 0.3) / 2 + 0.06, zo], g, { outline: 0.008, shadow: false });
+  mk(box(GW, 0.06, 0.06), white, [GC, H - 0.33, zo], g, { outline: 0.008, shadow: false });
+  mk(box(GW, 0.05, 0.06), white, [GC, 2.3, zo], g, { outline: 0.006, shadow: false });
+  // (창 아래 술병·사선 무늬·LED 는 매장 안 장이 유리 너머로 비쳐 보이는 것 — buildBackbar)
   if (doorX != null) mk(box(1.25, 0.14, 0.5), "#b9b4ac", [doorX, 0.07 - 0.12, zo + 0.27], g, { outline: 0.01, shadow: false }); // 문 앞 돌계단
   // 대각선 면: 양옆 기둥 케이지 벽등, 흰 A형 입간판, 주차금지 원뿔
   if (diag) {
-    for (const x of [-L / 2 - 0.25, L / 2 + 0.25]) cageLamp(g, x, 2.45, zo + 0.02);
+    const pl = (R.pillars || []).find((q) => q.edge === e.i);
+    const lampXs = [L / 2 + 0.25, pl ? (pl.end === "a" ? L / 2 - pl.w / 2 : -L / 2 + pl.w / 2 - 0.05) : -L / 2 - 0.25];
+    for (const x of lampXs) cageLamp(g, x, 2.45, zo + 0.04);
     if (doorX != null) { // A형 입간판 (흰색)
       const ab = new THREE.Group(); ab.position.set(doorX + 0.15, 0, zo + 0.95); g.add(ab);
       for (const s of [-1, 1]) { const pnl = mk(box(0.48, 0.7, 0.03), "#f4f1ea", [0, 0.36, s * 0.1], ab, { outline: 0.008 }); pnl.rotation.x = s * -0.15; }
@@ -1081,6 +1076,12 @@ function buildSideFacades(T, top, brickMat) {
     const part = (y0, y1) => mk(box(e.len + 0.3, y1 - y0, 0.03), brickMat(e.len + 0.3, y1 - y0), [0, (y0 + y1) / 2, 0], g, { outline: 0.015, shadow: false });
     part(H - 0.32, top);
     part(0, 0.12);
+    // 모서리 기둥 바깥면: 안쪽 기둥 폭 + 벽 두께(모서리에서 바깥으로 늘어나는 만큼)
+    for (const pl of R.pillars || []) {
+      if (pl.edge !== e.i) continue;
+      const w = pl.w + T + 0.03, x0 = pl.end === "a" ? e.len / 2 - pl.w : -e.len / 2 - (T + 0.03); // 바깥 그룹은 로컬 x 가 반대
+      mk(box(w, H, 0.035), brickMat(w, H), [x0 + w / 2, H / 2, 0.003], g, { outline: 0.015, shadow: false });
+    }
     // 길 (아스팔트, 인도 턱 없음)
     mk(box(e.len + 1.4, 0.04, 1.3), LINE ? "#74717d" : "#4a4950", [0, -0.1, 0.7 * outward * -1], g, { outline: 0, shadow: false });
     decorateGlassFacade(e, g, top);
@@ -1157,42 +1158,21 @@ function buildStorefront(T, door, dh) {
 
   // ── 쇼윈도
   const wx = opL + winW / 2, wz = zO + 0.006; // 벽 바깥면 바로 앞
-  // 아래 패널 (분홍빛, 사선 무늬)
-  const panel = canvasTex(256, 128, (g, w, h) => {
-    g.fillStyle = "#f2d3cf"; g.fillRect(0, 0, w, h);
-    g.strokeStyle = "rgba(170,110,110,.25)"; g.lineWidth = 3;
-    for (let i = -h; i < w; i += 14) { g.beginPath(); g.moveTo(i, h); g.lineTo(i + h, 0); g.stroke(); }
-  });
-  nightGlow.windows.push(mk(new THREE.PlaneGeometry(winW - 0.08, 0.92), flat(panel), [wx, 0.12 + 0.46, wz], fpGroup, no).material);
-  // 선반 + 주황 LED 줄조명 + 촛불
-  mk(box(winW - 0.06, 0.05, 0.16), "#2b2522", [wx, 1.06, wz + 0.08], fpGroup, ol);
-  mk(box(winW - 0.1, 0.03, 0.02), new THREE.MeshBasicMaterial({ color: "#ffad66" }), [wx, 1.02, wz + 0.15], fpGroup, no);
-  const glowStrip = nightGlow.strip = mk(new THREE.PlaneGeometry(winW - 0.1, 0.35), new THREE.MeshBasicMaterial({ color: "#ff9a5c", transparent: true, opacity: 0.35, depthWrite: false }), [wx, 0.86, wz + 0.004], fpGroup, no);
-  glowStrip.renderOrder = 2;
-  // (양초는 매장 안 정면 창 아래 장 위로 옮김 — layout props "candles")
-  // 유리 너머 따뜻한 실내 + 블라인드
+  // (쇼윈도는 진짜 유리: 매장 안 장·블라인드·조명이 비쳐 보임. 문 위 작은 창 그림만 남김)
   const blinds = (rows) => canvasTex(256, 256, (g, w, h) => {
     const grd = g.createLinearGradient(0, 0, 0, h);
     grd.addColorStop(0, "#d9c7cf"); grd.addColorStop(1, "#b99aa8");
     g.fillStyle = grd; g.fillRect(0, 0, w, h);
-    // 안쪽 사람/조명 실루엣
-    g.fillStyle = "rgba(60,40,60,.35)";
-    g.beginPath(); g.ellipse(w * 0.62, h * 0.82, 26, 40, 0, 0, Math.PI * 2); g.fill();
-    g.beginPath(); g.arc(w * 0.62, h * 0.6, 16, 0, Math.PI * 2); g.fill();
-    g.fillStyle = "rgba(80,150,200,.55)"; g.fillRect(w * 0.2, h * 0.45, 70, 40);
-    g.fillStyle = "rgba(255,210,150,.8)"; g.beginPath(); g.arc(w * 0.82, h * 0.18, 12, 0, Math.PI * 2); g.fill();
     g.fillStyle = "rgba(255,255,255,.38)";
     for (let y = 0; y < h; y += h / rows) g.fillRect(0, y, w, h / rows * 0.55);
   });
-  nightGlow.windows.push(mk(new THREE.PlaneGeometry(winW - 0.1, 1.15), flat(blinds(26)), [wx, 1.72, wz], fpGroup, no).material);
-  nightGlow.windows.push(mk(new THREE.PlaneGeometry(winW - 0.1, 0.5), flat(blinds(12)), [wx, 2.55, wz], fpGroup, no).material);
   // 창틀 (흰색)
   
   mk(box(winW, 0.07, 0.06), white, [wx, 2.3, zO + 0.03], fpGroup, ol);
   mk(box(0.07, opTop, 0.06), white, [opL + winW, opTop / 2, zO + 0.03], fpGroup, ol);
   // 유리 반사
-  const shine = new THREE.MeshBasicMaterial({ color: "#ffffff", transparent: true, opacity: 0.22, depthWrite: false });
-  mk(box(0.12, 1.0, 0.005), shine, [wx - winW * 0.25, 1.72, zO + 0.04], fpGroup, no).rotation.z = 0.5;
+  const shine = new THREE.MeshBasicMaterial({ color: "#ffffff", transparent: true, opacity: 0.1, depthWrite: false });
+  mk(box(0.1, 0.9, 0.005), shine, [wx - winW * 0.25, 1.7, zO + 0.04], fpGroup, no).rotation.z = 0.5;
 
   // ── 문 위: 작은 창 + 환풍기
   mk(box(door.w + 0.1, 0.06, 0.06), white, [door.x, dh + 0.02, zO + 0.03], fpGroup, ol);
@@ -1775,6 +1755,24 @@ function buildBackbar(p) {
   const S = pathSamples(curve, 0.15);
   ribbon(S, (p.d ?? 0.45) / 2, p.h ?? 0.95, 0, p.color || "#5a3a2b", roomGroup, 0.015);
   ribbon(S, (p.d ?? 0.45) / 2 + 0.02, 0.04, p.h ?? 0.95, "#3e2a20", roomGroup, 0.01);
+  { // 창 쪽 면: 사선 무늬 나무 패널 + 위에서 비추는 은은한 주황 조명 (밖에서 유리 너머로 보임)
+    const hh = p.h ?? 0.95, off = -((p.d ?? 0.45) / 2 + 0.006), Lc = curve.getLength();
+    const stripes = canvasTex(128, 128, (c, w, h) => {
+      c.fillStyle = "#a0603f"; c.fillRect(0, 0, w, h);
+      c.strokeStyle = "rgba(70,35,20,.5)"; c.lineWidth = 4;
+      for (let i = -h; i < w + h; i += 16) { c.beginPath(); c.moveTo(i, h); c.lineTo(i + h, 0); c.stroke(); }
+    });
+    stripes.wrapS = stripes.wrapT = THREE.RepeatWrapping; stripes.repeat.set(Lc / 0.45, 2);
+    const pm = new THREE.MeshBasicMaterial({ map: stripes, side: THREE.DoubleSide });
+    registerTint(pm);
+    stripAlong(S, off, 0.02, hh - 0.01, pm, roomGroup);
+    const wash = new THREE.MeshBasicMaterial({ map: ledTex, transparent: true, side: THREE.DoubleSide, depthWrite: false, opacity: 0.1, blending: THREE.AdditiveBlending });
+    stripAlong(S, off - 0.004, 0.02, hh - 0.01, wash, roomGroup);
+    innerGlows.push([wash, 0.08, 0.7]);
+    const line = new THREE.MeshBasicMaterial({ color: "#ffc58a", transparent: true, opacity: 0.2, side: THREE.DoubleSide });
+    stripAlong(S, off - 0.006, hh - 0.04, hh - 0.015, line, roomGroup);
+    innerGlows.push([line, 0.15, 1]);
+  }
   for (let i = 0; i < p.path.length - 1; i++) { // 사람이 통과하지 못하게
     const [ax, az] = p.path[i], [bx, bz] = p.path[i + 1];
     addObstacle((ax + bx) / 2, (az + bz) / 2, Math.hypot(bx - ax, bz - az) / 2 + 0.02, (p.d ?? 0.45) / 2 + 0.03, THREE.MathUtils.radToDeg(Math.atan2(bz - az, bx - ax)));
