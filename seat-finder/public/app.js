@@ -520,7 +520,7 @@ function buildEdge(e, group, h, T) {
   mat.userData.forceOutside = true; // 세 면 모두 바깥 하늘빛 기준 (낮엔 햇빛 받아 밝게)
   mk(new THREE.PlaneGeometry(gw, top - bl0), mat, [gc, (top + bl0) / 2, 0], g, { outline: 0, shadow: false });
   mk(new THREE.PlaneGeometry(gw, bl0 - sill), clearGlass(), [gc, (bl0 + sill) / 2, 0], g, { outline: 0, shadow: false });
-  if (group === roomGroup) { // 창틀로 나뉜 칸마다 같은 비침 (바깥쪽 -z 를 향함)
+  { // 창틀로 나뉜 칸마다 같은 비침 (키 큰 창이 어느 묶음에 있든) (바깥쪽 -z 를 향함)
     const xs = mullionXs(e);
     for (let i = 0; i < xs.length - 1; i++) {
       const a = xs[i] + 0.03, b = xs[i + 1] - 0.03;
@@ -2340,6 +2340,17 @@ function buildInteriorProp(p, g) {
       g.userData.hit = [0.9, 0.8, 0.6, y0 + 0.35]; g.userData.sayY = y0 + 0.85;
       return true;
     }
+    case "icemaker": { // 바 몸통 안 언더카운터 제빙기 (로컬 +z = 바텐더 쪽 앞면)
+      const W = 0.5, D = 0.42, y0 = 0.08, Hh = 0.84, steel = "#b8bcc2";
+      mk(box(W, Hh, D), steel, [0, y0 + Hh / 2, 0], g, { outline: 0.008, shadow: false });
+      const fz = D / 2 + 0.003;
+      mk(box(W - 0.06, Hh * 0.55, 0.01), "#c9cdd2", [0, y0 + Hh * 0.32, fz], g, { outline: 0.004, shadow: false }); // 아래 문
+      mk(box(W - 0.16, 0.025, 0.03), "#8e939a", [0, y0 + Hh * 0.62, fz + 0.012], g, { outline: 0.003, shadow: false }); // 손잡이
+      for (let i = 0; i < 5; i++) mk(box(W - 0.12, 0.008, 0.006), "#7d828a", [0, y0 + Hh * 0.75 + i * 0.022, fz + 0.002], g, { outline: 0, shadow: false }); // 환기 그릴
+      mk(new THREE.SphereGeometry(0.008, 8, 6), glowMat("#5dff9a"), [W / 2 - 0.05, y0 + Hh - 0.05, fz + 0.004], g, { outline: 0, shadow: false }); // 전원 불빛
+      g.userData.hit = [W, Hh, D, y0 + Hh / 2]; g.userData.sayY = 1.25;
+      return true;
+    }
     case "speaker": { // JBL 4312A 우드 (호두나무 통 + 파란 앞판 + 흰 우퍼). 로컬 +z = 앞
       const y0 = p.y0 ?? 0.99, W = 0.56, H = 0.8, D = 0.4, walnut = "#7a4a2a";
       mk(box(W, H, D), walnut, [0, y0 + H / 2, 0], g, { outline: 0.01 });
@@ -2361,7 +2372,7 @@ function buildInteriorProp(p, g) {
     }
     case "door": { // 안 쓰는 출입문: 입구 문과 같은 크기·모양 (짙은 문틀 + 유리 + 긴 세로 나무 손잡이), 유리 바깥쪽(블라인드 뒤)
       const w = p.w ?? 1.1, h = p.h ?? 2.2, fr = "#4a3a32", oz = 0.12;
-      mk(box(w - 0.04, h - 0.04, 0.03), new THREE.MeshBasicMaterial({ color: "#cfeaf5", transparent: true, opacity: 0.25, depthWrite: false }), [0, h / 2, oz], g, { outline: 0, shadow: false }); // 깊이 안 씀: 뒤 블라인드가 가려지지 않게
+      // (문짝 유리는 따로 두지 않음: 창 유리 한 겹만 → 다른 칸과 같게 보임)
       for (const fx of [-w / 2 + 0.025, w / 2 - 0.025]) mk(box(0.05, h, 0.06), fr, [fx, h / 2, oz], g, { outline: 0.006, shadow: false });
       for (const fy of [0.025, h - 0.025]) mk(box(w, 0.05, 0.06), fr, [0, fy, oz], g, { outline: 0.006, shadow: false });
       mk(box(0.04, 0.8, 0.04), "#a8743f", [w / 2 - 0.12, 1.1, oz + 0.08], g, { outline: 0.006, shadow: false }); // 긴 나무 손잡이
