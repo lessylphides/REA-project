@@ -120,15 +120,19 @@
   body.entering .reticle, body.entering .aim, body.entering .mapbtn, body.entering .joy { display: none !important; }
   .introbox { display: none; position: fixed; z-index: 7; left: 0; right: 0; bottom: 0; padding: 0 16px calc(env(safe-area-inset-bottom) + 28px); justify-content: center; pointer-events: none; }
   body.intro .introbox { display: flex; }
+  /* 입장 버튼: 작고 가벼운 한 줄 */
   .introcard {
-    pointer-events: auto; display: flex; flex-direction: column; align-items: center; gap: 6px;
+    pointer-events: auto; display: flex; flex-direction: row; align-items: center; gap: 12px;
     background: var(--card); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
-    border-radius: 24px; padding: 16px 28px 20px; box-shadow: 0 10px 30px rgba(60,40,20,.2);
+    border-radius: 999px; padding: 6px 6px 6px 18px; box-shadow: 0 6px 18px rgba(20,10,30,.25);
     animation: rise .6s cubic-bezier(.2,1.4,.4,1) both .3s;
   }
-  .introcard small { font-size: 13px; color: var(--sub); font-weight: 700; }
-  .introcard strong { font-size: 24px; font-weight: 800; margin-bottom: 8px; }
-  .introcard .walkbtn { padding: 14px 44px; font-size: 17px; }
+  .introcard small { display: none; }
+  .introcard strong { font-size: 14px; font-weight: 800; letter-spacing: .02em; }
+  .introcard .walkbtn { padding: 8px 18px; font-size: 14px; border-radius: 999px; box-shadow: 0 3px 0 #1f7a55; }
+  .introcard .walkbtn:active { transform: translateY(2px); box-shadow: 0 1px 0 #1f7a55; }
+  /* 가게 앞(입구)에서는 빈자리 수 숨김 */
+  body.intro .top { display: none; }
   @keyframes rise { from { opacity: 0; transform: translateY(30px); } to { opacity: 1; transform: none; } }
   body { transition: background .8s; }
   /* 손그림 그림체(?style=line): 파스텔 하늘 */
