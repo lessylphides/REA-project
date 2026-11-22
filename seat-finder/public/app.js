@@ -1647,27 +1647,28 @@ function buildInteriorProp(p, g) {
       g.userData.hit = [0.5, 1.1, 0.5, 0.55]; g.userData.sayY = 1.35;
       return true;
     }
-    case "bartender": { // 바텐더 (50대, 날카로운 인상, 크림 퀼팅 재킷, 체크 셔츠, 넘긴 긴 머리, 뿔테 안경, 팔짱)
-      const skin = "#f0c9a6", hair = "#2a211d", jacket = "#fffaf0", pants = "#8f9096";
-      const plaid = new THREE.MeshBasicMaterial({ map: canvasTex(64, 64, (c) => {
-        c.fillStyle = "#8a2f35"; c.fillRect(0, 0, 64, 64);
-        c.fillStyle = "rgba(255,255,255,.55)"; for (let i = 0; i < 64; i += 16) { c.fillRect(i, 0, 3, 64); c.fillRect(0, i, 64, 3); }
-        c.fillStyle = "rgba(40,20,30,.45)"; for (let i = 8; i < 64; i += 16) { c.fillRect(i, 0, 5, 64); c.fillRect(0, i, 64, 5); }
-      }, [2, 2]) });
+    case "bartender": { // 바텐더 (50대, 날카로운 인상, 흰 셔츠 + 검정 좁은 넥타이, 넘긴 긴 머리, 뿔테 안경)
+      const skin = "#f0c9a6", hair = "#2a211d", jacket = "#fbfaf6", pants = "#1f1f22"; // jacket = 셔츠 소매 색
       const body = new THREE.Group(); g.add(body);
       g.userData.bt = body;
-      // 다리
+      // 다리 (검정 바지, 검정 구두)
       for (const sx of [-1, 1]) mk(new THREE.CapsuleGeometry(0.075, 0.62, 4, 10), pants, [sx * 0.1, 0.42, 0], body, { outline: 0.012 });
-      for (const sx of [-1, 1]) mk(box(0.12, 0.06, 0.22), "#2a2522", [sx * 0.1, 0.03, 0.04], body, { outline: 0.006 });
-      // 몸통: 체크 셔츠 + 크림 재킷 (앞은 열려 셔츠가 보임)
-      mk(new THREE.CapsuleGeometry(0.17, 0.42, 6, 14), plaid, [0, 1.07, 0], body, { outline: 0.012 });
+      for (const sx of [-1, 1]) mk(box(0.12, 0.06, 0.22), "#111113", [sx * 0.1, 0.03, 0.04], body, { outline: 0.006 });
+      // 흰 셔츠 몸통
+      const torso = mk(new THREE.CapsuleGeometry(0.18, 0.4, 6, 14), jacket, [0, 1.06, 0], body, { outline: 0.012 });
+      torso.scale.set(1.08, 1, 0.82);
+      mk(box(0.34, 0.05, 0.22), pants, [0, 0.78, 0], body, { outline: 0.008 }); // 허리 (바지 위)
+      mk(box(0.06, 0.035, 0.015), "#c9a54a", [0, 0.78, 0.115], body, { outline: 0, shadow: false }); // 버클
+      // 셔츠 단추 줄 + 깃
+      for (let i = 0; i < 4; i++) mk(new THREE.SphereGeometry(0.008, 6, 4), "#d9d6cf", [0.035, 0.9 + i * 0.09, 0.15], body, { outline: 0, shadow: false });
       for (const sx of [-1, 1]) {
-        const j = mk(box(0.17, 0.62, 0.34), jacket, [sx * 0.12, 1.05, -0.01], body, { outline: 0.012 });
-        j.rotation.y = sx * -0.12;
+        const col = mk(box(0.09, 0.05, 0.02), jacket, [sx * 0.045, 1.33, 0.12], body, { outline: 0.006 });
+        col.rotation.z = sx * -0.5;
       }
-      mk(box(0.4, 0.62, 0.12), jacket, [0, 1.05, -0.12], body, { outline: 0.01 }); // 등판
-      // 퀼팅 무늬 (재킷에 가는 선)
-      for (let i = 0; i < 4; i++) for (const sx of [-1, 1]) mk(box(0.15, 0.008, 0.01), "#d9cdb2", [sx * 0.13, 0.85 + i * 0.13, 0.165], body, { outline: 0, shadow: false });
+      // 검정 좁은 넥타이 (매듭 + 길게)
+      mk(box(0.04, 0.035, 0.03), "#111113", [0, 1.3, 0.14], body, { outline: 0.004 });
+      const tie = mk(box(0.032, 0.36, 0.015), "#111113", [0, 1.1, 0.152], body, { outline: 0.004 });
+      tie.rotation.x = -0.04;
       // 한 손은 옆으로 내리고, 다른 손은 앞으로 위스키 병을 들고 있음
       mk(new THREE.CapsuleGeometry(0.06, 0.36, 4, 10), jacket, [-0.25, 1.04, 0], body, { outline: 0.012 }).rotation.z = -0.08;
       mk(new THREE.SphereGeometry(0.045, 8, 6), skin, [-0.27, 0.8, 0.01], body, { outline: 0.006 });
