@@ -22,66 +22,84 @@ export default {
     sign: "DIVE HIDE AWAY", // 입구 옆 나무 명판 + 첫 화면 이름
     number: "44", // 파란 번지판 숫자 (없애려면 null)
     street: "", // 번지판 위 작은 글씨 (예: 도로명)
-    windowW: 2.6, // 문 왼쪽 쇼윈도 폭(m)
+    windowW: 2.8, // 문 왼쪽 쇼윈도 폭(m)
     doorSign: ["COME IN  we're", "OPEN"], // 문에 걸린 팻말
   },
 
+  // 부채꼴 매장: 안쪽 벽 + 오른쪽 벽은 막혀 있고, 앞쪽 3면이 통유리(블라인드)
   room: {
-    w: 14, // 가로
-    d: 9, // 세로
-    wallH: 2.8,
-    floor: "#e9cfa7", // 바닥(원목)
-    wall: "#fbf3e6",
-    accent: "#7fb6a4", // 벽 아랫단 포인트 색
+    w: 9.5, // 가로
+    d: 9.5, // 세로
+    wallH: 2.9,
+    // 바닥 외곽선 꼭짓점 (위에서 본 모양, 순서대로 이어서 벽이 됨)
+    outline: [[0, 0], [9.5, 0], [9.5, 9.5], [3.9, 9.5], [0, 5.6]],
+    // 각 변의 종류: wall = 벽, front = 입구 있는 정면 유리, glass = 통유리(블라인드)
+    edges: ["wall", "wall", "front", "glass", "glass"],
+    floor: "#b9aaa6", // 콘크리트 바닥
+    floorStyle: "concrete",
+    wall: "#f2e6ec", // 은은한 분홍빛 흰 벽
+    ceiling: "#f1e7ec",
+    beams: [4.6, 6.6, 8.6],
   },
 
-  // 창문/문 (back = 안쪽 벽, left = 왼쪽 벽)
-  windows: [
-    { wall: "back", x: 2.5, w: 2.4 },
-    { wall: "back", x: 6.2, w: 2.4 },
-    { wall: "left", z: 3.5, w: 3 },
-  ],
-  door: { wall: "front", x: 12.2, w: 1.4 },
+  door: { wall: "front", x: 8.1, w: 1.1 },
 
   // 꾸밈 소품. say 를 적으면 손님이 눌렀을 때 말풍선으로 보여 주고 '발견'으로 셉니다.
-  //   → 매장 이야기, 메뉴 자랑, 숨은 포인트를 적어 두면 손님이 둘러보는 재미가 생겨요.
+  //   → 매장 이야기, 메뉴 자랑, 숨은 포인트를 적어 두면 손님이 둘러보는 재미가 생겨요. (문구는 예시예요)
   props: [
-    { type: "counter", x: 11.2, z: 1.0, w: 4.6, d: 1.0, label: "주문 · 픽업", say: "주문은 여기서!\n원두는 매일 아침 직접 갈아요" },
-    { type: "shelf", x: 11.2, z: 0.25, w: 4.0, say: "사장님이 모은 머그컵이에요.\n마음에 드는 컵을 골라 보세요" },
-    { type: "plant", x: 0.6, z: 8.3, say: "몬스테라예요.\n매일 아침 물을 줘요" },
-    { type: "plant", x: 9.2, z: 0.6, say: "숨은 포토존 발견!\n이 자리에서 사진이 잘 나와요" },
-    { type: "plant", x: 0.6, z: 0.6, say: "창가 자리는\n오후 햇살이 제일 예뻐요" },
-    { type: "lamp", x: 2.5, z: 1.6, say: "따뜻한 조명 아래\n제일 인기 있는 자리예요" },
-    { type: "lamp", x: 6.2, z: 1.6 },
-    { type: "rug", x: 4.9, z: 6.4, w: 5.6, d: 3.6, color: "#d9b8a0" },
+    // 창 아래 뒷선반 (술병) — 유리를 따라
+    { type: "backbar", path: [[0.3, 0.3], [0.3, 5.48], [4.02, 9.2], [7.0, 9.2]] },
+    { type: "floorlamp", x: 0.3, z: 0.75, y0: 0.99, h: 0.85, say: "주름 갓 스탠드\n은은한 분홍빛이 포인트예요" },
+    { type: "floorlamp", x: 4.7, z: 9.2, y0: 0.99, h: 0.85 },
+    { type: "floorlamp", x: 9.1, z: 8.95, h: 1.45 },
+    { type: "coffee", x: 6.4, z: 9.2, rot: 180, say: "커피도 내려 드려요\n원두 향이 솔솔" },
+    // 조명
+    { type: "pendant", kind: "linear", x: 1.5, z: 2.9, rot: 90, len: 1.8, y: 2.2 },
+    { type: "pendant", kind: "linear", x: 3.0, z: 6.48, rot: 45, len: 1.8, y: 2.2 },
+    { type: "pendant", kind: "linear", x: 5.6, z: 8.0, rot: 0, len: 1.6, y: 2.2, say: "바 위 나무 조명\n잔이 반짝이게 비춰 줘요" },
+    { type: "pendant", kind: "rattan", x: 5.3, z: 4.6, y: 2.15, say: "라탄 조명\n직접 골라 단 등이에요" },
+    { type: "pendant", kind: "rattan", x: 7.9, z: 6.9, y: 2.15 },
+    { type: "pendant", kind: "beehive", x: 8.6, z: 1.4, y: 2.1, say: "벌집 모양 원목 조명" },
+    { type: "projector", x: 5.3, z: 6.0 },
+    // 안쪽 벽 TV 장식장 (TV 는 아래 screens)
+    { type: "tvshelf", x: 5.2, z: 0, w: 3.8, h: 2.6, tvW: 2.35, tvY: 1.55, tvH: 1.32, say: "오늘의 영상\n숲을 보며 쉬어 가세요" },
+    // 식물
+    { type: "bigplant", kind: "palm", x: 2.75, z: 0.45, h: 1.9, say: "야자 화분이에요\n잎이 살랑살랑" },
+    { type: "bigplant", kind: "palm", x: 7.45, z: 0.45, h: 1.6 },
+    { type: "bigplant", kind: "norfolk", x: 8.95, z: 4.7, h: 1.7, say: "노퍽 소나무예요\n겨울엔 트리가 돼요" },
+    { type: "bigplant", kind: "tree", x: 7.35, z: 7.15, h: 2.0, say: "홍콩야자 나무\n매장의 터줏대감이에요" },
+    // 오른쪽 벽
+    { type: "curtain", walkOnly: true, x: 9.46, z: 2.6, rot: 90, w: 1.1, h: 1.2, y: 1.65, say: "나뭇잎 가림막 뒤엔\n작은 창이 숨어 있어요" },
+    { type: "coatrack", x: 9.1, z: 3.7, rot: 90, say: "외투는 여기에\n걸어 주세요" },
+    { type: "sign", walkOnly: true, x: 9.46, z: 6.6, rot: 90, y: 2.1, text: "WELCOME", say: "WELCOME!\n오늘도 와 주셔서 고마워요" },
   ],
 
-  // 테이블: shape = "rect" | "round", seats = 의자 수
+  // 테이블: shape = "oval" | "round" | "rect", chair = "rattan" | "windsor" | "chair"
+  //   chairs: [[x, z], ...] 로 의자 위치를 직접 정할 수 있어요 (테이블 기준)
   tables: [
-    { id: "A1", shape: "rect", x: 2.5, z: 1.6, w: 1.4, d: 0.8, seats: 4 },
-    { id: "A2", shape: "rect", x: 6.2, z: 1.6, w: 1.4, d: 0.8, seats: 4 },
-    { id: "B1", shape: "round", x: 2.6, z: 4.6, r: 0.5, seats: 2 },
-    { id: "B2", shape: "round", x: 5.0, z: 4.6, r: 0.5, seats: 2 },
-    { id: "B3", shape: "round", x: 7.4, z: 4.6, r: 0.5, seats: 2 },
-    { id: "C1", shape: "rect", x: 3.4, z: 6.9, w: 2.0, d: 0.9, seats: 6 },
-    { id: "C2", shape: "rect", x: 6.6, z: 6.9, w: 2.0, d: 0.9, seats: 6 },
-    { id: "W1", shape: "round", x: 0.9, z: 5.9, r: 0.42, seats: 2, rot: 90 },
+    { id: "T1", shape: "oval", x: 5.3, z: 4.6, w: 2.2, d: 1.0, seats: 6, chair: "rattan", color: "#b8743f", leg: "#7a4a2a" },
+    { id: "T2", shape: "rect", x: 8.75, z: 1.25, w: 0.8, d: 0.8, seats: 2, chair: "windsor", color: "#4a3328", leg: "#3a281f",
+      chairs: [[-0.62, 0], [0, 0.62]], lamp: [0.2, -0.2] },
   ],
 
   // 가상 스크린 (나중에 광고 자리). wall: "left" | "back" | "right"
-  //   슬라이드 종류: { title, sub, bg, fg } 글자 / { image: "/ads/a.jpg" } 이미지 / { video: "https://.../a.mp4" } 영상
+  //   슬라이드 종류: { scene: "forest" } 숲 영상 / { title, sub, bg, fg } 글자 / { image: "/ads/a.jpg" } 이미지 / { video: "https://.../a.mp4" } 영상
   //   link 를 넣으면 손님이 화면을 눌렀을 때 그 주소로 이동 (광고 클릭)
   screens: [
     {
-      wall: "left", z: 6.9, y: 1.65, w: 2.0, h: 1.125, interval: 6,
+      wall: "back", x: 5.2, y: 1.55, w: 2.25, h: 1.27, interval: 7,
       slides: [
-        { title: "오늘의 추천", sub: "달콤 쌉싸름한 바닐라 라떼", bg: "#f4a259", fg: "#ffffff" },
+        { scene: "forest", duration: 14 },
+        { title: "오늘의 위스키", sub: "바텐더에게 추천을 받아 보세요", bg: "#7a3b2e", fg: "#ffffff" },
         { title: "숨은 이야기 찾기", sub: "매장 곳곳을 눌러 보세요", bg: "#5b8e7d", fg: "#ffffff" },
         { title: "이 화면에 광고하세요", sub: "우리 동네 가게를 소개해 드려요", bg: "#3d405b", fg: "#ffffff" },
       ],
     },
   ],
 
-  // 바 좌석(일자형 테이블 + 스툴)
-  bars: [{ id: "BAR", x: 11.2, z: 5.0, length: 4.0, seats: 5, rot: 0 }],
+  // 바: path 를 주면 그 길을 따라 휘어진 바 (창을 따라 곡선), seats = 바 의자 수
+  bars: [
+    { id: "BAR", path: [[1.5, 0.9], [1.5, 4.98], [4.52, 8.0], [6.7, 8.0]], radius: 1.1, seats: 8, chair: "barstool",
+      say: "곡선 바 8석\n바텐더와 이야기 나누기 좋은 자리" },
+  ],
 };
