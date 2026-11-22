@@ -28,6 +28,41 @@ const camera = new THREE.PerspectiveCamera(32, 1, 0.05, 200);
 const R = LAYOUT.room;
 const center = new THREE.Vector3(R.w / 2, 0.4, R.d / 2);
 
+// 그림체: "toon"(기본, 3단계 음영) | "line"(굵은 검은 선 + 평면 파스텔, 손그림 느낌)
+//   layout.js 의 style 또는 주소 뒤 ?style=line 으로 미리보기
+const STYLE = new URLSearchParams(location.search).get("style") || LAYOUT.style || "toon";
+const LINE = STYLE === "line";
+const OL = LINE ? 2.6 : 1; // 외곽선 굵기 배율
+document.documentElement.classList.toggle("line", LINE);
+
+/** 손그림 낙서 무늬 (나뭇잎 'c' 선, 풀 짧은 선) */
+const doodleCache = new Map();
+function doodleTex(color, kind = "leaf") {
+  const key = color + kind;
+  if (doodleCache.has(key)) return doodleCache.get(key);
+  const c = document.createElement("canvas");
+  c.width = c.height = 256;
+  const g = c.getContext("2d");
+  g.fillStyle = color; g.fillRect(0, 0, 256, 256);
+  g.strokeStyle = "#1b1b1f"; g.lineWidth = 7; g.lineCap = "round";
+  let seed = 7;
+  const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+  for (let i = 0; i < (kind === "leaf" ? 14 : 18); i++) {
+    const x = rnd() * 256, y = rnd() * 256;
+    g.beginPath();
+    if (kind === "leaf") g.arc(x, y, 12 + rnd() * 8, Math.PI * (0.9 + rnd() * 0.3), Math.PI * (1.7 + rnd() * 0.3));
+    else { g.moveTo(x, y); g.lineTo(x + (rnd() - 0.5) * 8, y - 14 - rnd() * 8); }
+    g.stroke();
+  }
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  doodleCache.set(key, t);
+  return t;
+}
+/** 나뭇잎 재질 (line 그림체면 낙서 무늬) */
+const leafMat = (color) => (LINE ? toon("#ffffff", { map: doodleTex(color) }) : color);
+
 // 만화 느낌: 3단계 음영(툰 셰이딩) + 외곽선
 const gradientMap = (() => {
   const t = new THREE.DataTexture(new Uint8Array([90, 175, 255]), 3, 1, THREE.RedFormat);
@@ -39,11 +74,11 @@ const matCache = new Map();
 const toon = (color, { unique = false, ...extra } = {}) => {
   const key = color + JSON.stringify(extra);
   if (!unique && matCache.has(key)) return matCache.get(key);
-  const m = new THREE.MeshToonMaterial({ color, gradientMap, ...extra });
+  const m = LINE ? new THREE.MeshBasicMaterial({ color, ...extra }) : new THREE.MeshToonMaterial({ color, gradientMap, ...extra });
   if (!unique) matCache.set(key, m);
   return m;
 };
-const outlineMat = new THREE.MeshBasicMaterial({ color: COLOR.outline, side: THREE.BackSide });
+const outlineMat = new THREE.MeshBasicMaterial({ color: LINE ? "#1b1b1f" : COLOR.outline, side: THREE.BackSide });
 
 /** 메쉬 하나 만들기 (외곽선 포함) */
 function mk(geo, mat, pos, parent, { outline = 0.018, shadow = true } = {}) {
@@ -52,6 +87,7 @@ function mk(geo, mat, pos, parent, { outline = 0.018, shadow = true } = {}) {
   m.castShadow = shadow;
   m.receiveShadow = true;
   if (outline) {
+    outline *= OL;
     geo.computeBoundingBox();
     const s = new THREE.Vector3();
     geo.boundingBox.getSize(s);
@@ -198,7 +234,16 @@ function plankTexture() {
   c.width = 512; c.height = 512;
   const ctx = c.getContext("2d");
   ctx.fillStyle = R.floor; ctx.fillRect(0, 0, 512, 512);
-  for (let i = 0; i < 8; i++) {
+  if (LINE) {
+    ctx.fillStyle = "#f4d9a6"; ctx.fillRect(0, 0, 512, 512);
+    ctx.strokeStyle = "rgba(27,27,31,.75)"; ctx.lineWidth = 3; ctx.lineCap = "round";
+    for (let i = 0; i < 8; i++) {
+      ctx.beginPath(); ctx.moveTo(0, i * 64); ctx.lineTo(512, i * 64); ctx.stroke();
+      const off = (i * 197) % 512;
+      ctx.beginPath(); ctx.moveTo(off, i * 64 + 16); ctx.lineTo(off, i * 64 + 48); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo((off + 260) % 512, i * 64 + 32); ctx.lineTo((off + 282) % 512, i * 64 + 32); ctx.stroke();
+    }
+  } else for (let i = 0; i < 8; i++) {
     ctx.fillStyle = i % 2 ? "rgba(255,255,255,.07)" : "rgba(120,70,30,.06)";
     ctx.fillRect(0, i * 64, 512, 64);
     ctx.fillStyle = "rgba(110,70,40,.18)";
@@ -214,7 +259,7 @@ function plankTexture() {
 }
 
 function buildRoom() {
-  const floorMat = new THREE.MeshToonMaterial({ color: "#ffffff", map: plankTexture(), gradientMap });
+  const floorMat = toon("#ffffff", { unique: true, map: plankTexture() });
   const floor = mk(box(R.w, 0.12, R.d), floorMat, [R.w / 2, -0.06, R.d / 2], roomGroup, { outline: 0.04, shadow: false });
   floor.receiveShadow = true;
 
@@ -320,17 +365,31 @@ function canvasTex(w, h, draw, repeat) {
   return t;
 }
 const flat = (map) => new THREE.MeshBasicMaterial({ map });
-const toonMap = (map) => new THREE.MeshToonMaterial({ map, gradientMap });
+const toonMap = (map) => toon("#ffffff", { unique: true, map });
 
 /** 가게 바깥 모습 (사진 참고: 적갈색 세로 벽돌, 흰 테두리 쇼윈도, 유리문, 고래꼬리 조명) */
 function buildStorefront(T, door, dh) {
   const F = LAYOUT.front || {};
   const H = R.wallH, zO = R.d + T + 0.012, no = { outline: 0, shadow: false }, ol = { outline: 0.015, shadow: false };
-  const top = H + 3.2; // 2층까지
+  const top = H + (LINE ? 2.3 : 3.2); // 2층까지 (손그림 그림체는 하늘이 더 보이게 낮게)
+  const upY = LINE ? H + 1.25 : H + 1.9, upH = LINE ? 1.2 : 1.5;
   const brickCol = F.color || "#6e3426";
 
   // ── 벽돌 외벽 (세로로 긴 타일)
   const brick = canvasTex(256, 256, (g, w, h) => {
+    if (LINE) {
+      g.fillStyle = "#b5583f"; g.fillRect(0, 0, w, h);
+      g.strokeStyle = "#1b1b1f"; g.lineWidth = 4; g.lineCap = "round";
+      for (let row = 0; row < 4; row++) {
+        g.beginPath(); g.moveTo(0, row * 64 + 2); g.lineTo(w, row * 64 + 2); g.stroke();
+        for (let col = 0; col < 8; col++) {
+          if ((col + row) % 3 === 0) continue; // 손그림처럼 군데군데만
+          const x = col * 32 + (row % 2) * 16;
+          g.beginPath(); g.moveTo(x, row * 64 + 14); g.lineTo(x, row * 64 + 50); g.stroke();
+        }
+      }
+      return;
+    }
     g.fillStyle = "#3a1d16"; g.fillRect(0, 0, w, h);
     for (let row = 0; row < 4; row++) {
       for (let col = 0; col < 16; col++) {
@@ -454,18 +513,18 @@ function buildStorefront(T, door, dh) {
   mk(box(0.48, 0.42, 0.03), toonMap(wood), [px, 1.72, zO + 0.03], fpGroup, ol);
 
   // ── 바닥: 한 칸 올라간 입구 턱, 보도, 도로(노란 선)
-  const ground = mk(new THREE.CircleGeometry(45, 48), "#3b3b3d", [R.w / 2, -0.125, R.d / 2], fpGroup, no);
+  const ground = mk(new THREE.CircleGeometry(45, 48), LINE ? "#9a98ab" : "#3b3b3d", [R.w / 2, -0.125, R.d / 2], fpGroup, no);
   ground.rotation.x = -Math.PI / 2;
   ground.receiveShadow = true;
-  mk(box(R.w + 8, 0.12, 1.3), "#8e8a85", [R.w / 2, -0.07, R.d + T + 0.65], fpGroup, ol).receiveShadow = true;
-  mk(box(R.w + 8, 0.05, 1.0), "#6b5a58", [R.w / 2, -0.1, R.d + T + 1.8], fpGroup, no).receiveShadow = true;
+  mk(box(R.w + 8, 0.12, 1.3), LINE ? "#d6d0de" : "#8e8a85", [R.w / 2, -0.07, R.d + T + 0.65], fpGroup, ol).receiveShadow = true;
+  mk(box(R.w + 8, 0.05, 1.0), LINE ? "#b8b2c4" : "#6b5a58", [R.w / 2, -0.1, R.d + T + 1.8], fpGroup, no).receiveShadow = true;
   mk(box(R.w + 8, 0.01, 0.12), "#d9b84a", [R.w / 2, -0.07, R.d + T + 2.6], fpGroup, no);
 
   // ── 2층 창문 (흰 창틀, 어두운 유리)
   const upW = Math.min(4.2, (opR - opL) * 1.15);
-  mk(box(upW + 0.16, 1.5, 0.08), white, [(opL + opR) / 2, H + 1.9, zO + 0.02], fpGroup, ol);
-  mk(box(upW, 1.34, 0.06), toon("#2a3550"), [(opL + opR) / 2, H + 1.9, zO + 0.05], fpGroup, no);
-  mk(box(0.07, 1.34, 0.08), white, [(opL + opR) / 2, H + 1.9, zO + 0.07], fpGroup, no);
+  mk(box(upW + 0.16, upH, 0.08), white, [(opL + opR) / 2, upY, zO + 0.02], fpGroup, ol);
+  mk(box(upW, upH - 0.16, 0.06), toon(LINE ? "#bfe0f2" : "#2a3550"), [(opL + opR) / 2, upY, zO + 0.05], fpGroup, no);
+  mk(box(0.07, upH - 0.16, 0.08), white, [(opL + opR) / 2, upY, zO + 0.07], fpGroup, no);
   // 오른쪽 이웃 건물 (흰 셔터)
   const nx0 = R.w + T + 0.02;
   mk(box(4, top - 0.4, 3), "#cfc9bf", [nx0 + 2, (top - 0.4) / 2, R.d - 1.5 + T], fpGroup, ol);
@@ -530,6 +589,39 @@ function buildStorefront(T, door, dh) {
     g.fillStyle = "#d32f2f"; g.font = "800 30px sans-serif"; g.textAlign = "center"; g.fillText("주차금지", w / 2, 76);
   });
   mk(new THREE.PlaneGeometry(0.26, 0.26), flat(noPark), [0, 1.0, 0.025], cone, no);
+  if (LINE) buildSkyDoodles(top);
+}
+
+/** 손그림 그림체: 하늘의 구름 + 이웃 건물 뒤 큰 나무 */
+function buildSkyDoodles(top) {
+  const cloud = canvasTex(512, 256, (g) => {
+    g.fillStyle = "#f1b6e6"; g.strokeStyle = "#1b1b1f"; g.lineWidth = 12; g.lineJoin = "round";
+    g.beginPath();
+    g.moveTo(60, 200);
+    g.bezierCurveTo(10, 200, 20, 130, 80, 140);
+    g.bezierCurveTo(80, 70, 170, 60, 200, 110);
+    g.bezierCurveTo(230, 30, 350, 40, 350, 120);
+    g.bezierCurveTo(420, 90, 480, 150, 450, 200);
+    g.closePath(); g.fill(); g.stroke();
+    g.lineWidth = 9; g.lineCap = "round";
+    for (const [x, y] of [[150, 150], [260, 120], [360, 165]]) { g.beginPath(); g.arc(x, y, 22, Math.PI * 1.05, Math.PI * 1.85); g.stroke(); }
+  });
+  const cx = LAYOUT.door.x - 0.8;
+  const spots = [[cx - 2.0, top + 0.9, R.d + 0.8, 2.4], [cx + 2.2, top + 1.5, R.d + 0.4, 1.8], [cx + 0.4, top + 2.4, R.d - 1, 1.4]];
+  for (const [x, y, z, w] of spots) {
+    const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: cloud, transparent: true }));
+    sp.position.set(x, y, z);
+    sp.scale.set(w, w / 2, 1);
+    fpGroup.add(sp);
+  }
+  // 이웃 건물 뒤로 보이는 동글동글한 나무
+  const tree = new THREE.Group();
+  tree.position.set(R.w + 3.2, 0, R.d - 2.5);
+  fpGroup.add(tree);
+  mk(cyl(0.18, 0.25, top - 0.5, 10), "#7a5236", [0, (top - 0.5) / 2, 0], tree);
+  for (const [x, y, z, r, col] of [[0, top + 0.2, 0, 1.3, "#a9d65c"], [-0.9, top - 0.5, 0.3, 1.0, "#8fc25a"], [0.8, top - 0.3, 0.4, 0.95, "#c3e46e"]]) {
+    mk(new THREE.SphereGeometry(r, 18, 14), leafMat(col), [x, y, z], tree, { outline: 0.03 });
+  }
 }
 
 /** 고무나무 (흰 화분) */
@@ -542,7 +634,7 @@ function makeRubberPlant(parent, x, z) {
   const leaf = new THREE.SphereGeometry(0.09, 10, 8);
   for (let i = 0; i < 11; i++) {
     const a = i * 2.3, y = 0.6 + i * 0.07;
-    const m = mk(leaf, i % 2 ? "#4f7d3a" : "#6a9a4a", [Math.cos(a) * 0.16, y, Math.sin(a) * 0.16], g, { outline: 0.01 });
+    const m = mk(leaf, leafMat(i % 2 ? (LINE ? "#7fb24a" : "#4f7d3a") : (LINE ? "#a9d65c" : "#6a9a4a")), [Math.cos(a) * 0.16, y, Math.sin(a) * 0.16], g, { outline: 0.01 });
     m.scale.set(1, 0.35, 1.7);
     m.rotation.y = -a;
   }
@@ -556,9 +648,9 @@ function makeCypress(parent, x, z, k = 1) {
   parent.add(g);
   mk(cyl(0.2, 0.15, 0.36, 18), "#c49a86", [0, 0.18, 0], g);
   mk(cyl(0.18, 0.18, 0.02, 18), "#2e2a28", [0, 0.35, 0], g, { outline: 0, shadow: false });
-  const cols = ["#5d7d68", "#4f6e5b", "#6b8b74"];
+  const cols = LINE ? ["#8fc25a", "#6fa848", "#a9d65c"] : ["#5d7d68", "#4f6e5b", "#6b8b74"];
   for (let i = 0; i < 4; i++) {
-    mk(new THREE.ConeGeometry(0.24 - i * 0.045, 0.42, 10), cols[i % 3], [0, 0.55 + i * 0.25, 0], g, { outline: 0.012 });
+    mk(new THREE.ConeGeometry(0.24 - i * 0.045, 0.42, 10), leafMat(cols[i % 3]), [0, 0.55 + i * 0.25, 0], g, { outline: 0.012 });
   }
 }
 let steamFan = null;
@@ -570,9 +662,9 @@ function makePlant(parent, x, z, k = 1) {
   g.scale.setScalar(k);
   parent.add(g);
   mk(cyl(0.22, 0.17, 0.4, 16), "#d98b5f", [0, 0.2, 0], g);
-  mk(new THREE.SphereGeometry(0.32, 16, 12), "#6bbf7a", [0, 0.72, 0], g, { outline: 0.02 });
-  mk(new THREE.SphereGeometry(0.24, 16, 12), "#58ad6a", [0.18, 0.95, 0.05], g, { outline: 0.02 });
-  mk(new THREE.SphereGeometry(0.2, 16, 12), "#7fcc8a", [-0.15, 1.05, -0.05], g, { outline: 0.02 });
+  mk(new THREE.SphereGeometry(0.32, 16, 12), leafMat(LINE ? "#a9d65c" : "#6bbf7a"), [0, 0.72, 0], g, { outline: 0.02 });
+  mk(new THREE.SphereGeometry(0.24, 16, 12), leafMat(LINE ? "#8fc25a" : "#58ad6a"), [0.18, 0.95, 0.05], g, { outline: 0.02 });
+  mk(new THREE.SphereGeometry(0.2, 16, 12), leafMat(LINE ? "#c3e46e" : "#7fcc8a"), [-0.15, 1.05, -0.05], g, { outline: 0.02 });
   return g;
 }
 
@@ -684,9 +776,22 @@ function makeGuest(id, seatY) {
   mk(new THREE.SphereGeometry(0.16, 20, 16), skin, [0, 0, 0], head, { outline: 0.02 });
   const hairM = mk(new THREE.SphereGeometry(0.17, 20, 12, 0, Math.PI * 2, 0, Math.PI * 0.55), hair, [0, 0.02, -0.015], head, { outline: 0 });
   hairM.rotation.x = -0.25;
-  const eye = new THREE.MeshBasicMaterial({ color: "#2a211d" });
-  mk(new THREE.SphereGeometry(0.022, 8, 6), eye, [-0.055, 0.0, 0.148], head, { outline: 0, shadow: false });
-  mk(new THREE.SphereGeometry(0.022, 8, 6), eye, [0.055, 0.0, 0.148], head, { outline: 0, shadow: false });
+  const eye = new THREE.MeshBasicMaterial({ color: "#1b1b1f" });
+  if (LINE) {
+    // 흰자 + 동그란 눈동자 + 눈썹 (손그림 캐릭터 느낌)
+    const white = new THREE.MeshBasicMaterial({ color: "#eef3fb" });
+    for (const sx of [-1, 1]) {
+      const w = mk(new THREE.SphereGeometry(0.04, 12, 8), white, [sx * 0.058, 0.005, 0.135], head, { outline: 0.006, shadow: false });
+      w.scale.set(1.15, 0.8, 0.6);
+      mk(new THREE.SphereGeometry(0.016, 8, 6), eye, [sx * 0.058, 0.0, 0.162], head, { outline: 0, shadow: false });
+      const brow = mk(box(0.07, 0.016, 0.02), hair, [sx * 0.06, 0.068, 0.142], head, { outline: 0.004, shadow: false });
+      brow.rotation.z = sx * -0.12;
+    }
+    mk(new THREE.SphereGeometry(0.018, 8, 6), skin, [0, -0.035, 0.158], head, { outline: 0.005, shadow: false });
+  } else {
+    mk(new THREE.SphereGeometry(0.022, 8, 6), eye, [-0.055, 0.0, 0.148], head, { outline: 0, shadow: false });
+    mk(new THREE.SphereGeometry(0.022, 8, 6), eye, [0.055, 0.0, 0.148], head, { outline: 0, shadow: false });
+  }
   const cheek = new THREE.MeshBasicMaterial({ color: "#f59a8f", transparent: true, opacity: 0.7 });
   mk(new THREE.SphereGeometry(0.025, 8, 6), cheek, [-0.095, -0.045, 0.13], head, { outline: 0, shadow: false });
   mk(new THREE.SphereGeometry(0.025, 8, 6), cheek, [0.095, -0.045, 0.13], head, { outline: 0, shadow: false });
@@ -1660,7 +1765,7 @@ async function main() {
 
   if (renderer) {
     renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
-    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.enabled = !LINE; // 손그림 그림체는 그림자 없이 평면으로
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     host.appendChild(renderer.domElement);
