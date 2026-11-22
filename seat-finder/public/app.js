@@ -1298,9 +1298,11 @@ function buildInteriorProp(p, g) {
     }
     case "door": { // 안 쓰는 출입문 (유리 벽 안쪽에 문틀 + 손잡이)
       const w = p.w ?? 1.0, h = p.h ?? 2.2, frame = "#f4f1ec";
-      for (const sx of [-1, 1]) mk(box(0.05, h, 0.06), frame, [sx * w / 2, h / 2, -0.02], g, { outline: 0.006, shadow: false });
-      mk(box(w + 0.05, 0.05, 0.06), frame, [0, h, -0.02], g, { outline: 0.006, shadow: false });
-      mk(box(0.025, 0.3, 0.03), "#b9a26e", [w / 2 - 0.1, 1.05, -0.06], g, { outline: 0.004, shadow: false }); // 손잡이
+      // 문틀은 유리 바깥쪽(블라인드 뒤)에 → 안에서는 블라인드 틈으로 살짝만 보임
+      const oz = 0.1;
+      for (const sx of [-1, 1]) mk(box(0.05, h, 0.05), frame, [sx * w / 2, h / 2, oz], g, { outline: 0.006, shadow: false });
+      mk(box(w + 0.05, 0.05, 0.05), frame, [0, h, oz], g, { outline: 0.006, shadow: false });
+      mk(box(0.025, 0.3, 0.03), "#b9a26e", [w / 2 - 0.1, 1.05, oz + 0.04], g, { outline: 0.004, shadow: false }); // 바깥 손잡이
       g.userData.hit = [w, h, 0.3, h / 2]; g.userData.sayY = h + 0.15;
       return true;
     }
