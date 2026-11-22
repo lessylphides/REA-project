@@ -191,8 +191,10 @@ function popBubble(text, x, y, z, opts) {
   const sp = bubbleSprite(text, { ...opts, size: 0.11 * Math.max(1, dist / 2.8) });
   sp.position.set(x, y, z);
   const base = sp.scale.clone();
+  const follow = opts?.follow; // 움직이는 소품(바텐더)을 따라다니는 말풍선
   addEffect(sp, scene, 3.6, (e) => {
     const t = e.t;
+    if (follow) sp.position.set(follow.position.x, y, follow.position.z);
     const pop = t < 0.25 ? elastic(t / 0.25) : 1;
     sp.scale.set(base.x * pop, base.y * pop, 1);
     sp.material.opacity = t > e.life - 0.5 ? (e.life - t) / 0.5 : 1;
@@ -1236,10 +1238,12 @@ function buildStorefront(T, door, dh) {
       g.fillStyle = "#1f4fa3"; g.beginPath(); g.roundRect(4, 4, w - 8, h - 8, 26); g.fill();
       g.strokeStyle = "#fff"; g.lineWidth = 5; g.beginPath(); g.roundRect(12, 12, w - 24, h - 24, 20); g.stroke();
       g.fillStyle = "#fff"; g.textAlign = "center";
-      g.font = "700 26px sans-serif"; g.fillText(F.street || "", w / 2, 58);
-      g.font = "800 96px sans-serif"; g.fillText(F.number, w / 2, 160);
+      if (F.street) { // 도로명 주소판: 위 도로명, 아래 번호
+        g.font = "800 31px sans-serif"; g.fillText(F.street, w / 2, 72);
+        g.font = "800 70px sans-serif"; g.fillText(F.number, w / 2, 160);
+      } else { g.font = "800 96px sans-serif"; g.fillText(F.number, w / 2, 160); }
     });
-    mk(new THREE.PlaneGeometry(0.42, 0.33), flat(plate), [px, 2.25, zO + 0.04], fpGroup, no);
+    mk(new THREE.PlaneGeometry(0.44, 0.34), flat(plate), [px, 2.25, zO + 0.04], fpGroup, no);
   }
   const wood = canvasTex(128, 128, (g, w, h) => {
     g.fillStyle = "#c9a57c"; g.fillRect(0, 0, w, h);
@@ -1282,13 +1286,14 @@ function buildStorefront(T, door, dh) {
 
   // ── 화분들 (고무나무 + 측백나무)
   makeRubberPlant(fpGroup, opL + 0.35, R.d + T + 0.35);
-  for (const [dx, dz, k] of [[0.95, 0.4, 0.9], [1.55, 0.95, 1.0], [2.15, 0.95, 0.95], [winW + door.w + 0.35, 0.45, 0.95]]) makeCypress(fpGroup, opL + dx, R.d + T + dz, k);
+  const pcx = (opR + R.w + T) / 2; // 문 오른쪽 벽돌 기둥 가운데 (화분 + 사각 등)
+  for (const [dx, dz, k] of [[0.95, 0.4, 0.9], [1.55, 0.95, 1.0], [2.15, 0.95, 0.95], [pcx - opL, 0.3, 0.95]]) makeCypress(fpGroup, opL + dx, R.d + T + dz, k);
 
   // ── 고래꼬리 조명 상자
-  const lx = opR + 0.15, lz = R.d + T + 1.15;
+  const lx = pcx, lz = R.d + T + 0.85;
   addObstacle(lx, lz, 0.2, 0.2);
   addObstacle(opL + 0.35, R.d + T + 0.35, 0.2, 0.2);
-  for (const [dx, dz] of [[0.95, 0.4], [1.55, 0.95], [2.15, 0.95], [winW + door.w + 0.35, 0.45]]) addObstacle(opL + dx, R.d + T + dz, 0.2, 0.2);
+  for (const [dx, dz] of [[0.95, 0.4], [1.55, 0.95], [2.15, 0.95], [pcx - opL, 0.3]]) addObstacle(opL + dx, R.d + T + dz, 0.2, 0.2);
   addObstacle(opL - 0.2, R.d + T + 1.9, 0.2, 0.2);
   const lantern = new THREE.Group();
   lantern.position.set(lx, 0, lz);
@@ -1415,7 +1420,8 @@ let timeK = nightAmount();
 setInterval(() => { timeK = nightAmount(); }, 60000);
 const NIGHT_TINT = new THREE.Color("#4b4f8f"), DUSK_TINT = new THREE.Color("#e0a3a0"), WHITE = new THREE.Color("#ffffff");
 // 매장 안: 밤엔 은은한 분홍빛으로 어둡게 (사진 속 밤 분위기)
-const IN_NIGHT = new THREE.Color("#94705f"), IN_DUSK = new THREE.Color("#f6c2a4");
+// 실제 매장처럼 낮에도 어스름하게 (조명 둘레만 밝음), 밤엔 조금 더
+const IN_DAY = new THREE.Color("#7f6a5e"), IN_NIGHT = new THREE.Color("#6a5348"), IN_DUSK = new THREE.Color("#755e52");
 const tmpIn = new THREE.Color();
 const tmpC = new THREE.Color();
 let lastTint = -1;
@@ -1431,19 +1437,20 @@ function applyTime(outside, time) {
     // 바깥: 낮 → 노을(분홍빛) → 밤(푸르고 어둡게) / 안: 밤에 은은한 분홍빛
     if (k < 0.5) tmpC.copy(WHITE).lerp(DUSK_TINT, k / 0.5);
     else tmpC.copy(DUSK_TINT).lerp(NIGHT_TINT, (k - 0.5) / 0.5);
-    if (k < 0.5) tmpIn.copy(WHITE).lerp(IN_DUSK, k / 0.5);
+    if (k < 0.5) tmpIn.copy(IN_DAY).lerp(IN_DUSK, k / 0.5);
     else tmpIn.copy(IN_DUSK).lerp(IN_NIGHT, (k - 0.5) / 0.5);
     tmpIn.lerp(tmpC, outside);
-    const gk = THREE.MathUtils.smoothstep(k, 0.3, 1);
+    const gk = Math.max(0.85, THREE.MathUtils.smoothstep(k, 0.3, 1)); // 안은 늘 조명 분위기
     for (const m of tintables) {
       m.color.copy(m.userData.base).multiply(tmpIn);
       if (m.userData.extraDark) m.color.multiplyScalar(1 - m.userData.extraDark * gk * (1 - outside));
     }
   }
   const glow = THREE.MathUtils.smoothstep(k, 0.3, 1);
-  for (const h of nightGlow.halos) h.material.opacity = h.userData.inner ? 0.08 + glow * 0.42 : glow * 0.38;
+  const gIn = Math.max(0.85, glow); // 매장 안 조명은 낮에도 켜져 있음
+  for (const h of nightGlow.halos) h.material.opacity = h.userData.inner ? 0.08 + gIn * 0.48 : glow * 0.38;
   for (const m of nightGlow.windows) m.color.copy(WHITE).lerp(WIN_NIGHT, glow * 0.85);
-  for (const [m, lo, hi] of innerGlows) m.opacity = lo + (hi - lo) * glow;
+  for (const [m, lo, hi] of innerGlows) m.opacity = Math.min(1, (lo + (hi - lo) * gIn) * 1.4); // 조명 둘레 빛을 조금 더 진하게
   const dayAmt = 1 - THREE.MathUtils.smoothstep(k, 0.2, 0.7);
   const duskAmt = Math.max(0, 1 - Math.abs(k - 0.45) / 0.3);
   for (const m of sunPatches) {
@@ -3127,7 +3134,7 @@ function tapProp(u) {
   u.wiggle = 1;
   u.onTap?.();
   const p = u.prop;
-  popBubble(p.say, p.x, u.sayY ?? SAY_HEIGHT[p.type] ?? 1.5, p.z);
+  popBubble(p.say, u.group.position.x, u.sayY ?? SAY_HEIGHT[p.type] ?? 1.5, u.group.position.z, u.group.userData.path ? { follow: u.group } : undefined);
   if (!found.has(u.idx)) {
     found.add(u.idx);
     store.set("seat-found", JSON.stringify([...found]));
