@@ -1178,12 +1178,12 @@ function buildInteriorProp(p, g) {
         for (let s = 0; s < 3; s++) {
           const sx = (s - 1) * 0.07, h = k * (0.75 + s * 0.12);
           mk(cyl(0.015, 0.02, h - 0.5, 6), "#9aa86a", [sx, 0.5 + (h - 0.5) / 2, 0], g, { outline: 0.006 });
-          for (let i = 0; i < 7; i++) {
-            const a = i * 0.9 + s, leaf = new THREE.Group();
-            leaf.position.set(sx, h, 0); leaf.rotation.set(0.9 + (i % 3) * 0.2, a, 0);
+          for (let i = 0; i < 12; i++) {
+            const a = i * 0.53 + s * 0.7, leaf = new THREE.Group();
+            leaf.position.set(sx, h - (i % 3) * 0.12, 0); leaf.rotation.set(0.75 + (i % 4) * 0.22, a, 0);
             g.add(leaf);
-            const m = mk(new THREE.SphereGeometry(0.06, 8, 6), leafMat(i % 2 ? "#3f8a4f" : "#5aa65a"), [0, 0.32, 0], leaf, { outline: 0.006 });
-            m.scale.set(0.6, 6, 0.15);
+            const m = mk(new THREE.SphereGeometry(0.06, 8, 6), leafMat(i % 2 ? "#3f8a4f" : "#5aa65a"), [0, 0.42, 0], leaf, { outline: 0.006 });
+            m.scale.set(1.1, 7.5, 0.18); // 길고 넓은 야자잎
           }
         }
       } else if (p.kind === "norfolk") {
@@ -1510,9 +1510,26 @@ function buildTables() {
     const H = 0.74;
     const local = []; // [x, z] 테이블 기준 의자 위치
     if (t.shape === "round") addObstacle(t.x, t.z, t.r, t.r, t.rot);
+    else if (t.shape === "half") { const [ox, oz] = rotXZ(0, t.r / 2, t.rot); addObstacle(t.x + ox, t.z + oz, t.r, t.r / 2, t.rot); }
     else addObstacle(t.x, t.z, t.w / 2, t.d / 2, t.rot);
     const topCol = t.color || "#f1dcc2", leg = t.leg || COLOR.woodDark;
-    if (t.shape === "oval") {
+    if (t.shape === "half") {
+      // 반원 테이블: 평평한 쪽이 테이블 기준 -z (layout 에서 rot 로 방향), 둥근 쪽에 의자
+      const half = (r, h) => new THREE.CylinderGeometry(r, r, h, 40, 1, false, -Math.PI / 2, Math.PI);
+      mk(half(t.r, 0.05), topCol, [0, H, 0], g, { outline: 0 });
+      const k = 0.022 * OL;
+      const o = new THREE.Mesh(half(t.r + k, 0.05 + k * 2), outlineMat);
+      o.position.set(0, H, -k / 2);
+      g.add(o);
+      mk(box(t.r * 2, 0.05, 0.01), topCol, [0, H, 0.005], g, { outline: 0 });
+      mk(cyl(0.04, 0.04, H, 8), leg, [0, H / 2, t.r * 0.4], g, { outline: 0.008 });
+      mk(cyl(0.22, 0.26, 0.04, 18), leg, [0, 0.02, t.r * 0.4], g, { outline: 0.008 });
+      const n = t.seats, dist = t.r + 0.36;
+      for (let i = 0; i < n; i++) {
+        const a = -Math.PI / 2 + (Math.PI * (i + 0.5)) / n; // 둥근 쪽에 고르게
+        local.push([Math.sin(a) * dist, Math.cos(a) * dist + 0.05]);
+      }
+    } else if (t.shape === "oval") {
       const m = mk(cyl(0.5, 0.5, 0.05, 40), topCol, [0, H, 0], g, { outline: 0 });
       m.scale.set(t.w, 1, t.d);
       const o = mk(cyl(0.5, 0.5, 0.05, 40), outlineMat, [0, H, 0], g, { outline: 0, shadow: false });
