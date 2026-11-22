@@ -1319,8 +1319,9 @@ function buildStorefront(T, door, dh) {
     mk(box(0.025, 0.02, 0.36), iron, [0.17, y, 0], lantern, no); mk(box(0.025, 0.02, 0.36), iron, [-0.17, y, 0], lantern, no);
   }
   // 바닥에 비치는 분홍빛
-  const pool = nightGlow.pool = mk(new THREE.CircleGeometry(0.9, 32), new THREE.MeshBasicMaterial({ color: "#ff9fb0", transparent: true, opacity: 0.22, depthWrite: false }), [0, 0.005, 0], lantern, no);
-  pool.rotation.x = -Math.PI / 2;
+  // 가운데만 살짝 밝고 가장자리는 바닥에 스며드는 빛 (테두리 없음)
+  const pool = nightGlow.pool = new THREE.Mesh(new THREE.PlaneGeometry(2.4, 2.4), new THREE.MeshBasicMaterial({ map: poolTex, color: "#ffb08f", transparent: true, opacity: 0.2, depthWrite: false, blending: THREE.AdditiveBlending, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -4 }));
+  pool.position.set(0, 0.006, 0); pool.rotation.x = -Math.PI / 2; pool.renderOrder = 2; lantern.add(pool);
   addHalo(lantern, 0, 0.62, 0, 1.3, "#ffb98f");
   addHalo(fpGroup, wx, 1.4, zO + 0.3, 2.6, "#ff9f5a");
   const lampLight = new THREE.PointLight("#ffb3c0", 3, 4, 1.6);
@@ -1454,7 +1455,7 @@ function applyTime(outside, time) {
     s.material.opacity = glow * tw;
   }
   if (nightGlow.strip) nightGlow.strip.material.opacity = 0.3 + glow * 0.25;
-  if (nightGlow.pool) nightGlow.pool.material.opacity = 0.15 + glow * 0.18;
+  if (nightGlow.pool) nightGlow.pool.material.opacity = 0.08 + glow * 0.3;
   if (nightGlow.lit) nightGlow.lit.material.opacity = glow * 0.55;
   for (const m of alleyWindows) m.opacity = glow * 0.9;
   for (const m of upperWindows) m.opacity = glow * 0.22; // 아주 은은한 호박색
@@ -1819,7 +1820,7 @@ function buildBackbar(p) {
   for (let s = 0.2; s < L - 0.2; s += 0.13) {
     if (Math.floor(s / 1.1) % 3 === 2) continue; // 빈 칸
     const q = curve.getPointAt(s / L), t = curve.getTangentAt(s / L);
-    if (SPEAKERS.some((sp) => Math.hypot(sp.x - q.x, sp.z - q.z) < 0.34)) continue; // 스피커 자리는 비움
+    if (SPEAKERS.some((sp) => Math.hypot(sp.x - q.x, sp.z - q.z) < 0.4)) continue; // 스피커 자리는 비움
     const off = (rnd() - 0.5) * 0.18;
     const x = q.x + t.z * off, z = q.z - t.x * off;
     const h = 0.22 + rnd() * 0.16, r = 0.035 + rnd() * 0.02;
@@ -2111,37 +2112,41 @@ function buildInteriorProp(p, g) {
         return geo;
       };
       const wood = "#8a5e3a";
-      mk(box(0.66, 0.035, 0.5), "#9a6a42", [0, y0 + 0.0175, 0], g, { outline: 0.008 }); // 나무 받침판
-      const by = y0 + 0.035, bh = 0.4;
-      mk(frustum(0.6, 0.5, bh, 0.46), black, [0, by + bh / 2, 0], g, { outline: 0.012 });
-      mk(box(0.62, 0.025, 0.48), "#2e2e32", [0, by + bh + 0.012, 0], g, { outline: 0.008 }); // 윗판 (컵 없음)
-      mk(box(0.46, 0.03, 0.14), steel, [0, by + 0.04, 0.27], g, { outline: 0.006 }); // 물받이
-      for (const gx of [-0.14, 0.14]) { // 그룹헤드 (필터는 꽂지 않음)
-        mk(cyl(0.045, 0.04, 0.05, 12), steel, [gx, by + 0.25, 0.25], g, { outline: 0.005 });
-        mk(box(0.02, 0.05, 0.02), "#111", [gx, by + 0.31, 0.25], g, { outline: 0.003 });
+      mk(box(0.48, 0.035, 0.5), "#9a6a42", [0, y0 + 0.0175, 0], g, { outline: 0.008 }); // 나무 받침판
+      const by = y0 + 0.035, bh = 0.4, MW = 0.4; // 1구 머신
+      mk(frustum(MW, 0.33, bh, 0.46), black, [0, by + bh / 2, 0], g, { outline: 0.012 });
+      mk(box(MW + 0.02, 0.025, 0.48), "#2e2e32", [0, by + bh + 0.012, 0], g, { outline: 0.008 }); // 윗판 (컵 없음)
+      mk(box(0.28, 0.03, 0.14), steel, [0, by + 0.04, 0.27], g, { outline: 0.006 }); // 물받이
+      mk(cyl(0.05, 0.045, 0.05, 12), steel, [0, by + 0.25, 0.25], g, { outline: 0.005 }); // 그룹헤드 1개 (필터는 꽂지 않음)
+      mk(box(0.02, 0.05, 0.02), "#111", [0, by + 0.31, 0.25], g, { outline: 0.003 });
+      { // 스팀 노즐 1개 (바텐더 기준 오른쪽 = 로컬 +x), 비스듬히
+        const wand = mk(cyl(0.009, 0.009, 0.24, 6), steel, [0.15, by + 0.18, 0.27], g, { outline: 0.003 });
+        wand.rotation.x = 0.3; wand.rotation.z = -0.25;
+        mk(new THREE.SphereGeometry(0.018, 8, 6), "#2a2a2e", [0.15, by + 0.31, 0.25], g, { outline: 0.003 }); // 노즐 손잡이
       }
-      for (const sx of [-0.27, 0.27]) mk(cyl(0.008, 0.008, 0.2, 6), steel, [sx, by + 0.2, 0.26], g, { outline: 0.003 }).rotation.x = 0.25; // 스팀 완드
       // 손님 쪽 위: 노란 LED 돌출 미니 간판 "LA MARZOCCO"
       const signTex = canvasTex(512, 96, (c, w, h) => {
         c.fillStyle = "#16120a"; c.fillRect(0, 0, w, h);
-        c.font = "bold 62px Georgia, 'Times New Roman', serif"; c.textAlign = "center"; c.textBaseline = "middle";
+        c.font = "bold 60px Georgia, 'Times New Roman', serif"; c.textAlign = "center"; c.textBaseline = "middle";
         c.shadowColor = "#ffd54a"; c.shadowBlur = 18; c.fillStyle = "#ffe27a";
         c.fillText("LA MARZOCCO", w / 2, h / 2 + 3);
       });
-      const sy = by + bh - 0.07, sz = -0.25;
-      mk(box(0.5, 0.1, 0.035), "#1a1a1c", [0, sy, sz - 0.012], g, { outline: 0.005, shadow: false });
-      const sign = new THREE.Mesh(new THREE.PlaneGeometry(0.48, 0.085), new THREE.MeshBasicMaterial({ map: signTex }));
-      sign.position.set(0, sy, sz - 0.031); sign.rotation.y = Math.PI; g.add(sign);
+      // 붙여 놓은 자석 간판 (약 15×5cm), 손님 쪽에서 봐서 앞면 왼쪽 위 (로컬 +x)
+      const sx0 = MW / 2 - 0.1, sy = by + bh - 0.06, sz = -0.235;
+      mk(box(0.155, 0.05, 0.022), "#1a1a1c", [sx0, sy, sz - 0.011], g, { outline: 0.003, shadow: false });
+      const sign = new THREE.Mesh(new THREE.PlaneGeometry(0.15, 0.042), new THREE.MeshBasicMaterial({ map: signTex }));
+      sign.position.set(sx0, sy, sz - 0.023); sign.rotation.y = Math.PI; g.add(sign);
       const halo = new THREE.MeshBasicMaterial({ color: "#ffcf4a", map: poolTex, transparent: true, opacity: 0.2, depthWrite: false, blending: THREE.AdditiveBlending });
-      const hm = new THREE.Mesh(new THREE.PlaneGeometry(0.8, 0.3), halo);
-      hm.position.set(0, sy, sz - 0.04); hm.rotation.y = Math.PI; g.add(hm);
+      const hm = new THREE.Mesh(new THREE.PlaneGeometry(0.3, 0.13), halo);
+      hm.position.set(sx0, sy, sz - 0.03); hm.rotation.y = Math.PI; g.add(hm);
       innerGlows.push([halo, 0.05, 0.35]);
       // 위: 아이패드 거치대 + 아이패드 (화면은 window.__ipad 캔버스 → 나중에 기능 넣기)
       const ty = by + bh + 0.025;
       mk(box(0.16, 0.015, 0.12), "#8f9298", [0, ty + 0.008, -0.02], g, { outline: 0.004 });
-      mk(cyl(0.012, 0.012, 0.16, 8), "#8f9298", [0, ty + 0.09, -0.02], g, { outline: 0.003 });
-      const pad = new THREE.Group(); pad.position.set(0, ty + 0.27, -0.03); pad.rotation.x = 0.22; g.add(pad); // 손님 쪽으로 살짝 기울임
-      mk(box(0.25, 0.18, 0.012), "#1b1b1e", [0, 0, 0], pad, { outline: 0.005 });
+      mk(cyl(0.012, 0.012, 0.08, 8), "#8f9298", [0, ty + 0.05, -0.02], g, { outline: 0.003 });
+      const pad = new THREE.Group(); pad.position.set(0, ty + 0.17, -0.01); pad.rotation.x = -0.22; g.add(pad); // 바텐더가 보는 화면 (바텐더 쪽으로 살짝 기울임)
+      mk(box(0.25, 0.18, 0.012), "#9a9da3", [0, 0, 0], pad, { outline: 0.005 }); // 손님 쪽에서는 은색 뒷면
+      mk(box(0.24, 0.17, 0.002), "#111114", [0, 0, 0.0065], pad, { outline: 0, shadow: false });
       const ipadCanvas = document.createElement("canvas"); ipadCanvas.width = 256; ipadCanvas.height = 184;
       const ipadTex = new THREE.CanvasTexture(ipadCanvas); ipadTex.colorSpace = THREE.SRGBColorSpace;
       const drawIpad = () => {
@@ -2156,10 +2161,10 @@ function buildInteriorProp(p, g) {
       };
       drawIpad();
       const scr = new THREE.Mesh(new THREE.PlaneGeometry(0.225, 0.158), new THREE.MeshBasicMaterial({ map: ipadTex }));
-      scr.position.set(0, 0, -0.007); scr.rotation.y = Math.PI; pad.add(scr);
+      scr.position.set(0, 0, 0.0085); pad.add(scr);
       window.__ipad = { canvas: ipadCanvas, texture: ipadTex, redraw: drawIpad };
       // 그라인더 2대 (손님 기준 머신 오른쪽 = 로컬 -x)
-      const G1 = -0.5, G2 = -0.82;
+      const G1 = -0.42, G2 = -0.74;
       mk(box(0.17, 0.32, 0.22), black, [G1, y0 + 0.16, 0.02], g, { outline: 0.008 }); // 키 큰 네모 그라인더
       mk(box(0.12, 0.04, 0.08), "#3a3a3e", [G1, y0 + 0.12, 0.15], g, { outline: 0.004 });
       mk(cyl(0.035, 0.05, 0.05, 10), "#2e2e32", [G1, y0 + 0.345, 0.02], g, { outline: 0.004 });
@@ -2172,9 +2177,9 @@ function buildInteriorProp(p, g) {
       mk(cyl(0.065, 0.045, 0.12, 14), hop, [G2, y0 + 0.28, 0.02], g, { outline: 0.005, shadow: false });
       mk(cyl(0.05, 0.035, 0.07, 12), "#5a3622", [G2, y0 + 0.26, 0.02], g, { outline: 0, shadow: false });
       innerGlows.push([hop, 0.4, 0.8]);
-      { const [sx, sz] = rotXZ(0, 0.3, p.rot); steamSources.push(new THREE.Vector3(p.x + sx, by + 0.3, p.z + sz)); } // 김은 바텐더 쪽 그룹헤드 앞에서
+      { const [sx, sz] = rotXZ(0.17, 0.3, p.rot); steamSources.push(new THREE.Vector3(p.x + sx, by + 0.2, p.z + sz)); } // 김은 스팀 노즐에서
       if (p.shelf) { // 바에 1/3 만 걸친 머신·그라인더를 받쳐 주는 나무 선반 (로컬 +z = 바텐더 쪽)
-        const x0 = -1.0, x1 = 0.36, cx = (x0 + x1) / 2, wx = x1 - x0;
+        const x0 = -0.92, x1 = 0.28, cx = (x0 + x1) / 2, wx = x1 - x0;
         mk(box(wx, 0.04, 0.5), wood, [cx, y0 - 0.02, 0.02], g, { outline: 0.008 });
         for (const lx of [x0 + 0.04, x1 - 0.04]) mk(box(0.04, y0 - 0.04, 0.04), wood, [lx, (y0 - 0.04) / 2, 0.22], g, { outline: 0.006 });
         mk(box(wx - 0.1, 0.03, 0.03), wood, [cx, 0.3, 0.22], g, { outline: 0.004 });
@@ -2185,7 +2190,7 @@ function buildInteriorProp(p, g) {
       return true;
     }
     case "speaker": { // JBL 4312A 우드 (호두나무 통 + 파란 앞판 + 흰 우퍼). 로컬 +z = 앞
-      const y0 = p.y0 ?? 0.99, W = 0.36, H = 0.6, D = 0.3, walnut = "#7a4a2a";
+      const y0 = p.y0 ?? 0.99, W = 0.56, H = 0.8, D = 0.4, walnut = "#7a4a2a";
       mk(box(W, H, D), walnut, [0, y0 + H / 2, 0], g, { outline: 0.01 });
       const fz = D / 2 + 0.004;
       mk(box(W - 0.04, H - 0.04, 0.01), "#2f5d9a", [0, y0 + H / 2, fz], g, { outline: 0.004, shadow: false });
@@ -2194,11 +2199,11 @@ function buildInteriorProp(p, g) {
         mk(cyl(r * 0.88, r * 0.88, 0.012, 24), col, [x, y, fz + 0.014], g, { outline: 0, shadow: false }).rotation.x = Math.PI / 2;
         if (cone) mk(new THREE.SphereGeometry(r * 0.25, 10, 6), "#e8e6e0", [x, y, fz + 0.02], g, { outline: 0, shadow: false }).scale.z = 0.4;
       };
-      ring(0.13, y0 + 0.2, 0, "#f2f0ea", true);          // 12인치 흰 우퍼
-      ring(0.045, y0 + 0.44, -0.075, "#f2f0ea", true);   // 미드
-      ring(0.025, y0 + 0.44, 0.07, "#d9d6cf", false);    // 트위터
-      for (const kx of [-0.03, 0.12]) mk(cyl(0.012, 0.012, 0.015, 10), "#d8d8d8", [kx, y0 + 0.52, fz + 0.012], g, { outline: 0.002, shadow: false }).rotation.x = Math.PI / 2; // 레벨 손잡이
-      mk(box(0.06, 0.022, 0.006), "#d8d8d8", [0.12, y0 + 0.36, fz + 0.008], g, { outline: 0, shadow: false }); // JBL 배지
+      ring(0.2, y0 + 0.27, 0, "#f2f0ea", true);           // 12인치 흰 우퍼
+      ring(0.068, y0 + 0.6, -0.11, "#f2f0ea", true);      // 미드
+      ring(0.038, y0 + 0.6, 0.1, "#d9d6cf", false);       // 트위터
+      for (const kx of [-0.05, 0.18]) mk(cyl(0.016, 0.016, 0.015, 10), "#d8d8d8", [kx, y0 + 0.71, fz + 0.012], g, { outline: 0.002, shadow: false }).rotation.x = Math.PI / 2; // 레벨 손잡이
+      mk(box(0.09, 0.03, 0.006), "#d8d8d8", [0.18, y0 + 0.5, fz + 0.008], g, { outline: 0, shadow: false }); // JBL 배지
       addObstacle(p.x, p.z, W / 2, D / 2, p.rot);
       g.userData.hit = [W, H, D, y0 + H / 2]; g.userData.sayY = y0 + H + 0.25;
       return true;

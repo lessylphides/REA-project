@@ -59,7 +59,7 @@ export default {
     { type: "backbar", path: [[4.85, 9.2], [7.45, 9.2]] }, // 정면 장 (모서리 쪽은 스탠드 자리, 끝은 바 끝과 맞춤)
     // JBL 4312A 우드 스피커 (장 위, 그 자리는 술병 비움)
     { type: "speaker", x: 0.3, z: 4.3, rot: -90, say: "JBL 4312A\n따뜻한 우드 스피커" },
-    { type: "speaker", x: 5.35, z: 9.2, rot: 180, say: "JBL 4312A\n음악은 여기서 나와요" },
+    { type: "speaker", x: 5.2, z: 9.2, rot: 180, say: "JBL 4312A\n음악은 여기서 나와요" },
     // 바텐더 (곡선 바 안쪽, 손님 쪽을 바라봄)
     { type: "bartender", x: 2.95, z: 6.95, rot: -135,
       walkPath: [[1.0, 1.7], [1.0, 5.3], [4.0, 8.3], [5.4, 8.3]], // 바 안쪽 통로 (바와 뒷장 사이, 홍콩야자 피해서)
@@ -127,7 +127,7 @@ export default {
     },
     // 프로젝터가 오른쪽 벽(벽 테이블 위)에 비추는 화면 — 여기에도 광고
     {
-      wall: "right", projected: true, from: [6.07, 2.63, 4.9], z: 4.9, y: 1.95, w: 1.7, h: 0.96, interval: 8,
+      wall: "right", projected: true, from: [6.07, 2.63, 4.9], z: 4.9, y: 1.95, w: 2.21, h: 1.25, interval: 8,
       slides: [
         { title: "DIVE HIDE AWAY", sub: "오늘 밤도 천천히 쉬어 가세요", bg: "#2b2448", fg: "#f4e7d6" },
         { title: "이 벽에 광고하세요", sub: "동네 가게 소식을 비춰 드려요", bg: "#5b3a2e", fg: "#ffffff" },
