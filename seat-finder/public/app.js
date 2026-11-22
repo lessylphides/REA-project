@@ -565,7 +565,13 @@ function buildInsideShell(T) {
   };
   if (door) {
     const dh = 2.2;
-    front(FRONT_X0 - T / 2, door.x - door.w / 2, 0, H);
+    // 정면 창 자리는 뚫어 둠 → 블라인드 틈으로 진짜 바깥(골목)이 보임
+    const winW0 = LAYOUT.front?.windowW ?? 2.6;
+    const ox0 = door.x - door.w / 2 - 0.05 - winW0, ox1 = door.x - door.w / 2 - 0.05, oy0 = 0.55, oy1 = 2.45;
+    front(FRONT_X0 - T / 2, ox0, 0, H);
+    front(ox0, ox1, 0, oy0);
+    front(ox0, ox1, oy1, H);
+    front(ox1, door.x - door.w / 2, 0, H);
     front(door.x + door.w / 2, FRONT_X1 + T / 2, 0, H);
     front(door.x - door.w / 2, door.x + door.w / 2, dh, H);
     // 안쪽에서 보이는 정면 창 (블라인드)
@@ -578,17 +584,8 @@ function buildInsideShell(T) {
     registerTint(bm);
     const inner = mk(new THREE.PlaneGeometry(winW, 1.9), bm, [(wx0 + wx1) / 2, 1.5, R.d - 0.005], fpGroup, { outline: 0, shadow: false });
     inner.renderOrder = 3;
-    {
-      const c = document.createElement("canvas");
-      c.width = 1024; c.height = 512;
-      const tex = new THREE.CanvasTexture(c);
-      tex.colorSpace = THREE.SRGBColorSpace;
-      const view = new THREE.Mesh(new THREE.PlaneGeometry(winW, 1.9), new THREE.MeshBasicMaterial({ map: tex }));
-      view.position.set((wx0 + wx1) / 2, 1.5, R.d - 0.002);
-      view.rotation.y = Math.PI;
-      fpGroup.add(view);
-      streetViews.push({ ctx: c.getContext("2d"), tex, seed: 91, W: 1024, H: 512 });
-    }
+    // 정면(입구 쪽) 바깥 골목: 유리 밖 멀리 세움 (창·유리문 너머로 보임, 걸으면 각도 따라 달라짐)
+    addStreetView((FRONT_X0 + FRONT_X1) / 2 + 1.5, R.d, FRONT.nx, FRONT.nz, FRONT_X1 - FRONT_X0 + 10, 6, 4.2, 91, R.outside?.[FRONT.i] || "street");
     inner.rotation.y = Math.PI;
     // 자동 유리문 (가까이 가면 양쪽으로 열림)
     const glass = toon("#cfeaf5", { transparent: true, opacity: 0.45 });
@@ -2517,6 +2514,7 @@ function drawMinimap() {
 }
 
 function initWalk() {
+  if (new URLSearchParams(location.search).has("debug")) window.__walk = walk; // 확인용
   $("walkBtn").addEventListener("click", enterWalk);
   $("mapBtn").addEventListener("click", exitWalk);
   $("enterBtn").addEventListener("click", () => {
