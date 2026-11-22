@@ -76,9 +76,9 @@ export default {
     // 정면 창 아래 장 위 양초
     { type: "candles", x: 6.3, z: 9.2, y0: 0.99, say: "은은한 촛불\n밤이 되면 더 예뻐요" },
     // 조명
-    { type: "pendant", kind: "linear", x: 2.1, z: 2.8, rot: 90, len: 1.8, y: 2.2 },
-    { type: "pendant", kind: "linear", x: 3.43, z: 6.06, rot: 45, len: 1.8, y: 2.2 },
-    { type: "pendant", kind: "linear", x: 6.3, z: 7.4, rot: 0, len: 2.2, y: 2.2, say: "바 위 나무 조명\n잔이 반짝이게 비춰 줘요" },
+    { type: "pendant", kind: "linear", x: 2.1, z: 2.8, rot: 90, len: 1.8, y: 2.2, glowLen: 4.1, glowOff: 0.2 }, // glowLen/Off: 바 상판 위 빛줄기 길이·위치
+    { type: "pendant", kind: "linear", x: 3.43, z: 6.06, rot: 45, len: 1.8, y: 2.2, glowLen: 4.4 },
+    { type: "pendant", kind: "linear", x: 6.3, z: 7.4, rot: 0, len: 2.2, y: 2.2, glowLen: 2.9, glowOff: -0.4, say: "바 위 나무 조명\n잔이 반짝이게 비춰 줘요" },
     { type: "pendant", kind: "rattan", x: 5.7, z: 3.45, y: 2.15, say: "라탄 조명\n직접 골라 단 등이에요" },
 
     { type: "projector", x: 5.9, z: 4.9, rot: -90, say: "프로젝터가 벽에\n영상을 비춰요" },

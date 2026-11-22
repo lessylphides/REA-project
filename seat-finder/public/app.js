@@ -88,6 +88,17 @@ const toon = (color, { unique = false, ...extra } = {}) => {
   return registerTint(m);
 };
 const outlineMat = new THREE.MeshBasicMaterial({ color: LINE ? "#1b1b1f" : COLOR.outline, side: THREE.BackSide });
+// 매장 안: 어스름한 실내에 맞춰 가늘고 짙은 갈색 선 (바깥은 그대로)
+const outlineMatIn = new THREE.MeshBasicMaterial({ color: "#24170f", side: THREE.BackSide });
+function softenInteriorOutlines(root, f = 0.5) {
+  root.traverse((o) => {
+    if (o.material !== outlineMat) return;
+    o.material = outlineMatIn;
+    const u = o.userData;
+    if (u.ol) { const [x, y, z, w] = u.ol; o.scale.set((x + w * 2 * f) / (x || 1), (y + w * 2 * f) / (y || 1), (z + w * 2 * f) / (z || 1)); }
+    else if (u.rebuild) { o.geometry.dispose(); o.geometry = u.rebuild(f); }
+  });
+}
 
 /** 메쉬 하나 만들기 (외곽선 포함) */
 function mk(geo, mat, pos, parent, { outline = 0.018, shadow = true } = {}) {
@@ -102,6 +113,7 @@ function mk(geo, mat, pos, parent, { outline = 0.018, shadow = true } = {}) {
     geo.boundingBox.getSize(s);
     const o = new THREE.Mesh(geo, outlineMat);
     o.scale.set((s.x + outline * 2) / (s.x || 1), (s.y + outline * 2) / (s.y || 1), (s.z + outline * 2) / (s.z || 1));
+    o.userData.ol = [s.x, s.y, s.z, outline];
     o.raycast = () => {};
     m.add(o);
   }
@@ -1683,6 +1695,7 @@ function ribbon(samples, half, h, y0, mat, parent, ol = 0.02, shift = 0) {
   if (ol) {
     const k = ol * OL;
     const o = new THREE.Mesh(ribbonGeo(samples, half + k, h + k * 2, y0 - k, shift), outlineMat);
+    o.userData.rebuild = (f) => ribbonGeo(samples, half + k * f, h + k * f * 2, y0 - k * f, shift);
     o.raycast = () => {};
     parent.add(o);
   }
@@ -1926,7 +1939,8 @@ function buildInteriorProp(p, g) {
         mk(new THREE.PlaneGeometry(len - 0.06, 0.05), m, [0, y - 0.061, 0], g, { outline: 0, shadow: false }).rotation.x = Math.PI / 2;
         addHalo(g, -len * 0.25, y - 0.2, 0, 1.0, "#ffd08a", true);
         addHalo(g, len * 0.25, y - 0.2, 0, 1.0, "#ffd08a", true);
-        lightPool(g, 0, 1.047, 0, len + 0.5, 0.75, "#ffb065", 0.15, 0.75); // 바 상판 위 길쭉한 불빛
+        // 바 상판 위 가늘고 긴 한 줄기 빛 (옆 조명 빛과 모서리에서 X자로 겹침)
+        lightPool(g, p.glowOff ?? 0, 1.047, 0, p.glowLen ?? len + 1.2, 0.38, "#ffb065", 0.12, 0.5); // 폭 = 상판의 약 1/3, 은은하게
         lightPool(g, 0, 0.015, 0, len + 1.2, 1.6, "#ff9a55", 0.03, 0.22);
 
         g.userData.hit = [len, 0.3, 0.3, y]; g.userData.sayY = y + 0.15;
@@ -2208,7 +2222,7 @@ function buildInteriorProp(p, g) {
       scr.position.set(0, 0, 0.0085); pad.add(scr);
       window.__ipad = { canvas: ipadCanvas, texture: ipadTex, redraw: drawIpad };
       // 그라인더 2대 (손님 기준 머신 오른쪽 = 로컬 -x)
-      const G1 = -0.42, G2 = -0.74, GZ = -0.25; // 그라인더는 바 상판 위 (손님 쪽으로 들어감)
+      const G1 = -0.42, G2 = -0.74, GZ = -0.05; // 그라인더는 바 상판 위, 바텐더 쪽 끝 가까이
       mk(box(0.17, 0.32, 0.22), black, [G1, y0 + 0.16, GZ], g, { outline: 0.008 }); // 키 큰 네모 그라인더
       mk(box(0.12, 0.04, 0.08), "#3a3a3e", [G1, y0 + 0.12, GZ + 0.13], g, { outline: 0.004 });
       mk(cyl(0.035, 0.05, 0.05, 10), "#2e2e32", [G1, y0 + 0.345, GZ], g, { outline: 0.004 });
@@ -2300,7 +2314,7 @@ function buildInteriorProp(p, g) {
       g.userData.hit = [0.5, 1.1, 0.5, 0.55]; g.userData.sayY = 1.35;
       return true;
     }
-    case "bartender": { // 바텐더 (50대, 날카로운 인상, 흰 셔츠 + 검정 나비넥타이, 넘긴 긴 머리, 뿔테 안경)
+    case "bartender": { // 바텐더 (50대, 날카로운 인상, 흰 셔츠 + 검정 나비넥타이, 파마 단발, 뿔테 안경)
       const skin = "#f0c9a6", hair = "#2a211d", jacket = "#fbfaf6", pants = "#1f1f22"; // jacket = 셔츠 소매 색
       const body = new THREE.Group(); g.add(body);
       g.userData.bt = body;
@@ -2348,15 +2362,22 @@ function buildInteriorProp(p, g) {
       const jaw = mk(box(0.17, 0.08, 0.16), "#e2b48e", [0, -0.14, 0.02], head, { outline: 0.012 }); // 각진 턱
       jaw.rotation.x = 0.15;
       mk(box(0.15, 0.07, 0.01), new THREE.MeshBasicMaterial({ color: "#7d6a5e", transparent: true, opacity: 0.35 }), [0, -0.13, 0.105], head, { outline: 0, shadow: false }); // 수염 자국
-      // 넘긴 머리 (이마가 넓게 드러남) + 흰머리 섞임
+      // 정수리 머리 + 흰머리 섞임
       const cap = mk(new THREE.SphereGeometry(0.168, 20, 12, 0, Math.PI * 2, 0, Math.PI * 0.5), hair, [0, 0.05, -0.04], head, { outline: 0 });
       cap.rotation.x = -0.6; cap.scale.set(0.95, 1.1, 1);
       for (const sx of [-0.06, 0.04]) mk(box(0.012, 0.01, 0.16), "#8e8a86", [sx, 0.19, -0.04], head, { outline: 0, shadow: false }).rotation.x = -0.4;
-      const tail = mk(new THREE.CapsuleGeometry(0.07, 0.3, 6, 10), hair, [0, -0.17, -0.15], head, { outline: 0.012 });
-      tail.rotation.x = 0.25;
-      for (const sx of [-1, 1]) {
-        const side = mk(new THREE.CapsuleGeometry(0.03, 0.18, 4, 8), hair, [sx * 0.12, -0.06, -0.1], head, { outline: 0.008 }); // 귀 뒤로 넘긴 머리
-        side.rotation.z = sx * 0.2;
+      // 파마 단발: 턱선까지 내려오는 동글동글한 컬 (이마는 드러남)
+      const curlGeo = new THREE.SphereGeometry(0.046, 10, 8);
+      let ci = 0;
+      for (const [y, R, front] of [[0.15, 0.13, 40], [0.09, 0.165, 55], [0.02, 0.18, 62], [-0.05, 0.18, 68], [-0.11, 0.165, 72]]) {
+        const n = Math.round(R * 70);
+        for (let i = 0; i < n; i++) {
+          const th = (i / n) * Math.PI * 2 + (y * 7);
+          const deg = Math.abs(THREE.MathUtils.radToDeg(Math.atan2(Math.sin(th), Math.cos(th))));
+          if (deg < front) continue; // 얼굴 앞은 비움
+          const c = mk(curlGeo, ci++ % 9 === 4 ? "#6f6a66" : hair, [Math.sin(th) * R, y, Math.cos(th) * R - 0.02], head, { outline: 0.006, shadow: false });
+          c.scale.setScalar(0.85 + ((i * 37) % 5) * 0.06);
+        }
       }
       const ink = new THREE.MeshBasicMaterial({ color: "#1b1b1f" });
       // 날카로운 눈썹 (안쪽이 내려간 각)
@@ -2622,7 +2643,7 @@ function addSeat(id, x, z, angle, kind) {
   g.add(hb);
   hitboxes.push(hb);
 
-  seats.set(id, { id, group: g, cushion, guest, tag, tagY: tag.position.y, occupied: false, anim: 0, target: 0, bump: 0 });
+  seats.set(id, { id, group: g, cushion, guest, tag, tagY: tag.position.y, seatY, occupied: false, anim: 0, target: 0, bump: 0 });
 }
 
 function rotXZ(x, z, deg) {
@@ -3266,6 +3287,7 @@ const walk = {
   on: false, tween: null, look: null,
   pos: new THREE.Vector3(), yaw: 0, pitch: -0.1,
   keys: new Set(), joy: { x: 0, y: 0 }, bob: 0, aimId: null, frame: 0, intro: false,
+  sit: null, crouch: false, eye: 1.55, jumpY: 0, vy: 0, back: null, // 앉기 / 쪼그려 앉기 / 점프
 };
 const walkFov = () => (camera.aspect < 1 ? 78 : 64);
 
@@ -3584,6 +3606,7 @@ function enterStore() {
 function exitWalk() {
   if (!walk.on) return;
   walk.on = false;
+  walk.sit = null; walk.crouch = false; walk.back = null; walk.jumpY = walk.vy = 0; walk.eye = EYE; updateActBtns();
   walk.look = null;
   walk.keys.clear();
   setAim(null);
@@ -3625,15 +3648,29 @@ function updateWalk(dt, time) {
   let r = (k.has("d") ? 1 : 0) - (k.has("a") ? 1 : 0) + walk.joy.x;
   const mag = Math.hypot(f, r);
   if (mag > 1) { f /= mag; r /= mag; }
-  const speed = (k.has("shift") ? 2.6 : 1.5) * dt;
+  if (walk.sit) {
+    const s = seats.get(walk.sit);
+    if (mag > 0.15 || !s || s.occupied) standUp(); // 움직이거나 그 자리에 손님이 오면 일어서기
+    f = r = 0;
+  }
+  const speed = (k.has("shift") ? 2.6 : 1.5) * (walk.crouch ? 0.5 : 1) * dt;
   const sy = Math.sin(walk.yaw), cy = Math.cos(walk.yaw);
-  walk.pos.x += (-sy * f + cy * r) * speed;
-  walk.pos.z += (-cy * f - sy * r) * speed;
-  collide(walk.pos);
+  if (!walk.sit) {
+    walk.pos.x += (-sy * f + cy * r) * speed;
+    walk.pos.z += (-cy * f - sy * r) * speed;
+    collide(walk.pos);
+  }
+  // 점프 (벽·바·테이블은 그대로 막힘)
+  if (walk.vy || walk.jumpY > 0) {
+    walk.vy -= 9.8 * dt; walk.jumpY += walk.vy * dt;
+    if (walk.jumpY <= 0) { walk.jumpY = 0; walk.vy = 0; }
+  }
+  const eyeT = walk.sit ? (seats.get(walk.sit)?.seatY ?? 0.7) + 0.55 : walk.crouch ? 0.85 : EYE;
+  walk.eye += (eyeT - walk.eye) * Math.min(1, dt * 8);
 
   const moving = Math.min(1, Math.hypot(f, r));
   walk.bob += dt * 9 * moving;
-  camera.position.set(walk.pos.x, EYE + Math.sin(walk.bob) * 0.025 * moving, walk.pos.z);
+  camera.position.set(walk.pos.x, walk.eye + walk.jumpY + Math.sin(walk.bob) * 0.025 * moving * (walk.jumpY > 0 ? 0 : 1), walk.pos.z);
   camera.rotation.set(walk.pitch, walk.yaw, Math.sin(walk.bob * 0.5) * 0.004 * moving);
 
   if (++walk.frame % 4 === 0) {
@@ -3650,6 +3687,50 @@ function updateWalk(dt, time) {
       }
     }
   }
+}
+
+/** 앉기: 빈자리 가까이면 의자에 앉고, 손님 있는 자리는 "사용 중"(쪼그려 앉기), 그 밖엔 쪼그려 앉기 */
+function toggleSit() {
+  if (!walk.on || walk.tween) return;
+  if (walk.sit || walk.crouch) return standUp();
+  let best = null, bd = 1.3;
+  const pick = walk.aimId && seats.get(walk.aimId);
+  if (pick && Math.hypot(pick.group.position.x - walk.pos.x, pick.group.position.z - walk.pos.z) < 2.2) best = pick;
+  else { // 가까운 빈자리 우선, 없으면 가까운 손님 자리
+    let busy = null, bb = 1.3;
+    for (const s of seats.values()) {
+      if (!s.group?.position) continue;
+      const d = Math.hypot(s.group.position.x - walk.pos.x, s.group.position.z - walk.pos.z);
+      if (!s.occupied && d < bd) { bd = d; best = s; }
+      if (s.occupied && d < bb) { bb = d; busy = s; }
+    }
+    best = best || busy;
+  }
+  if (best && !best.occupied) {
+    walk.back = walk.pos.clone();
+    walk.sit = best.id;
+    walk.pos.set(best.group.position.x, 0, best.group.position.z);
+    walk.yaw = best.group.rotation.y + Math.PI; // 바·테이블 쪽을 바라봄
+    walk.pitch = -0.12;
+  } else {
+    if (best) popBubble("사용 중이에요", best.group.position.x, 1.5, best.group.position.z, { fg: "#c0533f" });
+    walk.crouch = true;
+  }
+  updateActBtns();
+}
+function standUp() {
+  if (walk.sit && walk.back) { walk.pos.copy(walk.back); collide(walk.pos); }
+  walk.sit = null; walk.crouch = false; walk.back = null;
+  updateActBtns();
+}
+function jump() {
+  if (!walk.on || walk.tween) return;
+  if (walk.sit || walk.crouch) { standUp(); return; }
+  if (walk.jumpY === 0) walk.vy = 3.1;
+}
+function updateActBtns() {
+  const b = $("sitBtn");
+  if (b) b.textContent = walk.sit || walk.crouch ? "일어서기" : "앉기";
 }
 
 function setAim(id) {
@@ -3706,7 +3787,7 @@ function drawMinimap() {
 }
 
 function initWalk() {
-  if (new URLSearchParams(location.search).has("debug")) { window.__walk = walk; window.__cam = camera; } // 확인용
+  if (new URLSearchParams(location.search).has("debug")) { window.__walk = walk; window.__cam = camera; window.__seats = seats; window.__bt = bartenders; } // 확인용
   $("walkBtn").addEventListener("click", enterWalk);
   $("mapBtn").addEventListener("click", exitWalk);
   $("enterBtn").addEventListener("click", () => {
@@ -3718,7 +3799,9 @@ function initWalk() {
     if (!walk.on || e.target.closest?.("input, textarea")) return;
     const key = e.key.toLowerCase();
     if (key === "escape") return exitWalk();
-    if ((key === "e" || key === "enter" || key === " ") && walk.aimId && document.body.classList.contains("admin")) {
+    if (key === " ") { e.preventDefault(); if (!e.repeat) jump(); return; }
+    if (key === "c") { if (!e.repeat) toggleSit(); return; }
+    if ((key === "e" || key === "enter") && walk.aimId && document.body.classList.contains("admin")) {
       e.preventDefault();
       toggleSeat(walk.aimId).then(() => setAim(walk.aimId));
       return;
@@ -3729,6 +3812,12 @@ function initWalk() {
   addEventListener("keyup", (e) => walk.keys.delete(e.key.toLowerCase()));
   addEventListener("blur", () => walk.keys.clear());
 
+  // 앉기 / 점프 버튼
+  for (const [id, fn] of [["sitBtn", toggleSit], ["jumpBtn", jump]]) {
+    const b = $(id);
+    b?.addEventListener("pointerdown", (e) => { e.preventDefault(); e.stopPropagation(); fn(); });
+    b?.addEventListener("click", (e) => e.stopPropagation());
+  }
   // 가상 조이스틱 (휴대폰)
   const joy = $("joy"), knob = joy.querySelector("i");
   let jid = null, jc = null;
@@ -3930,6 +4019,7 @@ async function main() {
     buildScreens();
     buildWalkers();
     tintCollect = false;
+    if (LINE) softenInteriorOutlines(roomGroup);
 
     controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
