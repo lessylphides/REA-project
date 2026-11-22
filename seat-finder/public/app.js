@@ -1064,6 +1064,8 @@ function buildCurvedBar(b) {
     const len = a.p.distanceTo(c.p);
     addObstacle((a.p.x + c.p.x) / 2, (a.p.z + c.p.z) / 2, len / 2 + 0.05, bh + 0.12, THREE.MathUtils.radToDeg(Math.atan2(c.p.z - a.p.z, c.p.x - a.p.x)));
   }
+  // 손님은 바 안쪽(바텐더 자리)으로 못 들어가게 양 끝을 막음
+  for (const [x, z, hw, hd] of b.block || []) addObstacle(x, z, hw, hd);
   // 이름표
   const mid = curve.getPointAt(0.5);
   const label = textSprite(b.id, { size: 0.26 });
@@ -1295,12 +1297,10 @@ function buildInteriorProp(p, g) {
       return true;
     }
     case "door": { // 안 쓰는 출입문 (유리 벽 안쪽에 문틀 + 손잡이)
-      const w = p.w ?? 1.0, h = p.h ?? 2.2, frame = "#3a2c26";
-      for (const sx of [-1, 1]) mk(box(0.06, h, 0.08), frame, [sx * w / 2, h / 2, 0], g, { outline: 0.01, shadow: false });
-      mk(box(w + 0.06, 0.06, 0.08), frame, [0, h, 0], g, { outline: 0.01, shadow: false });
-      mk(box(0.05, 0.05, 0.05), frame, [0, h * 0.55, 0], g, { outline: 0, shadow: false }); // 가운데 살
-      mk(box(0.03, 0.35, 0.04), "#c9b27a", [w / 2 - 0.12, 1.05, -0.06], g, { outline: 0.005, shadow: false });
-      mk(box(w - 0.1, 0.04, 0.02), frame, [0, 1.0, -0.04], g, { outline: 0, shadow: false });
+      const w = p.w ?? 1.0, h = p.h ?? 2.2, frame = "#f4f1ec";
+      for (const sx of [-1, 1]) mk(box(0.05, h, 0.06), frame, [sx * w / 2, h / 2, -0.02], g, { outline: 0.006, shadow: false });
+      mk(box(w + 0.05, 0.05, 0.06), frame, [0, h, -0.02], g, { outline: 0.006, shadow: false });
+      mk(box(0.025, 0.3, 0.03), "#b9a26e", [w / 2 - 0.1, 1.05, -0.06], g, { outline: 0.004, shadow: false }); // 손잡이
       g.userData.hit = [w, h, 0.3, h / 2]; g.userData.sayY = h + 0.15;
       return true;
     }
@@ -1311,11 +1311,17 @@ function buildInteriorProp(p, g) {
       mk(box(0.36, 0.025, 0.025), wood, [0, 0.16, 0.16], g, { outline: 0.004 });
       const top = ty + 0.02, white = "#f1eeea";
       if (p.item === "mixer") { // 반죽기
-        mk(box(0.22, 0.04, 0.32), white, [0, top + 0.02, 0], g, { outline: 0.008 });
-        mk(box(0.1, 0.3, 0.1), white, [0, top + 0.19, -0.1], g, { outline: 0.008 });
-        mk(box(0.2, 0.13, 0.36), white, [0, top + 0.39, 0.0], g, { outline: 0.01 });
-        mk(cyl(0.1, 0.07, 0.13, 16), "#b9bcc2", [0, top + 0.11, 0.06], g, { outline: 0.008 });
-        mk(cyl(0.012, 0.012, 0.1, 6), "#8a8f96", [0, top + 0.27, 0.06], g, { outline: 0, shadow: false });
+        // 받침 → 뒤쪽 기둥 → 앞으로 나온 둥근 머리 → 그 아래 은색 그릇
+        const base = mk(cyl(0.13, 0.15, 0.04, 20), white, [0, top + 0.02, 0.02], g, { outline: 0.008 });
+        base.scale.set(1, 1, 1.3);
+        mk(cyl(0.055, 0.065, 0.3, 14), white, [0, top + 0.19, -0.13], g, { outline: 0.008 });
+        const head = mk(new THREE.CapsuleGeometry(0.075, 0.24, 6, 14), white, [0, top + 0.39, -0.02], g, { outline: 0.01 });
+        head.rotation.x = Math.PI / 2;
+        mk(new THREE.SphereGeometry(0.02, 8, 6), "#c8392b", [0.075, top + 0.39, -0.12], g, { outline: 0, shadow: false });
+        const bowl = new THREE.LatheGeometry([[0.03, 0], [0.09, 0.02], [0.11, 0.08], [0.115, 0.15], [0.105, 0.15]].map(([r, y]) => new THREE.Vector2(r, y)), 20);
+        mk(bowl, toon("#c3c7cd", { side: THREE.DoubleSide }), [0, top + 0.05, 0.05], g, { outline: 0, shadow: false });
+        mk(new THREE.TorusGeometry(0.112, 0.006, 5, 20), "#2b2522", [0, top + 0.2, 0.05], g, { outline: 0, shadow: false }).rotation.x = Math.PI / 2;
+        mk(cyl(0.01, 0.01, 0.1, 6), "#8a8f96", [0, top + 0.28, 0.05], g, { outline: 0, shadow: false });
       } else { // 가습기 + 술병 3개 (김이 모락모락)
         mk(cyl(0.12, 0.12, 0.55, 20), white, [-0.06, top + 0.275, -0.04], g, { outline: 0.01 });
         mk(new THREE.TorusGeometry(0.09, 0.025, 8, 20), "#dedad5", [-0.06, top + 0.55, -0.04], g, { outline: 0 }).rotation.x = Math.PI / 2;
@@ -1324,7 +1330,9 @@ function buildInteriorProp(p, g) {
         mk(cyl(0.022, 0.022, 0.35, 8), white, [-0.06, top + 0.72, -0.04], g, { outline: 0.004 });
         for (const sx of [-1, 1]) mk(cyl(0.015, 0.015, 0.12, 6), white, [-0.06 + sx * 0.05, top + 0.85, -0.04], g, { outline: 0.003 }).rotation.z = sx * -0.6;
         const [wx, wz] = rotXZ(-0.06, -0.04, p.rot);
-        steamSources.push(new THREE.Vector3(p.x + wx, top + 0.95, p.z + wz));
+        const mist = new THREE.Vector3(p.x + wx, top + 0.95, p.z + wz);
+        mist.userData = { k: 0.45, a: 0.3 }; // 가습기 김은 작고 옅게
+        steamSources.push(mist);
         const bottles = [["#f4efe4", "#c8392b", 0.22], ["#eef2f2", "#d9d9d9", 0.26], ["#e9d9c0", "#2a2522", 0.18]];
         bottles.forEach(([c, cap, h], i) => {
           mk(cyl(0.035, 0.035, h, 10), c, [0.1 + (i - 1) * 0.08, top + h / 2, 0.12], g, { outline: 0.005 });
@@ -2493,9 +2501,10 @@ function updateWorld(dt, time) {
       const dx = (Math.random() - 0.5) * 0.1;
       addEffect(m, scene, 2.2, (e) => {
         const t = e.t / e.life;
-        m.position.set(src.x + dx + Math.sin(e.t * 3) * 0.04, src.y + t * 0.7, src.z);
-        m.scale.setScalar(1 + t * 2);
-        m.material.opacity = 0.55 * (1 - t);
+        const k = src.userData?.k ?? 1, a = src.userData?.a ?? 0.55;
+        m.position.set(src.x + dx * k + Math.sin(e.t * 3) * 0.04 * k, src.y + t * 0.7 * k, src.z);
+        m.scale.setScalar((1 + t * 2) * k);
+        m.material.opacity = a * (1 - t);
       });
     }
   }
