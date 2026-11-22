@@ -1783,6 +1783,7 @@ function buildCurvedBar(b) {
 }
 
 /** 뒷선반 (창 아래, 술병) */
+const SPEAKERS = (LAYOUT.props || []).filter((p) => p.type === "speaker");
 function buildBackbar(p) {
   const curve = roundedPath(p.path, 0.25);
   const S = pathSamples(curve, 0.15);
@@ -1818,6 +1819,7 @@ function buildBackbar(p) {
   for (let s = 0.2; s < L - 0.2; s += 0.13) {
     if (Math.floor(s / 1.1) % 3 === 2) continue; // 빈 칸
     const q = curve.getPointAt(s / L), t = curve.getTangentAt(s / L);
+    if (SPEAKERS.some((sp) => Math.hypot(sp.x - q.x, sp.z - q.z) < 0.34)) continue; // 스피커 자리는 비움
     const off = (rnd() - 0.5) * 0.18;
     const x = q.x + t.z * off, z = q.z - t.x * off;
     const h = 0.22 + rnd() * 0.16, r = 0.035 + rnd() * 0.02;
@@ -2101,22 +2103,104 @@ function buildInteriorProp(p, g) {
       g.userData.hit = [0.6, 0.3, 0.2, p.y ?? 2.05]; g.userData.sayY = (p.y ?? 2.05) + 0.2;
       return true;
     }
-    case "coffee": { // 에스프레소 머신 + 그라인더 (김)
-      const y0 = p.y0 ?? 0.99;
-      mk(box(0.55, 0.42, 0.42), "#2e2e33", [0, y0 + 0.21, 0], g, { outline: 0.012 });
-      mk(box(0.5, 0.05, 0.12), "#c9c9cf", [0, y0 + 0.3, 0.24], g, { outline: 0.006 });
-      mk(cyl(0.07, 0.09, 0.3, 12), "#1f1f22", [0.42, y0 + 0.15, 0], g, { outline: 0.008 });
-      mk(cyl(0.09, 0.06, 0.16, 12), glowMat("#c9b8a0", 0.6), [0.42, y0 + 0.38, 0], g, { outline: 0.006 });
-      steamSources.push(new THREE.Vector3(p.x, y0 + 0.5, p.z));
-      if (p.shelf) { // 바에 1/3 만 걸친 머신을 받쳐 주는 나무 선반 (머신 로컬 +z 쪽으로 튀어나옴)
-        const wood = "#8a5e3a";
-        mk(box(0.95, 0.04, 0.34), wood, [0.2, y0 - 0.02, 0.06], g, { outline: 0.008 });
-        for (const lx of [-0.2, 0.6]) mk(box(0.04, y0 - 0.04, 0.04), wood, [lx, (y0 - 0.04) / 2, 0.2], g, { outline: 0.006 });
-        mk(box(0.84, 0.03, 0.03), wood, [0.2, 0.3, 0.2], g, { outline: 0.004 });
-        const [ox, oz] = rotXZ(0.2, 0.12, p.rot);
-        addObstacle(p.x + ox, p.z + oz, 0.5, 0.17, p.rot);
+    case "coffee": { // 라마르조꼬 에스프레소 머신 (나무 받침 위) + 아이패드 + 그라인더 2대. 로컬 +z = 바텐더 쪽, -z = 손님 쪽, -x = 손님 기준 오른쪽
+      const y0 = p.y0 ?? 0.99, black = "#232326", steel = "#b9bcc2";
+      const frustum = (wTop, wBot, h, d) => { // 아래가 살짝 좁은 상자
+        const geo = new THREE.CylinderGeometry(Math.SQRT1_2, Math.SQRT1_2 * wBot / wTop, h, 4, 1);
+        geo.rotateY(Math.PI / 4); geo.scale(wTop, 1, d);
+        return geo;
+      };
+      const wood = "#8a5e3a";
+      mk(box(0.66, 0.035, 0.5), "#9a6a42", [0, y0 + 0.0175, 0], g, { outline: 0.008 }); // 나무 받침판
+      const by = y0 + 0.035, bh = 0.4;
+      mk(frustum(0.6, 0.5, bh, 0.46), black, [0, by + bh / 2, 0], g, { outline: 0.012 });
+      mk(box(0.62, 0.025, 0.48), "#2e2e32", [0, by + bh + 0.012, 0], g, { outline: 0.008 }); // 윗판 (컵 없음)
+      mk(box(0.46, 0.03, 0.14), steel, [0, by + 0.04, 0.27], g, { outline: 0.006 }); // 물받이
+      for (const gx of [-0.14, 0.14]) { // 그룹헤드 (필터는 꽂지 않음)
+        mk(cyl(0.045, 0.04, 0.05, 12), steel, [gx, by + 0.25, 0.25], g, { outline: 0.005 });
+        mk(box(0.02, 0.05, 0.02), "#111", [gx, by + 0.31, 0.25], g, { outline: 0.003 });
       }
-      g.userData.hit = [0.9, 0.7, 0.6, y0 + 0.3]; g.userData.sayY = y0 + 0.75;
+      for (const sx of [-0.27, 0.27]) mk(cyl(0.008, 0.008, 0.2, 6), steel, [sx, by + 0.2, 0.26], g, { outline: 0.003 }).rotation.x = 0.25; // 스팀 완드
+      // 손님 쪽 위: 노란 LED 돌출 미니 간판 "LA MARZOCCO"
+      const signTex = canvasTex(512, 96, (c, w, h) => {
+        c.fillStyle = "#16120a"; c.fillRect(0, 0, w, h);
+        c.font = "bold 62px Georgia, 'Times New Roman', serif"; c.textAlign = "center"; c.textBaseline = "middle";
+        c.shadowColor = "#ffd54a"; c.shadowBlur = 18; c.fillStyle = "#ffe27a";
+        c.fillText("LA MARZOCCO", w / 2, h / 2 + 3);
+      });
+      const sy = by + bh - 0.07, sz = -0.25;
+      mk(box(0.5, 0.1, 0.035), "#1a1a1c", [0, sy, sz - 0.012], g, { outline: 0.005, shadow: false });
+      const sign = new THREE.Mesh(new THREE.PlaneGeometry(0.48, 0.085), new THREE.MeshBasicMaterial({ map: signTex }));
+      sign.position.set(0, sy, sz - 0.031); sign.rotation.y = Math.PI; g.add(sign);
+      const halo = new THREE.MeshBasicMaterial({ color: "#ffcf4a", map: poolTex, transparent: true, opacity: 0.2, depthWrite: false, blending: THREE.AdditiveBlending });
+      const hm = new THREE.Mesh(new THREE.PlaneGeometry(0.8, 0.3), halo);
+      hm.position.set(0, sy, sz - 0.04); hm.rotation.y = Math.PI; g.add(hm);
+      innerGlows.push([halo, 0.05, 0.35]);
+      // 위: 아이패드 거치대 + 아이패드 (화면은 window.__ipad 캔버스 → 나중에 기능 넣기)
+      const ty = by + bh + 0.025;
+      mk(box(0.16, 0.015, 0.12), "#8f9298", [0, ty + 0.008, -0.02], g, { outline: 0.004 });
+      mk(cyl(0.012, 0.012, 0.16, 8), "#8f9298", [0, ty + 0.09, -0.02], g, { outline: 0.003 });
+      const pad = new THREE.Group(); pad.position.set(0, ty + 0.27, -0.03); pad.rotation.x = 0.22; g.add(pad); // 손님 쪽으로 살짝 기울임
+      mk(box(0.25, 0.18, 0.012), "#1b1b1e", [0, 0, 0], pad, { outline: 0.005 });
+      const ipadCanvas = document.createElement("canvas"); ipadCanvas.width = 256; ipadCanvas.height = 184;
+      const ipadTex = new THREE.CanvasTexture(ipadCanvas); ipadTex.colorSpace = THREE.SRGBColorSpace;
+      const drawIpad = () => {
+        const c = ipadCanvas.getContext("2d"), w = 256, h = 184;
+        const grd = c.createLinearGradient(0, 0, 0, h); grd.addColorStop(0, "#2a2238"); grd.addColorStop(1, "#141018");
+        c.fillStyle = grd; c.fillRect(0, 0, w, h);
+        c.fillStyle = "rgba(255,226,190,.75)"; c.textAlign = "center"; c.textBaseline = "middle";
+        c.font = "bold 26px Georgia, serif"; c.fillText("DIVE", w / 2, h / 2 - 26);
+        c.font = "bold 22px Georgia, serif"; c.fillText("HIDE AWAY", w / 2, h / 2 + 8);
+        c.fillStyle = "rgba(255,200,140,.35)"; c.fillRect(w / 2 - 30, h / 2 + 34, 60, 2);
+        ipadTex.needsUpdate = true;
+      };
+      drawIpad();
+      const scr = new THREE.Mesh(new THREE.PlaneGeometry(0.225, 0.158), new THREE.MeshBasicMaterial({ map: ipadTex }));
+      scr.position.set(0, 0, -0.007); scr.rotation.y = Math.PI; pad.add(scr);
+      window.__ipad = { canvas: ipadCanvas, texture: ipadTex, redraw: drawIpad };
+      // 그라인더 2대 (손님 기준 머신 오른쪽 = 로컬 -x)
+      const G1 = -0.5, G2 = -0.82;
+      mk(box(0.17, 0.32, 0.22), black, [G1, y0 + 0.16, 0.02], g, { outline: 0.008 }); // 키 큰 네모 그라인더
+      mk(box(0.12, 0.04, 0.08), "#3a3a3e", [G1, y0 + 0.12, 0.15], g, { outline: 0.004 });
+      mk(cyl(0.035, 0.05, 0.05, 10), "#2e2e32", [G1, y0 + 0.345, 0.02], g, { outline: 0.004 });
+      mk(cyl(0.09, 0.04, 0.22, 14), toon("#e8f2f5", { transparent: true, opacity: 0.35 }), [G1, y0 + 0.48, 0.02], g, { outline: 0.006, shadow: false });
+      mk(cyl(0.075, 0.036, 0.16, 12), "#4a2c1c", [G1, y0 + 0.45, 0.02], g, { outline: 0, shadow: false }); // 원두 가득
+      mk(cyl(0.095, 0.095, 0.02, 14), "#1b1b1e", [G1, y0 + 0.6, 0.02], g, { outline: 0.004 });
+      mk(cyl(0.075, 0.085, 0.22, 16), black, [G2, y0 + 0.11, 0.02], g, { outline: 0.008 }); // 작은 둥근 그라인더
+      mk(box(0.06, 0.03, 0.06), "#3a3a3e", [G2, y0 + 0.08, 0.1], g, { outline: 0.004 });
+      const hop = glowMat("#ffe9c8", 0.55);
+      mk(cyl(0.065, 0.045, 0.12, 14), hop, [G2, y0 + 0.28, 0.02], g, { outline: 0.005, shadow: false });
+      mk(cyl(0.05, 0.035, 0.07, 12), "#5a3622", [G2, y0 + 0.26, 0.02], g, { outline: 0, shadow: false });
+      innerGlows.push([hop, 0.4, 0.8]);
+      { const [sx, sz] = rotXZ(0, 0.3, p.rot); steamSources.push(new THREE.Vector3(p.x + sx, by + 0.3, p.z + sz)); } // 김은 바텐더 쪽 그룹헤드 앞에서
+      if (p.shelf) { // 바에 1/3 만 걸친 머신·그라인더를 받쳐 주는 나무 선반 (로컬 +z = 바텐더 쪽)
+        const x0 = -1.0, x1 = 0.36, cx = (x0 + x1) / 2, wx = x1 - x0;
+        mk(box(wx, 0.04, 0.5), wood, [cx, y0 - 0.02, 0.02], g, { outline: 0.008 });
+        for (const lx of [x0 + 0.04, x1 - 0.04]) mk(box(0.04, y0 - 0.04, 0.04), wood, [lx, (y0 - 0.04) / 2, 0.22], g, { outline: 0.006 });
+        mk(box(wx - 0.1, 0.03, 0.03), wood, [cx, 0.3, 0.22], g, { outline: 0.004 });
+        const [ox, oz] = rotXZ(cx, 0.12, p.rot);
+        addObstacle(p.x + ox, p.z + oz, wx / 2, 0.17, p.rot);
+      }
+      g.userData.hit = [0.9, 0.8, 0.6, y0 + 0.35]; g.userData.sayY = y0 + 0.85;
+      return true;
+    }
+    case "speaker": { // JBL 4312A 우드 (호두나무 통 + 파란 앞판 + 흰 우퍼). 로컬 +z = 앞
+      const y0 = p.y0 ?? 0.99, W = 0.36, H = 0.6, D = 0.3, walnut = "#7a4a2a";
+      mk(box(W, H, D), walnut, [0, y0 + H / 2, 0], g, { outline: 0.01 });
+      const fz = D / 2 + 0.004;
+      mk(box(W - 0.04, H - 0.04, 0.01), "#2f5d9a", [0, y0 + H / 2, fz], g, { outline: 0.004, shadow: false });
+      const ring = (r, y, x, col, cone) => {
+        mk(cyl(r, r, 0.012, 24), "#1a1a1c", [x, y, fz + 0.008], g, { outline: 0.003, shadow: false }).rotation.x = Math.PI / 2;
+        mk(cyl(r * 0.88, r * 0.88, 0.012, 24), col, [x, y, fz + 0.014], g, { outline: 0, shadow: false }).rotation.x = Math.PI / 2;
+        if (cone) mk(new THREE.SphereGeometry(r * 0.25, 10, 6), "#e8e6e0", [x, y, fz + 0.02], g, { outline: 0, shadow: false }).scale.z = 0.4;
+      };
+      ring(0.13, y0 + 0.2, 0, "#f2f0ea", true);          // 12인치 흰 우퍼
+      ring(0.045, y0 + 0.44, -0.075, "#f2f0ea", true);   // 미드
+      ring(0.025, y0 + 0.44, 0.07, "#d9d6cf", false);    // 트위터
+      for (const kx of [-0.03, 0.12]) mk(cyl(0.012, 0.012, 0.015, 10), "#d8d8d8", [kx, y0 + 0.52, fz + 0.012], g, { outline: 0.002, shadow: false }).rotation.x = Math.PI / 2; // 레벨 손잡이
+      mk(box(0.06, 0.022, 0.006), "#d8d8d8", [0.12, y0 + 0.36, fz + 0.008], g, { outline: 0, shadow: false }); // JBL 배지
+      addObstacle(p.x, p.z, W / 2, D / 2, p.rot);
+      g.userData.hit = [W, H, D, y0 + H / 2]; g.userData.sayY = y0 + H + 0.25;
       return true;
     }
     case "door": { // 안 쓰는 출입문: 입구 문과 같은 크기·모양 (짙은 문틀 + 유리 + 긴 세로 나무 손잡이), 유리 바깥쪽(블라인드 뒤)
