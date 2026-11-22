@@ -1436,12 +1436,20 @@ function buildInteriorProp(p, g) {
         for (let s = 0; s < 3; s++) {
           const sx = (s - 1) * 0.07, h = k * (0.75 + s * 0.12);
           mk(cyl(0.015, 0.02, h - 0.5, 6), "#9aa86a", [sx, 0.5 + (h - 0.5) / 2, 0], g, { outline: 0.006 });
-          for (let i = 0; i < 12; i++) {
-            const a = i * 0.53 + s * 0.7, leaf = new THREE.Group();
-            leaf.position.set(sx, h - (i % 3) * 0.12, 0); leaf.rotation.set(0.75 + (i % 4) * 0.22, a, 0);
-            g.add(leaf);
-            const m = mk(new THREE.SphereGeometry(0.06, 8, 6), leafMat(i % 2 ? "#3f8a4f" : "#5aa65a"), [0, 0.42, 0], leaf, { outline: 0.006 });
-            m.scale.set(1.1, 7.5, 0.18); // 길고 넓은 야자잎
+          const n = 8;
+          for (let i = 0; i < n; i++) {
+            // 방향(yaw)을 먼저 정하고 그 안에서 바깥으로 눕힘 → 잎이 사방으로 퍼짐
+            const yaw = new THREE.Group();
+            yaw.position.set(sx, h - (i % 3) * 0.08, 0);
+            yaw.rotation.y = (i / n) * Math.PI * 2 + s * 0.8;
+            g.add(yaw);
+            const col = i % 2 ? "#3f8a4f" : "#5aa65a";
+            const up = new THREE.Group(); up.rotation.x = 0.55 + (i % 3) * 0.15; yaw.add(up); // 위로 뻗다가
+            const a = mk(new THREE.SphereGeometry(0.06, 8, 6), leafMat(col), [0, 0.2, 0], up, { outline: 0.006 });
+            a.scale.set(1.3, 3.6, 0.16);
+            const down = new THREE.Group(); down.position.y = 0.4; down.rotation.x = 0.75; up.add(down); // 끝은 아래로 늘어짐
+            const b = mk(new THREE.SphereGeometry(0.06, 8, 6), leafMat(col), [0, 0.2, 0], down, { outline: 0.006 });
+            b.scale.set(1.1, 3.6, 0.15);
           }
         }
       } else if (p.kind === "norfolk") {
@@ -1485,7 +1493,7 @@ function buildInteriorProp(p, g) {
       const tvTop = (p.tvY ?? 1.55) + (p.tvH ?? 1.32) / 2, tvBot = (p.tvY ?? 1.55) - (p.tvH ?? 1.32) / 2;
       mk(box(tw, h - tvTop - 0.05, d), wood, [0, (h + tvTop + 0.05) / 2, d / 2], g, { outline: 0.015 });
       mk(box(tw, tvBot - 0.05, d), wood, [0, (tvBot - 0.05) / 2, d / 2], g, { outline: 0.015 });
-      addObstacle(p.x, 0.25, w / 2, 0.25);
+      addObstacle(p.x, (p.z || 0) + 0.21, w / 2, 0.25);
       g.userData.hit = [w, h, 0.6, h / 2]; g.userData.sayY = h + 0.1;
       return true;
     }
@@ -1506,16 +1514,56 @@ function buildInteriorProp(p, g) {
       g.userData.hit = [w, h, 0.2, p.y ?? 1.6]; g.userData.sayY = (p.y ?? 1.6) + h / 2 + 0.1;
       return true;
     }
-    case "coatrack": { // 사다리 모양 옷걸이
-      const wood = "#8a5e3a";
+    case "coatrack": { // 원목 행거: 기둥 2개 + 가로 봉, 패딩·긴 코트·모자, 아래 검은 상자, 옆 작은 스툴
+      const wood = "#4a2e22", W = 0.9, top = 1.6;
       for (const sx of [-1, 1]) {
-        const leg = mk(box(0.05, 1.8, 0.05), wood, [sx * 0.2, 0.9, 0], g, { outline: 0.008 });
-        leg.rotation.z = sx * 0.12;
+        const post = mk(box(0.045, top + 0.05, 0.045), wood, [sx * W / 2, (top + 0.05) / 2, 0.05], g, { outline: 0.008 });
+        post.rotation.x = -0.06; // 벽에 살짝 기대 섬
       }
-      for (let i = 0; i < 5; i++) mk(box(0.42 - i * 0.05, 0.03, 0.03), wood, [0, 0.4 + i * 0.3, 0], g, { outline: 0.006 });
-      mk(box(0.34, 0.6, 0.12), "#2b2a2e", [0.05, 1.35, 0.08], g, { outline: 0.01 });
-      addObstacle(p.x, p.z, 0.25, 0.2);
-      g.userData.hit = [0.6, 1.8, 0.4, 0.9]; g.userData.sayY = 2.0;
+      mk(cyl(0.018, 0.018, W + 0.3, 8), wood, [0.05, top, 0], g, { outline: 0.006 }).rotation.z = Math.PI / 2;
+      mk(box(W - 0.05, 0.03, 0.3), wood, [0, 0.28, 0.08], g, { outline: 0.006 }); // 아래 선반
+      // 옷걸이 (빈 것 2개)
+      for (const hx of [-0.3, -0.12]) {
+        const hg = new THREE.Group(); hg.position.set(hx, top - 0.02, 0); g.add(hg);
+        mk(cyl(0.006, 0.006, 0.06, 4), "#cfcfd4", [0, -0.03, 0], hg, { outline: 0, shadow: false });
+        mk(box(0.32, 0.02, 0.02), "#d9b48a", [0, -0.12, 0], hg, { outline: 0.004 }).rotation.z = 0.0;
+      }
+      // 검은 패딩
+      const pad = mk(new THREE.CapsuleGeometry(0.16, 0.32, 6, 12), "#2a2b30", [0.1, top - 0.36, 0.02], g, { outline: 0.012 });
+      pad.scale.set(1.1, 1, 0.65);
+      for (let i = 0; i < 3; i++) mk(new THREE.TorusGeometry(0.17, 0.012, 5, 20), "#1d1e22", [0.1, top - 0.22 - i * 0.12, 0.02], g, { outline: 0 }).rotation.x = Math.PI / 2;
+      // 긴 회색 코트 (털 칼라)
+      mk(box(0.32, 1.05, 0.14), "#bdbcb6", [0.33, top - 0.58, 0.04], g, { outline: 0.012 });
+      mk(box(0.26, 0.12, 0.16), "#e4e0d6", [0.33, top - 0.1, 0.05], g, { outline: 0.008 });
+      // 봉 끝 검은 모자
+      mk(new THREE.SphereGeometry(0.08, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2), "#1f1f22", [-0.52, top - 0.03, 0.02], g, { outline: 0.006 }).rotation.z = Math.PI / 2;
+      // 아래 검은 상자
+      mk(box(0.5, 0.24, 0.32), "#1f1f22", [0.02, 0.12, 0.1], g, { outline: 0.01 });
+      mk(box(0.2, 0.04, 0.005), "#e9e9ef", [0.02, 0.12, 0.262], g, { outline: 0, shadow: false });
+      // 왼쪽 옆 작은 나무 스툴
+      const sx0 = -W / 2 - 0.3;
+      mk(box(0.34, 0.04, 0.28), "#a8784a", [sx0, 0.45, 0.12], g, { outline: 0.008 });
+      for (const [lx, lz] of [[-0.13, 0.02], [0.13, 0.02], [-0.13, 0.22], [0.13, 0.22]]) mk(box(0.03, 0.45, 0.03), "#a8784a", [sx0 + lx, 0.225, lz], g, { outline: 0.005 });
+      mk(box(0.26, 0.06, 0.2), "#9fb3a3", [sx0, 0.5, 0.12], g, { outline: 0.006 }); // 개어 둔 옷
+      const [ox, oz] = rotXZ(-0.15, 0.12, p.rot);
+      addObstacle(p.x + ox, p.z + oz, (W + 0.7) / 2, 0.22, p.rot);
+      g.userData.hit = [W + 0.6, 1.7, 0.45, 0.85]; g.userData.sayY = 1.95;
+      return true;
+    }
+    case "walldoor": { // 벽에 난 문 (화장실 가는 문)
+      const w = p.w ?? 0.85, h = p.h ?? 2.05, frame = "#f4f1ec";
+      mk(box(w, h, 0.04), p.color || "#7a5638", [0, h / 2, 0.03], g, { outline: 0.012 });
+      for (const sx of [-1, 1]) mk(box(0.06, h + 0.04, 0.07), frame, [sx * (w / 2 + 0.03), (h + 0.04) / 2, 0.035], g, { outline: 0.008 });
+      mk(box(w + 0.18, 0.06, 0.07), frame, [0, h + 0.05, 0.035], g, { outline: 0.008 });
+      mk(new THREE.SphereGeometry(0.035, 10, 8), "#c9b27a", [w / 2 - 0.1, 1.0, 0.07], g, { outline: 0.005 });
+      if (p.text) {
+        const t = canvasTex(128, 64, (c, W2, H2) => {
+          c.fillStyle = "#f4f1ec"; c.beginPath(); c.roundRect(2, 2, W2 - 4, H2 - 4, 12); c.fill();
+          c.fillStyle = "#3b2f2a"; c.font = "800 30px 'Pretendard','Apple SD Gothic Neo',sans-serif"; c.textAlign = "center"; c.fillText(p.text, W2 / 2, 43);
+        });
+        mk(new THREE.PlaneGeometry(0.3, 0.15), new THREE.MeshBasicMaterial({ map: t }), [0, 1.6, 0.055], g, { outline: 0.004, shadow: false });
+      }
+      g.userData.hit = [w, h, 0.3, h / 2]; g.userData.sayY = h + 0.2;
       return true;
     }
     case "sign": { // WELCOME 팻말
@@ -1975,7 +2023,7 @@ function buildScreens() {
     tex.colorSpace = THREE.SRGBColorSpace;
     const g = new THREE.Group();
     const parent = cfg.wall === "right" ? fpGroup : roomGroup;
-    if (cfg.wall === "back") g.position.set(cfg.x, cfg.y, 0.06);
+    if (cfg.wall === "back") g.position.set(cfg.x, cfg.y, (cfg.z ?? 0) + 0.06);
     else if (cfg.wall === "right") { g.position.set(R.w - 0.06, cfg.y, cfg.z); g.rotation.y = -Math.PI / 2; }
     else { g.position.set(0.06, cfg.y, cfg.z); g.rotation.y = Math.PI / 2; }
     parent.add(g);
