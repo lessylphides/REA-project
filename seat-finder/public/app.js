@@ -334,7 +334,7 @@ function floorTexture() {
 const blindsTex = canvasTex(64, 256, (g, w, h) => {
   g.clearRect(0, 0, w, h);
   for (let y = 0; y < h; y += 16) {
-    g.fillStyle = "rgba(246,240,236,.93)"; g.fillRect(0, y, w, 11);
+    g.fillStyle = "rgba(246,240,236,.8)"; g.fillRect(0, y, w, 11);
     g.fillStyle = LINE ? "rgba(27,27,31,.45)" : "rgba(120,110,110,.4)"; g.fillRect(0, y + 10, w, 1.5);
   }
 });
@@ -406,6 +406,92 @@ function buildEdge(e, group, h, T) {
   for (let i = 0; i <= n; i++) mk(box(0.06, top - sill, T * 0.8), white, [-e.len / 2 + (e.len / n) * i, (top + sill) / 2, 0], g, { outline: 0.01, shadow: false });
   mk(box(e.len, 0.05, T * 0.9), white, [0, top - 0.02, 0], g, { outline: 0.01, shadow: false });
   mk(box(e.len, 0.05, T * 0.9), white, [0, sill + 0.02, 0], g, { outline: 0.01, shadow: false });
+  // 창밖 거리 (1인칭에서만, 블라인드 틈으로 보임)
+  if (group === fpGroup || group === roomGroup) addStreetView((e.ax + e.bx) / 2, (e.az + e.bz) / 2, e.nx, e.nz, e.len + 6, 5, 3.5, 17 + e.i * 31);
+}
+
+// ───────── 창밖 거리 풍경 (블라인드 틈으로 은은하게) ─────────
+const streetViews = []; // { ctx, tex, seed }
+let streetPhase = "";
+function drawStreet(g, W, H, phase, seed) {
+  let s = seed;
+  const rnd = () => ((s = (s * 16807) % 2147483647) / 2147483647);
+  const night = phase === "night", dusk = phase === "dusk";
+  // 하늘
+  const sky = g.createLinearGradient(0, 0, 0, H * 0.7);
+  if (night) { sky.addColorStop(0, "#121833"); sky.addColorStop(1, "#2b2f55"); }
+  else if (dusk) { sky.addColorStop(0, "#8f7fd0"); sky.addColorStop(1, "#f3a7a0"); }
+  else { sky.addColorStop(0, "#d9c3ef"); sky.addColorStop(1, "#f2e3f0"); }
+  g.fillStyle = sky; g.fillRect(0, 0, W, H);
+  const roadY = H * 0.74;
+  // 건물들
+  const walls = night ? ["#3a2630", "#2e2b3f", "#3d3036", "#2a3040"] : dusk ? ["#9a5b4c", "#7d6f86", "#a06a58", "#6f7690"] : ["#b5583f", "#cfc9bf", "#a7b6c9", "#c98f6b"];
+  let x = -20;
+  while (x < W) {
+    const w = 120 + rnd() * 160, h = H * (0.35 + rnd() * 0.4), y = roadY - h;
+    g.fillStyle = walls[Math.floor(rnd() * walls.length)];
+    g.fillRect(x, y, w, h);
+    g.strokeStyle = "#1b1b1f"; g.lineWidth = 5; g.strokeRect(x, y, w, h);
+    // 창문
+    for (let wy = y + 18; wy < roadY - 40; wy += 46) {
+      for (let wx = x + 16; wx < x + w - 30; wx += 40) {
+        const lit = night ? rnd() < 0.45 : dusk ? rnd() < 0.3 : false;
+        g.fillStyle = lit ? "#f3c27a" : night ? "#1d2138" : dusk ? "#5f5a80" : "#bfe0f2";
+        g.fillRect(wx, wy, 22, 26);
+        g.lineWidth = 3; g.strokeRect(wx, wy, 22, 26);
+      }
+    }
+    x += w + 6 + rnd() * 20;
+  }
+  // 도로 + 노란 선
+  g.fillStyle = night ? "#34343f" : dusk ? "#6d6577" : "#b9b3c4";
+  g.fillRect(0, roadY, W, H - roadY);
+  g.strokeStyle = "#1b1b1f"; g.lineWidth = 5; g.beginPath(); g.moveTo(0, roadY); g.lineTo(W, roadY); g.stroke();
+  g.strokeStyle = night ? "#b59a3c" : "#d9b84a"; g.lineWidth = 6; g.setLineDash([40, 30]);
+  g.beginPath(); g.moveTo(0, roadY + (H - roadY) * 0.6); g.lineTo(W, roadY + (H - roadY) * 0.6); g.stroke(); g.setLineDash([]);
+  // 가로등 (밤엔 불빛 번짐)
+  for (let i = 0; i < 3; i++) {
+    const lx = W * (0.15 + i * 0.33 + rnd() * 0.08), ly = roadY - H * 0.42;
+    g.strokeStyle = "#1b1b1f"; g.lineWidth = 6; g.beginPath(); g.moveTo(lx, roadY); g.lineTo(lx, ly); g.lineTo(lx + 28, ly); g.stroke();
+    if (night || dusk) {
+      const glow = g.createRadialGradient(lx + 30, ly + 8, 2, lx + 30, ly + 8, 120);
+      glow.addColorStop(0, night ? "rgba(255,230,160,.95)" : "rgba(255,220,160,.6)"); glow.addColorStop(1, "rgba(255,220,150,0)");
+      g.fillStyle = glow; g.beginPath(); g.arc(lx + 30, ly + 8, 120, 0, Math.PI * 2); g.fill();
+    }
+    g.fillStyle = night || dusk ? "#fff2c0" : "#e9e4d8"; g.beginPath(); g.arc(lx + 30, ly + 8, 9, 0, Math.PI * 2); g.fill(); g.lineWidth = 3; g.stroke();
+  }
+  // 주차된 차
+  const cx = W * (0.25 + rnd() * 0.4), cy = roadY + 18;
+  g.fillStyle = night ? "#3e4150" : "#e9e9ef"; g.strokeStyle = "#1b1b1f"; g.lineWidth = 5;
+  g.beginPath(); g.roundRect(cx, cy, 170, 46, 14); g.fill(); g.stroke();
+  g.beginPath(); g.roundRect(cx + 30, cy - 30, 100, 36, 12); g.fill(); g.stroke();
+  g.fillStyle = night ? "#2a3050" : "#a7c4dc"; g.fillRect(cx + 40, cy - 22, 36, 20); g.fillRect(cx + 84, cy - 22, 36, 20);
+  g.fillStyle = "#1b1b1f"; for (const wx of [cx + 32, cx + 138]) { g.beginPath(); g.arc(wx, cy + 46, 15, 0, Math.PI * 2); g.fill(); }
+  g.fillStyle = "#e04a3a"; g.fillRect(cx + 162, cy + 10, 8, 10);
+  // 노란 입간판
+  const sx = cx + 230;
+  g.fillStyle = "#f2c94c"; g.beginPath(); g.moveTo(sx, roadY + 70); g.lineTo(sx + 18, roadY + 10); g.lineTo(sx + 52, roadY + 10); g.lineTo(sx + 70, roadY + 70); g.closePath(); g.fill(); g.stroke();
+  // 밤 공기 (살짝 뿌옇게)
+  if (night) { g.fillStyle = "rgba(120,110,160,.12)"; g.fillRect(0, 0, W, H); }
+}
+
+/** 창 바깥에 거리 풍경 판 세우기 (방 안을 향하게) */
+function addStreetView(cx, cz, nx, nz, w, h, dist, seed) {
+  const c = document.createElement("canvas");
+  c.width = 1024; c.height = 512;
+  const ctx = c.getContext("2d");
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ map: tex }));
+  m.position.set(cx - nx * dist, h / 2 - 0.3, cz - nz * dist);
+  m.rotation.y = Math.atan2(nx, nz); // 판의 앞면(+z)이 방 안쪽(n)을 봄
+  fpGroup.add(m);
+  streetViews.push({ ctx, tex, seed, W: 1024, H: 512 });
+}
+function updateStreetViews(phase) {
+  if (phase === streetPhase) return;
+  streetPhase = phase;
+  for (const v of streetViews) { drawStreet(v.ctx, v.W, v.H, phase, v.seed); v.tex.needsUpdate = true; }
 }
 
 /** 1인칭용: 정면 벽 + 자동문 + 천장 + 가게 앞 (위에서 볼 땐 숨김) */
@@ -430,6 +516,18 @@ function buildInsideShell(T) {
     const bm = new THREE.MeshBasicMaterial({ map: t, color: "#fff6f2", transparent: true, depthWrite: false });
     registerTint(bm);
     const inner = mk(new THREE.PlaneGeometry(winW, 1.9), bm, [(wx0 + wx1) / 2, 1.5, R.d - 0.005], fpGroup, { outline: 0, shadow: false });
+    inner.renderOrder = 3;
+    {
+      const c = document.createElement("canvas");
+      c.width = 1024; c.height = 512;
+      const tex = new THREE.CanvasTexture(c);
+      tex.colorSpace = THREE.SRGBColorSpace;
+      const view = new THREE.Mesh(new THREE.PlaneGeometry(winW, 1.9), new THREE.MeshBasicMaterial({ map: tex }));
+      view.position.set((wx0 + wx1) / 2, 1.5, R.d - 0.002);
+      view.rotation.y = Math.PI;
+      fpGroup.add(view);
+      streetViews.push({ ctx: c.getContext("2d"), tex, seed: 91, W: 1024, H: 512 });
+    }
     inner.rotation.y = Math.PI;
     // 자동 유리문 (가까이 가면 양쪽으로 열림)
     const glass = toon("#cfeaf5", { transparent: true, opacity: 0.45 });
@@ -799,6 +897,7 @@ function applyTime(outside, time) {
   const phase = k < 0.15 ? "day" : k < 0.75 ? "dusk" : "night";
   const root = document.documentElement.classList;
   for (const p of ["day", "dusk", "night"]) root.toggle(`sky-${p}`, p === phase);
+  updateStreetViews(phase);
   const key = k + outside * 10;
   if (Math.abs(key - lastTint) > 0.005) {
     lastTint = key;
