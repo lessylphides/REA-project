@@ -454,8 +454,8 @@ const reflTex = canvasTex(128, 256, (c, w, h) => {
   const grd = c.createLinearGradient(0, 0, 0, h);
   grd.addColorStop(0, "#d9e6f2"); grd.addColorStop(0.55, "#c4d2de"); grd.addColorStop(1, "#9aa6ae");
   c.fillStyle = grd; c.fillRect(0, 0, w, h);
-  c.fillStyle = "rgba(255,255,255,.35)"; // 사선 반짝임
-  for (const [x0, ww] of [[10, 26], [60, 10], [90, 18]]) { c.beginPath(); c.moveTo(x0, h); c.lineTo(x0 + ww, h); c.lineTo(x0 + ww + 70, 0); c.lineTo(x0 + 70, 0); c.fill(); }
+  c.fillStyle = "rgba(255,255,255,.22)"; // 칸마다 같은 자리의 은은한 사선 반짝임
+  for (const [x0, ww] of [[14, 22], [44, 8]]) { c.beginPath(); c.moveTo(x0, h); c.lineTo(x0 + ww, h); c.lineTo(x0 + ww + 60, 0); c.lineTo(x0 + 60, 0); c.fill(); }
 });
 function addGlassRefl(parent, w, h, pos, rotY) {
   const mat = new THREE.MeshBasicMaterial({ map: reflTex, transparent: true, opacity: 0, depthWrite: false });
@@ -518,7 +518,13 @@ function buildEdge(e, group, h, T) {
   registerTint(mat);
   mk(new THREE.PlaneGeometry(gw, top - bl0), mat, [gc, (top + bl0) / 2, 0], g, { outline: 0, shadow: false });
   mk(new THREE.PlaneGeometry(gw, bl0 - sill), clearGlass(), [gc, (bl0 + sill) / 2, 0], g, { outline: 0, shadow: false });
-  if (group === roomGroup) addGlassRefl(g, gw, top - sill, [gc, (top + sill) / 2, -T / 2 - 0.006], Math.PI); // 바깥쪽(-z)을 향함
+  if (group === roomGroup) { // 창틀로 나뉜 칸마다 같은 비침 (바깥쪽 -z 를 향함)
+    const xs = mullionXs(e);
+    for (let i = 0; i < xs.length - 1; i++) {
+      const a = xs[i] + 0.03, b = xs[i + 1] - 0.03;
+      if (b - a > 0.1) addGlassRefl(g, b - a, top - sill - 0.05, [(a + b) / 2, (top + sill) / 2, -T / 2 - 0.006], Math.PI);
+    }
+  }
   // 흰 창틀
   const white = "#f4f1ec";
   for (const mx of mullionXs(e)) mk(box(0.06, top - sill, T * 0.8), white, [mx, (top + sill) / 2, 0], g, { outline: 0.01, shadow: false });
@@ -1516,7 +1522,7 @@ function applyTime(outside, time) {
   const dayAmt = 1 - THREE.MathUtils.smoothstep(k, 0.2, 0.7);
   const duskAmt = Math.max(0, 1 - Math.abs(k - 0.45) / 0.3);
   for (const m of sunPatches) m.opacity = 0; // 매장 안은 늘 어스름한 조명 분위기: 바닥 햇살 줄무늬 없음
-  for (const m of glassRefl) m.opacity = 0.05 + 0.72 * dayAmt + 0.3 * duskAmt; // 낮엔 비침이 진해 안이 잘 안 보임
+  for (const m of glassRefl) m.opacity = 0.04 + 0.42 * dayAmt + 0.22 * duskAmt; // 낮에도 안이 어렴풋이 보이는 정도 // 낮엔 비침이 진해 안이 잘 안 보임
   for (const s of nightGlow.sky) {
     const tw = s.userData.tw != null ? 0.6 + 0.4 * Math.sin(time * 2 + s.userData.tw) : 1;
     s.material.opacity = glow * tw;
@@ -2425,6 +2431,7 @@ function buildInteriorProp(p, g) {
       mk(new THREE.SphereGeometry(0.05, 8, 6), skin, [0.22, 1.24, 0.23], body, { outline: 0.006 }); // 손
       // 위스키 병 (호박색, 라벨, 목, 뚜껑)
       const bottle = new THREE.Group(); bottle.position.set(0.22, 1.33, 0.25); body.add(bottle);
+      g.userData.bottle = bottle;
       mk(cyl(0.05, 0.052, 0.22, 14), new THREE.MeshBasicMaterial({ color: "#c7782c" }), [0, 0, 0], bottle, { outline: 0.008 });
       mk(cyl(0.0515, 0.0535, 0.09, 14), "#f2ead6", [0, 0.01, 0], bottle, { outline: 0 });
       mk(cyl(0.02, 0.04, 0.06, 10), new THREE.MeshBasicMaterial({ color: "#b0651f" }), [0, 0.14, 0], bottle, { outline: 0.005 });
@@ -2571,6 +2578,8 @@ const emptyTagTex = (() => {
   t.colorSpace = THREE.SRGBColorSpace;
   return t;
 })();
+const gemMat = new THREE.MeshBasicMaterial({ color: "#2fc489" });
+const gemShine = new THREE.MeshBasicMaterial({ color: "#bff5dc" });
 /** @type {Map<string, any>} */
 const seats = new Map();
 const hitboxes = [];
@@ -2708,11 +2717,13 @@ function addSeat(id, x, z, angle, kind) {
   const guest = makeGuest(id, seatY);
   g.add(guest);
 
-  // 빈자리 위에 뜨는 "빈자리" 표시 (사람이 앉으면 사라짐)
-  const tag = new THREE.Sprite(new THREE.SpriteMaterial({ map: emptyTagTex, transparent: true, depthWrite: false }));
-  tag.center.set(0.5, 0);
-  tag.position.y = kind === "stool" || kind === "barstool" ? 1.2 : 0.95;
-  tag.renderOrder = 5;
+  // 빈자리 위에 둥실둥실 빙글 도는 작은 초록 보석 (사람이 앉으면 사라짐)
+  const tag = new THREE.Group();
+  tag.position.y = kind === "stool" || kind === "barstool" ? 1.25 : 1.0;
+  const gem = mk(new THREE.OctahedronGeometry(0.055, 0), gemMat, [0, 0, 0], tag, { outline: 0.004, shadow: false });
+  gem.scale.set(1, 1.45, 1);
+  mk(new THREE.OctahedronGeometry(0.03, 0), gemShine, [0.012, 0.025, 0.02], tag, { outline: 0, shadow: false }).scale.set(0.6, 1, 0.3);
+  { const h = new THREE.Sprite(new THREE.SpriteMaterial({ map: haloTex, color: "#5fe0a8", transparent: true, opacity: 0.55, depthWrite: false, blending: THREE.AdditiveBlending })); h.scale.set(0.3, 0.3, 1); h.renderOrder = 3; tag.add(h); }
   g.add(tag);
 
   const hb = new THREE.Mesh(box(0.6, 1.4, 0.6), hitMat);
@@ -3266,6 +3277,19 @@ function interact(ev) {
 }
 
 function tapProp(u) {
+  const bu = u.group.userData;
+  if (bu.path) { // 바텐더: 나를 쳐다보고, 10번 넘게 연달아 누르면 보틀을 던짐
+    bu.lookT = 3.6;
+    const now = performance.now() / 1000;
+    bu.taps = (bu.taps || []).filter((t) => now - t < 8);
+    bu.taps.push(now);
+    if (bu.taps.length >= 10 && !bu.thrown) {
+      bu.taps = [];
+      throwBottle(u.group);
+      u.wiggle = 1;
+      return;
+    }
+  }
   u.wiggle = 1;
   u.onTap?.();
   const p = u.prop;
@@ -3276,6 +3300,44 @@ function tapProp(u) {
     const n = [...found].filter((i) => i < sayProps.length).length, total = sayProps.length;
     setTimeout(() => toast(n >= total ? `구경 완료!\n숨은 이야기 ${total}개를 모두 찾았어요` : `새로운 발견 ${n} / ${total}`, 1800), 900);
   }
+}
+
+let shakeT = 0;
+function throwBottle(b) {
+  const u = b.userData, held = u.bottle;
+  if (!held) return;
+  u.thrown = true; u.lookT = 4;
+  popBubble("그만 좀 눌러요! 😤", b.position.x, 2.05, b.position.z, { fg: "#c0533f", follow: b });
+  const p0 = new THREE.Vector3(); held.getWorldPosition(p0);
+  held.visible = false;
+  const fly = held.clone(); fly.visible = true;
+  fly.position.copy(p0);
+  // 내 발 앞 0.7m 쯤에 떨어지게
+  const fx = -Math.sin(walk.yaw), fz = -Math.cos(walk.yaw);
+  const tgt = walk.on ? new THREE.Vector3(camera.position.x + fx * 0.7, 0.05, camera.position.z + fz * 0.7) : new THREE.Vector3(camera.position.x * 0.5, 0.05, camera.position.z * 0.5);
+  const roll = new THREE.Vector3(tgt.x - p0.x, 0, tgt.z - p0.z).normalize();
+  const T1 = 0.9, peak = Math.max(p0.y, 1.3) + 0.8;
+  let landed = false;
+  addEffect(fly, scene, 5.5, (e) => {
+    const t = e.t;
+    if (t < T1) { // 포물선 + 빙글빙글
+      const k = t / T1;
+      fly.position.set(p0.x + (tgt.x - p0.x) * k, p0.y + (tgt.y - p0.y) * k + 4 * (peak - Math.max(p0.y, tgt.y)) * k * (1 - k), p0.z + (tgt.z - p0.z) * k);
+      fly.rotation.x = t * 14; fly.rotation.z = t * 6;
+    } else { // 바닥에 누워 데굴데굴 굴러가다 멈춤
+      if (!landed) { landed = true; shakeT = 0.25; }
+      const r = t - T1, d = 0.9 * (1 - Math.exp(-r * 2));
+      fly.position.set(tgt.x + roll.x * d, 0.05, tgt.z + roll.z * d);
+      fly.rotation.set(0, Math.atan2(roll.x, roll.z), Math.PI / 2);
+      fly.rotateY(d / 0.05);
+      if (r > 3.2) fly.scale.setScalar(Math.max(0.001, 1 - (r - 3.2) / 1.2)); // 스르륵 사라짐
+    }
+    if (t >= e.life - 0.05) { // 손에 새 보틀
+      held.visible = true; held.scale.setScalar(0.01);
+      addEffect(new THREE.Object3D(), scene, 0.6, (e2) => { held.scale.setScalar(Math.min(1, 0.01 + e2.t / 0.5)); if (e2.t >= 0.55) { held.scale.setScalar(1); u.thrown = false; } });
+    }
+  });
+  if (!store.get("bt-bottle")) { store.set("bt-bottle", "1"); setTimeout(() => toast("숨은 재미 발견!\n바텐더를 너무 귀찮게 하면…", 1800), 1300); }
 }
 
 function tapSeat(s) {
@@ -3534,6 +3596,8 @@ function updateBartender(b, dt, time) {
   const here = pathAt(u, u.s);
   const near = walk.on && Math.hypot(walk.pos.x - here.x, walk.pos.z - here.z) < 1.1;
   if (near) u.wait = Math.max(u.wait, 1.2);
+  const looking = (u.lookT || 0) > 0; // 눌렀을 때: 멈춰서 나를 쳐다봄
+  if (looking) { u.lookT -= dt; u.wait = Math.max(u.wait, 0.3); }
   if (u.wait > 0) { u.wait -= dt; u.moving = false; }
   else {
     const step = 0.35 * dt, d = u.target - u.s;
@@ -3550,13 +3614,13 @@ function updateBartender(b, dt, time) {
   // 바라보는 방향: 걸을 땐 가는 방향, 멈추면 손님(나) 또는 홀 쪽
   let fx, fz;
   if (u.moving) { fx = q.tx * (u.dir || 1); fz = q.tz * (u.dir || 1); }
-  else if (near) { fx = walk.pos.x - b.position.x; fz = walk.pos.z - b.position.z; }
+  else if (near || looking) { fx = camera.position.x - b.position.x; fz = camera.position.z - b.position.z; }
   else { fx = 5.2 - b.position.x; fz = 4.6 - b.position.z; }
   const yaw = Math.atan2(fx, fz);
   let dy = yaw - u.yaw; dy = Math.atan2(Math.sin(dy), Math.cos(dy));
   u.yaw += dy * Math.min(1, dt * 5);
   b.rotation.y = u.yaw;
-  u.btHead.rotation.y = u.moving ? 0 : Math.sin(time * 0.5) * 0.25;
+  u.btHead.rotation.y = u.moving || looking ? 0 : Math.sin(time * 0.5) * 0.25;
 }
 
 let lastPos = null, wasOutdoor = false;
@@ -3751,6 +3815,7 @@ function updateWalk(dt, time) {
   walk.bob += dt * 9 * moving;
   camera.position.set(walk.pos.x, walk.eye + walk.jumpY + Math.sin(walk.bob) * 0.025 * moving * (walk.jumpY > 0 ? 0 : 1), walk.pos.z);
   camera.rotation.set(walk.pitch, walk.yaw, Math.sin(walk.bob * 0.5) * 0.004 * moving);
+  if (shakeT > 0) { shakeT -= dt; camera.position.x += (Math.random() - 0.5) * 0.03; camera.position.y += (Math.random() - 0.5) * 0.03; } // 보틀 떨어질 때 살짝
 
   if (++walk.frame % 4 === 0) {
     ray.setFromCamera(ndc.set(0, 0), camera);
@@ -3954,11 +4019,11 @@ function tick() {
       a.rotation.z = Math.sin(time * 14) * 0.45 * w;
     }
     // 빈자리 표시 (둥실둥실)
-    const show = 1 - Math.min(1, s.anim * 2);
+    const show = (1 - Math.min(1, s.anim * 2)) * (walk.sit === s.id ? 0 : 1); // 내가 앉은 자리는 숨김
     s.tag.visible = show > 0.01;
     if (s.tag.visible) {
-      const k = 0.34 * show;
-      s.tag.scale.set(k, k * 150 / 256, 1);
+      s.tag.scale.setScalar(show);
+      s.tag.rotation.y = time * 1.6 + s.group.position.x;
       s.tag.position.y = s.tagY + Math.sin(time * 2.4 + s.group.position.x * 1.7) * 0.035;
     }
     // 터치했을 때 의자 통통
