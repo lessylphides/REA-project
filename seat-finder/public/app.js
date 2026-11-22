@@ -503,7 +503,7 @@ function buildEdge(e, group, h, T) {
   group.add(g);
   const wallBox = (y0, y1) => mk(box(e.len, y1 - y0, T), R.wall, [0, (y0 + y1) / 2, 0], g, { outline: 0.02, shadow: false });
   if (e.kind !== "glass" || h < 1) { wallBox(0, h); return; }
-  const sill = 0.12, top = h - 0.32;
+  const sill = 0.12, top = Math.min(h - 0.1, 2.75); // 입구 쪽 창과 같은 높이
   wallBox(0, sill);
   wallBox(top, h);
   // 모서리 기둥 (room.pillars): 유리는 기둥 사이만
@@ -1120,7 +1120,7 @@ function cageLamp(g, x, y, z) {
 }
 
 /** 대각선 면·왼쪽 면 바깥 꾸밈: 위층 창, 흰 창틀, 창 아래 술병 선반 + LED + 사선 패널, 계단, 벽등, 화분 */
-function decorateGlassFacade(e, g, top) {
+function decorateGlassFacade(e, g, top, brickMat) {
   const H = R.wallH, L = e.len, zo = 0.02, no = { outline: 0, shadow: false };
   const diag = R.outside?.[e.i] === "alley";
   // 이 면에 있는 문 (layout door) → 로컬 x
@@ -1137,9 +1137,17 @@ function decorateGlassFacade(e, g, top) {
   // 흰 창틀 (유리 구간만): 양 끝, 위 채광창 가로대, 중간 가로대 — 바깥 그룹은 로컬 x 가 반대
   const white = "#f2efe8";
   const [ga, gb] = glassSpan(e), G0 = -gb, G1 = -ga, GW = G1 - G0, GC = (G0 + G1) / 2;
-  for (const mx of mullionXs(e)) { const x = THREE.MathUtils.clamp(-mx, G0 + 0.03, G1 - 0.03); mk(box(0.07, H - 0.3, 0.06), white, [x, (H - 0.3) / 2 + 0.06, zo], g, { outline: 0.008, shadow: false }); }
-  mk(box(GW, 0.06, 0.06), white, [GC, H - 0.33, zo], g, { outline: 0.008, shadow: false });
-  mk(box(GW, 0.05, 0.06), white, [GC, 2.3, zo], g, { outline: 0.006, shadow: false });
+  // 입구 쪽 쇼윈도와 같은 모양: 굵은 흰 테두리(액자) + 위쪽 벽돌 턱, 세로 창살만 (가로 창살 없음)
+  const GO = 2.85, ol8 = { outline: 0.008, shadow: false };
+  for (const mx of mullionXs(e)) {
+    const x = -mx;
+    if (x <= G0 + 0.06 || x >= G1 - 0.06) continue; // 양 끝은 굵은 테두리가 대신함
+    mk(box(0.07, GO - 0.12, 0.06), white, [x, (GO + 0.12) / 2, zo + 0.03], g, ol8);
+  }
+  mk(box(GW + 0.2, 0.1, 0.16), white, [GC, GO + 0.05, zo + 0.06], g, ol8);                // 위 테두리
+  for (const x of [G0 - 0.05, G1 + 0.05]) mk(box(0.1, GO, 0.16), white, [x, GO / 2, zo + 0.06], g, ol8); // 양옆 테두리
+  mk(box(GW, 0.1, 0.06), white, [GC, 2.8, zo + 0.02], g, { outline: 0, shadow: false });   // 유리 위끝 ~ 테두리 사이
+  if (brickMat) mk(box(GW + 0.5, 0.22, 0.22), brickMat(GW + 0.5, 0.22), [GC, GO + 0.21, zo + 0.11], g, { outline: 0.015, shadow: false }); // 벽돌 턱
   // (창 아래 술병·사선 무늬·LED 는 매장 안 장이 유리 너머로 비쳐 보이는 것 — buildBackbar)
   if (doorX != null) mk(box(1.25, 0.14, 0.5), "#b9b4ac", [doorX, 0.07 - 0.12, zo + 0.27], g, { outline: 0.01, shadow: false }); // 문 앞 돌계단
   // 대각선 면: 양옆 기둥 케이지 벽등, 흰 A형 입간판, 주차금지 원뿔
@@ -1180,7 +1188,8 @@ function buildSideFacades(T, top, brickMat) {
     fpGroup.add(g);
     const H = R.wallH;
     const part = (y0, y1) => mk(box(e.len + 0.3, y1 - y0, 0.03), brickMat(e.len + 0.3, y1 - y0), [0, (y0 + y1) / 2, 0], g, { outline: 0.015, shadow: false });
-    part(H - 0.32, top);
+    const GO = 2.85; // 바깥 창 개구부 위끝 (입구 쪽과 같게)
+    part(GO + 0.1, top);
     part(0, 0.12);
     // 모서리 기둥 바깥면: 안쪽 기둥 폭 + 벽 두께(모서리에서 바깥으로 늘어나는 만큼)
     for (const pl of R.pillars || []) {
@@ -1190,7 +1199,7 @@ function buildSideFacades(T, top, brickMat) {
     }
     // 길 (아스팔트, 인도 턱 없음)
     // (길은 주변 아스팔트 한 가지 색)
-    decorateGlassFacade(e, g, top);
+    decorateGlassFacade(e, g, top, brickMat);
   }
 }
 
@@ -2583,6 +2592,7 @@ const emptyTagTex = (() => {
 })();
 const gemMat = new THREE.MeshBasicMaterial({ color: "#2fc489" });
 const gemShine = new THREE.MeshBasicMaterial({ color: "#bff5dc" });
+const aimBoxes = [];
 /** @type {Map<string, any>} */
 const seats = new Map();
 const hitboxes = [];
@@ -2729,6 +2739,10 @@ function addSeat(id, x, z, angle, kind) {
   { const h = new THREE.Sprite(new THREE.SpriteMaterial({ map: haloTex, color: "#5fe0a8", transparent: true, opacity: 0.55, depthWrite: false, blending: THREE.AdditiveBlending })); h.scale.set(0.3, 0.3, 1); h.renderOrder = 3; tag.add(h); }
   g.add(tag);
 
+  // 조준 안내용 작은 판정 (의자 몸통 크기)
+  const ab = new THREE.Mesh(box(0.42, seatY + 0.35, 0.42), hitMat);
+  ab.position.y = (seatY + 0.35) / 2; ab.userData.seatId = id; ab.castShadow = false;
+  g.add(ab); aimBoxes.push(ab);
   const hb = new THREE.Mesh(box(0.6, 1.4, 0.6), hitMat);
   hb.position.y = 0.7;
   hb.userData.seatId = id;
@@ -3837,8 +3851,8 @@ function updateWalk(dt, time) {
 
   if (++walk.frame % 4 === 0) {
     ray.setFromCamera(ndc.set(0, 0), camera);
-    ray.far = 4.5;
-    const hit = ray.intersectObjects(hitboxes, false)[0];
+    ray.far = 2.5; // 가까이(약 2.5m)에서 의자를 똑바로 볼 때만 안내
+    const hit = ray.intersectObjects(aimBoxes, false)[0];
     ray.far = Infinity;
     setAim(hit?.object.userData.seatId || null);
     updateActBtns();
