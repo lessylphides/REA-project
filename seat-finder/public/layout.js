@@ -69,10 +69,10 @@ export default {
     { type: "sidetable", item: "humidifier", x: 0.78, z: 5.88, rot: 45, say: "가습기가 촉촉하게\n공기를 지켜 줘요" },
     { type: "sidetable", item: "mixer", itemRot: 90, x: 1.25, z: 6.35, rot: 45, say: "반죽기예요\n직접 만드는 안주가 있어요" },
     { type: "floorlamp", x: 0.38, z: 0.45, h: 1.75, say: "주름 갓 스탠드\n은은한 분홍빛이 포인트예요" },
-    { type: "floorlamp", x: 0.4, z: 5.3, h: 1.75 }, // 왼쪽 장 ↔ 대각선 장 사이 틈
+    { type: "floorlamp", x: 0.45, z: 5.45, h: 1.75 }, // 왼쪽 장 ↔ 대각선 장 사이 틈
     { type: "floorlamp", x: 4.38, z: 9.15, h: 1.75 }, // 모서리 기둥 옆, 정면 장 시작 쪽
     { type: "floorlamp", x: 9.15, z: 9.1, h: 1.75 },
-    { type: "coffee", x: 1.7, z: 1.95, rot: 90, y0: 1.04, shelf: true, say: "커피도 내려 드려요\n원두 향이 솔솔" },
+    { type: "coffee", x: 1.7, z: 1.765, rot: 90, y0: 1.04, shelf: true, say: "커피도 내려 드려요\n원두 향이 솔솔" },
     // 정면 창 아래 장 위 양초
     { type: "candles", x: 6.3, z: 9.2, y0: 0.99, say: "은은한 촛불\n밤이 되면 더 예뻐요" },
     // 조명

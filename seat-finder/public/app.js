@@ -1778,14 +1778,15 @@ function buildCurvedBar(b) {
     const wash = new THREE.MeshBasicMaterial({ map: ledTex, color: "#ffd2a0", transparent: true, side: THREE.DoubleSide, depthWrite: false, opacity: 0.1, blending: THREE.AdditiveBlending });
     stripAlong(sub, back - 0.006, 0.09, 0.925, wash, roomGroup);
     innerGlows.push([wash, 0.3, 0.75]);
-    for (const fy of [0.081, 0.504]) { // 선반 바닥에 고이는 불빛
-      const fm = new THREE.MeshBasicMaterial({ map: ledFloorTex, color: "#ffc890", transparent: true, depthWrite: false, opacity: 0.3, blending: THREE.AdditiveBlending, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -4 });
+    // (polygonOffset 은 비스듬히 볼 때 바 몸통을 뚫고 보여서 쓰지 않고, 면 위로 살짝 띄움)
+    for (const fy of [0.085, 0.52]) { // 선반 바닥에 고이는 불빛
+      const fm = new THREE.MeshBasicMaterial({ map: ledFloorTex, color: "#ffc890", transparent: true, depthWrite: false, opacity: 0.3, blending: THREE.AdditiveBlending });
       floorStripAlong(sub, back - 0.01, -bh + 0.02, fy, fm, roomGroup);
       innerGlows.push([fm, fy > 0.3 ? 0.25 : 0.15, fy > 0.3 ? 0.6 : 0.4]);
     }
     { // 선반 불빛이 바텐더 쪽 바닥으로 살짝 새어 나옴
-      const fl = new THREE.MeshBasicMaterial({ map: ledFloorTex, color: "#ffc890", transparent: true, depthWrite: false, opacity: 0.15, blending: THREE.AdditiveBlending, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -4 });
-      floorStripAlong(sub, -bh - 0.01, -bh - 0.55, 0.013, fl, roomGroup);
+      const fl = new THREE.MeshBasicMaterial({ map: ledFloorTex, color: "#ffc890", transparent: true, depthWrite: false, opacity: 0.15, blending: THREE.AdditiveBlending });
+      floorStripAlong(sub, -bh - 0.01, -bh - 0.55, 0.02, fl, roomGroup);
       innerGlows.push([fl, 0.08, 0.3]);
     }
     const line = new THREE.MeshBasicMaterial({ color: "#ffd9a8", transparent: true, opacity: 0.3, side: THREE.DoubleSide, depthWrite: false });
@@ -1910,6 +1911,27 @@ const weaveTex = canvasTex(128, 128, (g, w, h) => {
   for (let y = 0; y < h; y += 10) for (let x = (y / 10) % 2 ? 5 : 0; x < w; x += 10) g.fillRect(x, y, 5, 5);
 }, [4, 2]);
 
+// 빛 기둥: 위(조명 쪽)가 조금 밝고 아래로 옅어짐, 좌우 가장자리 흐림
+const beamFadeTex = canvasTex(64, 128, (c, w, h) => {
+  for (let y = 0; y < h; y++) {
+    const a = 0.35 + 0.65 * (1 - y / h);
+    const grd = c.createLinearGradient(0, 0, w, 0);
+    grd.addColorStop(0, "rgba(255,255,255,0)"); grd.addColorStop(0.2, `rgba(255,255,255,${a})`); grd.addColorStop(0.8, `rgba(255,255,255,${a})`); grd.addColorStop(1, "rgba(255,255,255,0)");
+    c.fillStyle = grd; c.fillRect(0, h - 1 - y, w, 1);
+  }
+});
+// 상판 위 띠: 길이 방향은 거의 고르게(끝만 흐림), 폭 방향은 가운데가 밝고 가장자리 부드럽게
+const bandTex = canvasTex(256, 64, (c, w, h) => {
+  const img = c.createImageData(w, h);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const ex = Math.min(1, Math.min(x, w - 1 - x) / (w * 0.12));
+    const dy = (y - (h - 1) / 2) / ((h - 1) / 2);
+    const a = ex * Math.exp(-dy * dy * 2.2);
+    const i = (y * w + x) * 4; img.data[i] = img.data[i + 1] = img.data[i + 2] = 255; img.data[i + 3] = Math.round(a * 255);
+  }
+  c.putImageData(img, 0, 0);
+});
+
 /** 실내 소품 만들기 (layout.props 의 새 종류들) */
 function buildInteriorProp(p, g) {
   const H = R.wallH;
@@ -1939,8 +1961,28 @@ function buildInteriorProp(p, g) {
         mk(new THREE.PlaneGeometry(len - 0.06, 0.05), m, [0, y - 0.061, 0], g, { outline: 0, shadow: false }).rotation.x = Math.PI / 2;
         addHalo(g, -len * 0.25, y - 0.2, 0, 1.0, "#ffd08a", true);
         addHalo(g, len * 0.25, y - 0.2, 0, 1.0, "#ffd08a", true);
-        // 바 상판 위 가늘고 긴 한 줄기 빛 (옆 조명 빛과 모서리에서 X자로 겹침)
-        lightPool(g, p.glowOff ?? 0, 1.047, 0, p.glowLen ?? len + 1.2, 0.38, "#ffb065", 0.12, 0.5); // 폭 = 상판의 약 1/3, 은은하게
+        // 조명 아래 옅은 빛 기둥: 조명 폭에서 시작해 상판에서 약 1/3 폭으로 넓어짐
+        {
+          const L1 = len - 0.06, L2 = p.glowLen ?? len + 1.2, off = p.glowOff ?? 0, w1 = 0.05, w2 = 0.19, yT = y - 0.065, yB = 1.05;
+          const T = [[-L1 / 2, -w1], [L1 / 2, -w1], [L1 / 2, w1], [-L1 / 2, w1]], B = [[off - L2 / 2, -w2], [off + L2 / 2, -w2], [off + L2 / 2, w2], [off - L2 / 2, w2]];
+          const pos = [], uv = [];
+          for (let i = 0; i < 4; i++) {
+            const j = (i + 1) % 4;
+            pos.push(T[i][0], yT, T[i][1], T[j][0], yT, T[j][1], B[j][0], yB, B[j][1], T[i][0], yT, T[i][1], B[j][0], yB, B[j][1], B[i][0], yB, B[i][1]);
+            uv.push(0, 1, 1, 1, 1, 0, 0, 1, 1, 0, 0, 0);
+          }
+          const bg = new THREE.BufferGeometry();
+          bg.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+          bg.setAttribute("uv", new THREE.Float32BufferAttribute(uv, 2));
+          const bm = new THREE.MeshBasicMaterial({ map: beamFadeTex, color: "#ffc98a", transparent: true, opacity: 0.05, depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending });
+          const beam = new THREE.Mesh(bg, bm); beam.renderOrder = 3; g.add(beam);
+          innerGlows.push([bm, 0.02, 0.07]);
+          // 상판 위 곧은 띠 (빛 기둥 끝과 같은 폭, 끝만 부드럽게)
+          const band = new THREE.Mesh(new THREE.PlaneGeometry(L2, w2 * 2), new THREE.MeshBasicMaterial({ map: bandTex, color: "#ffb065", transparent: true, opacity: 0.2, depthWrite: false, blending: THREE.AdditiveBlending, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -2 }));
+          band.rotation.x = -Math.PI / 2; band.position.set(off, 1.046, 0); band.renderOrder = 2; g.add(band);
+          innerGlows.push([band.material, 0.07, 0.28]);
+        }
+        // (예전: 바 상판 위 가늘고 긴 한 줄기 빛)
         lightPool(g, 0, 0.015, 0, len + 1.2, 1.6, "#ff9a55", 0.03, 0.22);
 
         g.userData.hit = [len, 0.3, 0.3, y]; g.userData.sayY = y + 0.15;
@@ -2222,19 +2264,20 @@ function buildInteriorProp(p, g) {
       scr.position.set(0, 0, 0.0085); pad.add(scr);
       window.__ipad = { canvas: ipadCanvas, texture: ipadTex, redraw: drawIpad };
       // 그라인더 2대 (손님 기준 머신 오른쪽 = 로컬 -x)
-      const G1 = -0.42, G2 = -0.74, GZ = -0.05; // 그라인더는 바 상판 위, 바텐더 쪽 끝 가까이
+      const G1 = -0.355, G2 = -0.555, GZ = -0.05; // 그라인더는 바 상판 위, 바텐더 쪽 끝 가까이 (머신·큰 그라인더·작은 그라인더 3cm 간격)
       mk(box(0.17, 0.32, 0.22), black, [G1, y0 + 0.16, GZ], g, { outline: 0.008 }); // 키 큰 네모 그라인더
       mk(box(0.12, 0.04, 0.08), "#3a3a3e", [G1, y0 + 0.12, GZ + 0.13], g, { outline: 0.004 });
       mk(cyl(0.035, 0.05, 0.05, 10), "#2e2e32", [G1, y0 + 0.345, GZ], g, { outline: 0.004 });
-      mk(cyl(0.09, 0.04, 0.22, 14), toon("#e8f2f5", { transparent: true, opacity: 0.35 }), [G1, y0 + 0.48, GZ], g, { outline: 0.006, shadow: false });
-      mk(cyl(0.075, 0.036, 0.16, 12), "#4a2c1c", [G1, y0 + 0.45, GZ], g, { outline: 0, shadow: false }); // 원두 가득
+      const glass = new THREE.MeshBasicMaterial({ color: "#eef6f8", transparent: true, opacity: 0.16, depthWrite: false, side: THREE.DoubleSide }); // 투명 원두통 (테두리선 없이)
+      mk(new THREE.CylinderGeometry(0.09, 0.04, 0.22, 16, 1, true), glass, [G1, y0 + 0.48, GZ], g, { outline: 0, shadow: false });
+      mk(new THREE.TorusGeometry(0.09, 0.004, 4, 20), "#2a2a2e", [G1, y0 + 0.588, GZ], g, { outline: 0, shadow: false }).rotation.x = Math.PI / 2;
+      mk(cyl(0.062, 0.04, 0.12, 12), "#4a2c1c", [G1, y0 + 0.43, GZ], g, { outline: 0, shadow: false }); // 원두 (통의 반쯤)
       mk(cyl(0.095, 0.095, 0.02, 14), "#1b1b1e", [G1, y0 + 0.6, GZ], g, { outline: 0.004 });
       mk(cyl(0.075, 0.085, 0.22, 16), black, [G2, y0 + 0.11, GZ], g, { outline: 0.008 }); // 작은 둥근 그라인더
       mk(box(0.06, 0.03, 0.06), "#3a3a3e", [G2, y0 + 0.08, GZ + 0.08], g, { outline: 0.004 });
-      const hop = glowMat("#ffe9c8", 0.55);
-      mk(cyl(0.065, 0.045, 0.12, 14), hop, [G2, y0 + 0.28, GZ], g, { outline: 0.005, shadow: false });
-      mk(cyl(0.05, 0.035, 0.07, 12), "#5a3622", [G2, y0 + 0.26, GZ], g, { outline: 0, shadow: false });
-      innerGlows.push([hop, 0.4, 0.8]);
+      mk(new THREE.CylinderGeometry(0.065, 0.045, 0.12, 14, 1, true), glass, [G2, y0 + 0.28, GZ], g, { outline: 0, shadow: false }); // 투명 원두통 (빛 없음)
+      mk(cyl(0.05, 0.04, 0.07, 12), "#4a2c1c", [G2, y0 + 0.255, GZ], g, { outline: 0, shadow: false });
+      mk(cyl(0.07, 0.07, 0.02, 14), "#1b1b1e", [G2, y0 + 0.35, GZ], g, { outline: 0.004 }); // 뚜껑
       { const [sx, sz] = rotXZ(0.17, 0.3, p.rot); steamSources.push(new THREE.Vector3(p.x + sx, by + 0.2, p.z + sz)); } // 김은 스팀 노즐에서
       if (p.shelf) { // 바 상판에서 바텐더 쪽으로 이어져 나온 머신 크기 판 (다리 없음, 밑에 작은 받침쇠)
         mk(box(0.5, 0.04, 0.5), "#6e4127", [0, y0 - 0.02, 0], g, { outline: 0.008 });
@@ -2366,17 +2409,19 @@ function buildInteriorProp(p, g) {
       const cap = mk(new THREE.SphereGeometry(0.168, 20, 12, 0, Math.PI * 2, 0, Math.PI * 0.5), hair, [0, 0.05, -0.04], head, { outline: 0 });
       cap.rotation.x = -0.6; cap.scale.set(0.95, 1.1, 1);
       for (const sx of [-0.06, 0.04]) mk(box(0.012, 0.01, 0.16), "#8e8a86", [sx, 0.19, -0.04], head, { outline: 0, shadow: false }).rotation.x = -0.4;
-      // 파마 단발: 턱선까지 내려오는 동글동글한 컬 (이마는 드러남)
-      const curlGeo = new THREE.SphereGeometry(0.046, 10, 8);
-      let ci = 0;
-      for (const [y, R, front] of [[0.15, 0.13, 40], [0.09, 0.165, 55], [0.02, 0.18, 62], [-0.05, 0.18, 68], [-0.11, 0.165, 72]]) {
-        const n = Math.round(R * 70);
+      // 파마 단발: 매끈한 윤곽 + 크고 납작한 웨이브 몇 겹 (이마는 드러남, 턱선 길이)
+      const shellGeo = new THREE.SphereGeometry(0.185, 24, 14, Math.PI * 0.5 + 1.05, Math.PI * 2 - 2.1, 0, Math.PI * 0.64);
+      const shell = mk(shellGeo, toon(hair, { side: THREE.DoubleSide }), [0, 0.0, -0.01], head, { outline: 0.008, shadow: false });
+      shell.scale.set(1.02, 1.12, 1.0);
+      const waveGeo = new THREE.SphereGeometry(0.06, 12, 8);
+      let wi = 0;
+      for (const [y, R, front, n] of [[0.1, 0.17, 62, 7], [0.0, 0.192, 66, 8], [-0.1, 0.19, 70, 8]]) {
         for (let i = 0; i < n; i++) {
-          const th = (i / n) * Math.PI * 2 + (y * 7);
+          const th = (i / n) * Math.PI * 2 + y * 3 + 0.2;
           const deg = Math.abs(THREE.MathUtils.radToDeg(Math.atan2(Math.sin(th), Math.cos(th))));
-          if (deg < front) continue; // 얼굴 앞은 비움
-          const c = mk(curlGeo, ci++ % 9 === 4 ? "#6f6a66" : hair, [Math.sin(th) * R, y, Math.cos(th) * R - 0.02], head, { outline: 0.006, shadow: false });
-          c.scale.setScalar(0.85 + ((i * 37) % 5) * 0.06);
+          if (deg < front) continue;
+          const w = mk(waveGeo, wi++ % 7 === 3 ? "#6f6a66" : hair, [Math.sin(th) * R, y, Math.cos(th) * R - 0.01], head, { outline: 0.005, shadow: false });
+          w.rotation.y = th; w.scale.set(1.15, 0.6, 0.45); // 납작한 웨이브
         }
       }
       const ink = new THREE.MeshBasicMaterial({ color: "#1b1b1f" });
@@ -3385,9 +3430,9 @@ function buildWalkers() {
     return { pts, seg, len };
   });
   const plan = [
-    [0, "normal", true, 0.1], [1, "dog", true, 0.3], [2, "umbrella", false, 0.2], [3, "dog", false, 0.5],
-    [4, "normal", true, 0.05], [4, "pair", false, 0.55], [5, "dog", true, 0.3], [5, "normal", false, 0.8],
-    [6, "normal", true, 0.4], [7, "pair", false, 0.1], [7, "umbrella", false, 0.65],
+    // 지나가는 사람 (예전의 반, 우산 없음)
+    [0, "normal", true, 0.1], [1, "dog", true, 0.3], [3, "dog", false, 0.5],
+    [4, "pair", false, 0.55], [6, "normal", true, 0.4], [7, "normal", false, 0.8],
   ];
   plan.forEach(([li, kind, nightOk, t0], i) => {
     const lane = lanes[li];
@@ -3693,18 +3738,15 @@ function updateWalk(dt, time) {
 function toggleSit() {
   if (!walk.on || walk.tween) return;
   if (walk.sit || walk.crouch) return standUp();
-  let best = null, bd = 1.3;
-  const pick = walk.aimId && seats.get(walk.aimId);
-  if (pick && Math.hypot(pick.group.position.x - walk.pos.x, pick.group.position.z - walk.pos.z) < 2.2) best = pick;
-  else { // 가까운 빈자리 우선, 없으면 가까운 손님 자리
-    let busy = null, bb = 1.3;
-    for (const s of seats.values()) {
-      if (!s.group?.position) continue;
-      const d = Math.hypot(s.group.position.x - walk.pos.x, s.group.position.z - walk.pos.z);
-      if (!s.occupied && d < bd) { bd = d; best = s; }
-      if (s.occupied && d < bb) { bb = d; busy = s; }
-    }
-    best = best || busy;
+  // 의자 바로 앞(약 70cm 안)에서 그 의자를 바라보고 있을 때만
+  let best = null, bd = 0.75;
+  const fx = -Math.sin(walk.yaw), fz = -Math.cos(walk.yaw);
+  for (const s of seats.values()) {
+    if (!s.group?.position) continue;
+    const dx = s.group.position.x - walk.pos.x, dz = s.group.position.z - walk.pos.z, d = Math.hypot(dx, dz);
+    if (d >= bd) continue;
+    if (d > 0.2 && (dx * fx + dz * fz) / d < 0.64) continue; // 앞쪽 약 50도 안
+    bd = d; best = s;
   }
   if (best && !best.occupied) {
     walk.back = walk.pos.clone();
