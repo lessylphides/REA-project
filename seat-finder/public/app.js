@@ -738,6 +738,7 @@ function addHalo(parent, x, y, z, size, color, inner = false) {
   sp.scale.set(size, size, 1);
   sp.renderOrder = 3;
   sp.userData.inner = inner;
+  if (inner) sp.material.color.lerp(new THREE.Color("#ffa65c"), 0.6); // 실내 조명은 오렌지빛
   parent.add(sp);
   nightGlow.halos.push(sp);
 }
@@ -786,7 +787,7 @@ let timeK = nightAmount();
 setInterval(() => { timeK = nightAmount(); }, 60000);
 const NIGHT_TINT = new THREE.Color("#4b4f8f"), DUSK_TINT = new THREE.Color("#e0a3a0"), WHITE = new THREE.Color("#ffffff");
 // 매장 안: 밤엔 은은한 분홍빛으로 어둡게 (사진 속 밤 분위기)
-const IN_NIGHT = new THREE.Color("#b0868a"), IN_DUSK = new THREE.Color("#ecc9c2");
+const IN_NIGHT = new THREE.Color("#b88a72"), IN_DUSK = new THREE.Color("#f0cdb2");
 const tmpIn = new THREE.Color();
 const tmpC = new THREE.Color();
 let lastTint = -1;
@@ -807,7 +808,7 @@ function applyTime(outside, time) {
     for (const m of tintables) m.color.copy(m.userData.base).multiply(tmpIn);
   }
   const glow = THREE.MathUtils.smoothstep(k, 0.3, 1);
-  for (const h of nightGlow.halos) h.material.opacity = h.userData.inner ? 0.12 + glow * 0.7 : glow * 0.85;
+  for (const h of nightGlow.halos) h.material.opacity = h.userData.inner ? 0.08 + glow * 0.42 : glow * 0.85;
   for (const [m, lo, hi] of innerGlows) m.opacity = lo + (hi - lo) * glow;
   for (const s of nightGlow.sky) {
     const tw = s.userData.tw != null ? 0.6 + 0.4 * Math.sin(time * 2 + s.userData.tw) : 1;
@@ -1122,8 +1123,8 @@ const caneTex = canvasTex(128, 128, (g, w, h) => {
   for (let y = 8; y < h; y += 16) for (let x = 8; x < w; x += 16) { g.beginPath(); g.arc(x, y, 3, 0, Math.PI * 2); g.fill(); }
 }, [2, 2]);
 const pleatTex = canvasTex(256, 64, (g, w, h) => {
-  g.fillStyle = "#fff4ee"; g.fillRect(0, 0, w, h);
-  g.strokeStyle = "rgba(200,150,150,.45)"; g.lineWidth = 2;
+  g.fillStyle = "#ffe0bd"; g.fillRect(0, 0, w, h);
+  g.strokeStyle = "rgba(200,130,80,.45)"; g.lineWidth = 2;
   for (let x = 0; x < w; x += 8) { g.beginPath(); g.moveTo(x, 0); g.lineTo(x, h); g.stroke(); }
 });
 const weaveTex = canvasTex(128, 128, (g, w, h) => {
@@ -1156,7 +1157,7 @@ function buildInteriorProp(p, g) {
         const len = p.len ?? 1.8;
         for (const sx of [-1, 1]) mk(cyl(0.006, 0.006, cordTop - y, 4), dark, [sx * len * 0.4, (cordTop + y) / 2, 0], g, { outline: 0, shadow: false });
         mk(box(len, 0.12, 0.13), "#3b2a22", [0, y, 0], g, { outline: 0.012, shadow: false });
-        const m = glowMat("#ffd28a");
+        const m = glowMat("#ffbf74");
         mk(new THREE.PlaneGeometry(len - 0.06, 0.05), m, [0, y - 0.061, 0], g, { outline: 0, shadow: false }).rotation.x = Math.PI / 2;
         addHalo(g, -len * 0.25, y - 0.2, 0, 1.0, "#ffd08a", true);
         addHalo(g, len * 0.25, y - 0.2, 0, 1.0, "#ffd08a", true);
@@ -1165,7 +1166,7 @@ function buildInteriorProp(p, g) {
         mk(cyl(0.006, 0.006, cordTop - y - 0.2, 4), dark, [0, (cordTop + y + 0.2) / 2, 0], g, { outline: 0, shadow: false });
         const m = glowMat("#f0b47a");
         [0.12, 0.2, 0.25, 0.27, 0.25, 0.2].forEach((r, i) => mk(new THREE.CylinderGeometry(r, r + 0.02, 0.05, 24, 1, true), m, [0, y + 0.18 - i * 0.07, 0], g, { outline: 0.008, shadow: false }));
-        mk(new THREE.SphereGeometry(0.07, 10, 8), glowMat("#fff1c8"), [0, y - 0.15, 0], g, { outline: 0, shadow: false });
+        mk(new THREE.SphereGeometry(0.07, 10, 8), glowMat("#ffd49a"), [0, y - 0.15, 0], g, { outline: 0, shadow: false });
         addHalo(g, 0, y - 0.05, 0, 1.6, "#ffc98f", true);
         g.userData.hit = [0.6, 0.5, 0.6, y]; g.userData.sayY = y + 0.35;
       } else { // 라탄 펜던트
@@ -1174,7 +1175,7 @@ function buildInteriorProp(p, g) {
         const m = new THREE.MeshBasicMaterial({ map: weaveTex, side: THREE.DoubleSide });
         mk(new THREE.LatheGeometry(prof, 24), m, [0, y, 0], g, { outline: 0, shadow: false });
         for (const [r, yy] of [[0.08, 0.26], [0.31, -0.12], [0.14, -0.24]]) mk(new THREE.TorusGeometry(r, 0.008 * OL, 5, 28), "#2b2522", [0, y + yy, 0], g, { outline: 0, shadow: false }).rotation.x = Math.PI / 2;
-        mk(new THREE.SphereGeometry(0.06, 10, 8), glowMat("#fff6d8"), [0, y - 0.02, 0], g, { outline: 0, shadow: false });
+        mk(new THREE.SphereGeometry(0.06, 10, 8), glowMat("#ffd9a0"), [0, y - 0.02, 0], g, { outline: 0, shadow: false });
         addHalo(g, 0, y, 0, 1.8, "#ffcf96", true);
         g.userData.hit = [0.7, 0.6, 0.7, y]; g.userData.sayY = y + 0.35;
       }
