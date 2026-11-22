@@ -407,7 +407,7 @@ function buildEdge(e, group, h, T) {
   mk(box(e.len, 0.05, T * 0.9), white, [0, top - 0.02, 0], g, { outline: 0.01, shadow: false });
   mk(box(e.len, 0.05, T * 0.9), white, [0, sill + 0.02, 0], g, { outline: 0.01, shadow: false });
   // 창밖 거리 (1인칭에서만, 블라인드 틈으로 보임)
-  if (group === fpGroup || group === roomGroup) addStreetView((e.ax + e.bx) / 2, (e.az + e.bz) / 2, e.nx, e.nz, e.len + 6, 5, 3.5, 17 + e.i * 31);
+  if (group === fpGroup || group === roomGroup) addStreetView((e.ax + e.bx) / 2, (e.az + e.bz) / 2, e.nx, e.nz, e.len + 6, 5, 3.5, 17 + e.i * 31, R.outside?.[e.i] || "street");
 }
 
 // ───────── 창밖 거리 풍경 (블라인드 틈으로 은은하게) ─────────
@@ -475,8 +475,69 @@ function drawStreet(g, W, H, phase, seed) {
   if (night) { g.fillStyle = "rgba(120,110,160,.12)"; g.fillRect(0, 0, W, H); }
 }
 
+/** 삼거리 골목: 창에서 똑바로 뻗어 나가는 길 (원근감) */
+function drawAlley(g, W, H, phase, seed) {
+  let s = seed;
+  const rnd = () => ((s = (s * 16807) % 2147483647) / 2147483647);
+  const night = phase === "night", dusk = phase === "dusk";
+  const sky = g.createLinearGradient(0, 0, 0, H * 0.5);
+  if (night) { sky.addColorStop(0, "#121833"); sky.addColorStop(1, "#2b2f55"); }
+  else if (dusk) { sky.addColorStop(0, "#8f7fd0"); sky.addColorStop(1, "#f3a7a0"); }
+  else { sky.addColorStop(0, "#d9c3ef"); sky.addColorStop(1, "#f2e3f0"); }
+  g.fillStyle = sky; g.fillRect(0, 0, W, H);
+  const vx = W * 0.5, vy = H * 0.46; // 소실점
+  const ink = "#1b1b1f";
+  const poly = (pts, fill, lw = 5) => { g.beginPath(); pts.forEach(([x, y], i) => (i ? g.lineTo(x, y) : g.moveTo(x, y))); g.closePath(); g.fillStyle = fill; g.fill(); if (lw) { g.strokeStyle = ink; g.lineWidth = lw; g.stroke(); } };
+  const lerp = (a, b, t) => a + (b - a) * t;
+  // 길 양옆 건물 (멀어질수록 작게)
+  const walls = night ? ["#3a2630", "#2e2b3f", "#3d3036", "#2a3040"] : dusk ? ["#9a5b4c", "#7d6f86", "#a06a58", "#6f7690"] : ["#b5583f", "#cfc9bf", "#a7b6c9", "#c98f6b"];
+  for (const side of [-1, 1]) {
+    let t0 = 0;
+    while (t0 < 0.92) {
+      const t1 = Math.min(0.95, t0 + 0.12 + rnd() * 0.18);
+      const xA = side < 0 ? lerp(0, vx - 40, t0) : lerp(W, vx + 40, t0), xB = side < 0 ? lerp(0, vx - 40, t1) : lerp(W, vx + 40, t1);
+      const hA = lerp(H * 0.95, 30, t0) * (0.75 + rnd() * 0.4), hB = hA * (1 - (t1 - t0) * 1.1);
+      const bA = lerp(H * 0.95, vy + 8, t0), bB = lerp(H * 0.95, vy + 8, t1);
+      poly([[xA, bA], [xB, bB], [xB, bB - hB], [xA, bA - hA]], walls[Math.floor(rnd() * walls.length)], 4);
+      // 창문 불빛
+      for (let r = 0.2; r < 0.9; r += 0.22) for (let c = 0.15; c < 0.85; c += 0.3) {
+        const lit = night ? rnd() < 0.5 : dusk ? rnd() < 0.3 : false;
+        const x = lerp(xA, xB, c), y = lerp(bA - hA * r, bB - hB * r, c), sz = Math.min(lerp(hA, hB, c) * 0.06, Math.abs(xB - xA) * 0.1);
+        g.fillStyle = lit ? "#f3c27a" : night ? "#1d2138" : dusk ? "#5f5a80" : "#bfe0f2";
+        g.fillRect(x - sz * 0.6, y - sz, sz * 1.2, sz * 1.3);
+      }
+      t0 = t1;
+    }
+  }
+  // 길 (아래가 넓고 소실점으로 좁아짐)
+  poly([[W * 0.08, H], [W * 0.92, H], [vx + 40, vy + 8], [vx - 40, vy + 8]], night ? "#34343f" : dusk ? "#6d6577" : "#b9b3c4", 5);
+  // 흰 화살표 · 정지선 (삼거리 노면 표시)
+  g.fillStyle = night ? "#cfcbd8" : "#ffffff";
+  poly([[vx - 70, H * 0.9], [vx + 70, H * 0.9], [vx + 60, H * 0.86], [vx - 60, H * 0.86]], g.fillStyle, 0);
+  poly([[vx - 8, H * 0.8], [vx + 8, H * 0.8], [vx + 6, H * 0.68], [vx + 22, H * 0.68], [vx, H * 0.6], [vx - 22, H * 0.68], [vx - 6, H * 0.68]], g.fillStyle, 0);
+  // 가로등 (멀어질수록 작게)
+  for (const t of [0.25, 0.55, 0.78]) {
+    const x = lerp(W * 0.86, vx + 30, t), yb = lerp(H, vy + 8, t), h = lerp(H * 0.75, 40, t);
+    g.strokeStyle = ink; g.lineWidth = lerp(6, 2, t);
+    g.beginPath(); g.moveTo(x, yb); g.lineTo(x, yb - h); g.lineTo(x - h * 0.12, yb - h); g.stroke();
+    if (night || dusk) {
+      const r = lerp(150, 40, t), glow = g.createRadialGradient(x - h * 0.12, yb - h, 2, x - h * 0.12, yb - h, r);
+      glow.addColorStop(0, night ? "rgba(255,230,160,.95)" : "rgba(255,220,160,.6)"); glow.addColorStop(1, "rgba(255,220,150,0)");
+      g.fillStyle = glow; g.beginPath(); g.arc(x - h * 0.12, yb - h, r, 0, Math.PI * 2); g.fill();
+    }
+  }
+  // 골목 안쪽 주차된 차 + 노란 입간판
+  const cx = lerp(W * 0.2, vx - 30, 0.45), cy = lerp(H, vy + 8, 0.45), k = 0.55;
+  g.fillStyle = night ? "#3e4150" : "#e9e9ef"; g.strokeStyle = ink; g.lineWidth = 3;
+  g.beginPath(); g.roundRect(cx, cy - 46 * k, 170 * k, 40 * k, 8); g.fill(); g.stroke();
+  g.beginPath(); g.roundRect(cx + 25 * k, cy - 74 * k, 100 * k, 32 * k, 8); g.fill(); g.stroke();
+  const sx = lerp(W * 0.7, vx + 30, 0.35), sy = lerp(H, vy + 8, 0.35);
+  poly([[sx, sy], [sx + 10, sy - 40], [sx + 30, sy - 40], [sx + 40, sy]], "#f2c94c", 3);
+  if (night) { g.fillStyle = "rgba(120,110,160,.14)"; g.fillRect(0, 0, W, H); }
+}
+
 /** 창 바깥에 거리 풍경 판 세우기 (방 안을 향하게) */
-function addStreetView(cx, cz, nx, nz, w, h, dist, seed) {
+function addStreetView(cx, cz, nx, nz, w, h, dist, seed, kind = "street") {
   const c = document.createElement("canvas");
   c.width = 1024; c.height = 512;
   const ctx = c.getContext("2d");
@@ -486,12 +547,12 @@ function addStreetView(cx, cz, nx, nz, w, h, dist, seed) {
   m.position.set(cx - nx * dist, h / 2 - 0.3, cz - nz * dist);
   m.rotation.y = Math.atan2(nx, nz); // 판의 앞면(+z)이 방 안쪽(n)을 봄
   fpGroup.add(m);
-  streetViews.push({ ctx, tex, seed, W: 1024, H: 512 });
+  streetViews.push({ ctx, tex, seed, W: 1024, H: 512, kind });
 }
 function updateStreetViews(phase) {
   if (phase === streetPhase) return;
   streetPhase = phase;
-  for (const v of streetViews) { drawStreet(v.ctx, v.W, v.H, phase, v.seed); v.tex.needsUpdate = true; }
+  for (const v of streetViews) { (v.kind === "alley" ? drawAlley : drawStreet)(v.ctx, v.W, v.H, phase, v.seed); v.tex.needsUpdate = true; }
 }
 
 /** 1인칭용: 정면 벽 + 자동문 + 천장 + 가게 앞 (위에서 볼 땐 숨김) */

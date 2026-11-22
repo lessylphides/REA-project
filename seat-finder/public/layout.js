@@ -35,6 +35,9 @@ export default {
     outline: [[0, 0], [9.5, 0], [9.5, 9.5], [3.9, 9.5], [0, 5.6]],
     // 각 변의 종류: wall = 벽, front = 입구 있는 정면 유리, glass = 통유리(블라인드)
     edges: ["wall", "wall", "front", "glass", "glass"],
+    // 창밖 풍경: 매장은 골목 삼거리 코너. street = 창과 나란히 지나가는 골목, alley = 창에서 똑바로 뻗어 나가는 골목
+    //   대각선 창(안 쓰는 문 쪽)이 삼거리 골목 중 하나를 바라봄
+    outside: ["", "", "street", "alley", "street"],
     floor: "#b9aaa6", // 콘크리트 바닥
     floorStyle: "concrete",
     wall: "#f2e6ec", // 은은한 분홍빛 흰 벽
