@@ -67,7 +67,7 @@ export default {
     // 조명
     { type: "pendant", kind: "linear", x: 2.1, z: 2.8, rot: 90, len: 1.8, y: 2.2 },
     { type: "pendant", kind: "linear", x: 3.43, z: 6.06, rot: 45, len: 1.8, y: 2.2 },
-    { type: "pendant", kind: "linear", x: 5.75, z: 7.4, rot: 0, len: 1.6, y: 2.2, say: "바 위 나무 조명\n잔이 반짝이게 비춰 줘요" },
+    { type: "pendant", kind: "linear", x: 6.05, z: 7.4, rot: 0, len: 1.8, y: 2.2, say: "바 위 나무 조명\n잔이 반짝이게 비춰 줘요" },
     { type: "pendant", kind: "rattan", x: 5.2, z: 3.2, y: 2.15, say: "라탄 조명\n직접 골라 단 등이에요" },
     { type: "pendant", kind: "rattan", x: 7.6, z: 6.7, y: 2.15 },
     { type: "pendant", kind: "beehive", x: 8.75, z: 5.4, y: 2.1, say: "벌집 모양 원목 조명" },
@@ -118,11 +118,11 @@ export default {
   // 바: path 를 주면 그 길을 따라 휘어진 바 (창을 따라 곡선), seats = 바 의자 수
   bars: [
     // 창에서 2.1m 안쪽 (바텐더 공간 넓게), depth = 바 몸통 두께
-    { id: "BAR", path: [[2.1, 0.9], [2.1, 4.73], [4.77, 7.4], [6.7, 7.4]], radius: 1.2, depth: 0.66, seats: 8, chair: "barstool",
+    { id: "BAR", path: [[2.1, 0.9], [2.1, 4.73], [4.77, 7.4], [7.3, 7.4]], radius: 1.2, depth: 0.66, seats: 8, chair: "barstool",
       // 바 끝 창 쪽(커피머신 앞)에서 바를 사이에 두고 마주 보는 자리 → BAR-9
       extraSeats: [[6.3, 8.32, 0, -1]],
       // 바 안쪽으로 못 들어가게 막는 곳 [x, z, 반폭, 반깊이]: 안쪽 벽 쪽 끝 / 입구 쪽 끝
-      block: [[2.1, 0.45, 0.4, 0.45], [7.05, 8.35, 0.25, 0.85]],
+      block: [[2.1, 0.45, 0.4, 0.45], [7.35, 8.4, 0.17, 0.8]],
       say: "곡선 바 9석\n바텐더와 이야기 나누기 좋은 자리" },
   ],
 };
