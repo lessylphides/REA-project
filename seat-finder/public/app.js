@@ -1647,7 +1647,7 @@ function buildInteriorProp(p, g) {
       g.userData.hit = [0.5, 1.1, 0.5, 0.55]; g.userData.sayY = 1.35;
       return true;
     }
-    case "bartender": { // 바텐더 (크림 퀼팅 재킷, 체크 셔츠, 긴 웨이브 머리, 동그란 뿔테 안경, 팔짱)
+    case "bartender": { // 바텐더 (50대, 날카로운 인상, 크림 퀼팅 재킷, 체크 셔츠, 넘긴 긴 머리, 뿔테 안경, 팔짱)
       const skin = "#f0c9a6", hair = "#2a211d", jacket = "#fffaf0", pants = "#8f9096";
       const plaid = new THREE.MeshBasicMaterial({ map: canvasTex(64, 64, (c) => {
         c.fillStyle = "#8a2f35"; c.fillRect(0, 0, 64, 64);
@@ -1678,26 +1678,49 @@ function buildInteriorProp(p, g) {
       // 머리
       const head = new THREE.Group(); head.position.set(0, 1.55, 0); body.add(head);
       g.userData.btHead = head;
-      mk(new THREE.SphereGeometry(0.17, 20, 16), skin, [0, 0, 0], head, { outline: 0.02 });
-      const cap = mk(new THREE.SphereGeometry(0.182, 20, 12, 0, Math.PI * 2, 0, Math.PI * 0.52), hair, [0, 0.02, -0.02], head, { outline: 0 });
-      cap.rotation.x = -0.35;
-      // 뒤로 묶은 긴 웨이브 머리 + 양옆으로 흘러내린 머리
-      const tail = mk(new THREE.CapsuleGeometry(0.075, 0.28, 6, 10), hair, [0, -0.18, -0.15], head, { outline: 0.012 });
+      // 50대, 날카로운 인상: 갸름하고 긴 얼굴, 각진 턱, 찡그린 듯한 눈썹, 가는 눈, 팔자 주름, 수염 자국
+      const face = mk(new THREE.SphereGeometry(0.16, 22, 18), "#e2b48e", [0, 0, 0], head, { outline: 0.02 });
+      face.scale.set(0.88, 1.18, 0.95);
+      const jaw = mk(box(0.17, 0.08, 0.16), "#e2b48e", [0, -0.14, 0.02], head, { outline: 0.012 }); // 각진 턱
+      jaw.rotation.x = 0.15;
+      mk(box(0.15, 0.07, 0.01), new THREE.MeshBasicMaterial({ color: "#7d6a5e", transparent: true, opacity: 0.35 }), [0, -0.13, 0.105], head, { outline: 0, shadow: false }); // 수염 자국
+      // 넘긴 머리 (이마가 넓게 드러남) + 흰머리 섞임
+      const cap = mk(new THREE.SphereGeometry(0.168, 20, 12, 0, Math.PI * 2, 0, Math.PI * 0.5), hair, [0, 0.05, -0.04], head, { outline: 0 });
+      cap.rotation.x = -0.6; cap.scale.set(0.95, 1.1, 1);
+      for (const sx of [-0.06, 0.04]) mk(box(0.012, 0.01, 0.16), "#8e8a86", [sx, 0.19, -0.04], head, { outline: 0, shadow: false }).rotation.x = -0.4;
+      const tail = mk(new THREE.CapsuleGeometry(0.07, 0.3, 6, 10), hair, [0, -0.17, -0.15], head, { outline: 0.012 });
       tail.rotation.x = 0.25;
       for (const sx of [-1, 1]) {
-        const side = mk(new THREE.CapsuleGeometry(0.05, 0.16, 4, 8), hair, [sx * 0.16, -0.08, -0.03], head, { outline: 0.01 });
+        const side = mk(new THREE.CapsuleGeometry(0.03, 0.18, 4, 8), hair, [sx * 0.12, -0.06, -0.1], head, { outline: 0.008 }); // 귀 뒤로 넘긴 머리
         side.rotation.z = sx * 0.2;
       }
+      const ink = new THREE.MeshBasicMaterial({ color: "#1b1b1f" });
+      // 날카로운 눈썹 (안쪽이 내려간 각)
+      for (const sx of [-1, 1]) {
+        const brow = mk(box(0.075, 0.016, 0.02), hair, [sx * 0.058, 0.07, 0.15], head, { outline: 0.004, shadow: false });
+        brow.rotation.z = sx * 0.3;
+      }
+      // 가늘고 매서운 눈
+      for (const sx of [-1, 1]) {
+        const e = mk(new THREE.SphereGeometry(0.02, 10, 6), ink, [sx * 0.058, 0.018, 0.152], head, { outline: 0, shadow: false });
+        e.scale.set(1.5, 0.55, 0.6);
+      }
+      // 콧대 + 팔자 주름 + 한쪽만 올라간 입꼬리
+      mk(box(0.022, 0.09, 0.03), "#d7a47e", [0, -0.02, 0.16], head, { outline: 0.004, shadow: false });
+      for (const sx of [-1, 1]) {
+        const fold = mk(box(0.006, 0.07, 0.006), "#8c5e46", [sx * 0.045, -0.075, 0.145], head, { outline: 0, shadow: false });
+        fold.rotation.z = sx * -0.35;
+      }
+      const mouth = mk(box(0.06, 0.008, 0.01), "#6e3e32", [0.005, -0.11, 0.142], head, { outline: 0, shadow: false });
+      mouth.rotation.z = 0.12;
       // 동그란 갈색 뿔테 안경
       const frame = "#6b3f24";
       for (const sx of [-1, 1]) {
-        mk(new THREE.TorusGeometry(0.045, 0.011, 6, 18), frame, [sx * 0.062, 0.01, 0.16], head, { outline: 0, shadow: false });
-        mk(new THREE.CircleGeometry(0.04, 16), new THREE.MeshBasicMaterial({ color: "#cfe3ec", transparent: true, opacity: 0.35 }), [sx * 0.062, 0.01, 0.158], head, { outline: 0, shadow: false });
-        mk(new THREE.SphereGeometry(0.014, 8, 6), new THREE.MeshBasicMaterial({ color: "#1b1b1f" }), [sx * 0.062, 0.005, 0.15], head, { outline: 0, shadow: false });
-        mk(box(0.012, 0.012, 0.15), frame, [sx * 0.11, 0.015, 0.09], head, { outline: 0, shadow: false });
+        mk(new THREE.TorusGeometry(0.043, 0.011, 6, 18), frame, [sx * 0.06, 0.015, 0.163], head, { outline: 0, shadow: false });
+        mk(new THREE.CircleGeometry(0.038, 16), new THREE.MeshBasicMaterial({ color: "#cfe3ec", transparent: true, opacity: 0.3 }), [sx * 0.06, 0.015, 0.161], head, { outline: 0, shadow: false });
+        mk(box(0.012, 0.012, 0.15), frame, [sx * 0.105, 0.02, 0.09], head, { outline: 0, shadow: false });
       }
-      mk(box(0.03, 0.01, 0.01), frame, [0, 0.02, 0.165], head, { outline: 0, shadow: false });
-      mk(box(0.05, 0.008, 0.01), "#9a5a4a", [0, -0.075, 0.158], head, { outline: 0, shadow: false }); // 입
+      mk(box(0.03, 0.01, 0.01), frame, [0, 0.025, 0.168], head, { outline: 0, shadow: false });
       addObstacle(p.x, p.z, 0.22, 0.22);
       g.userData.hit = [0.6, 1.8, 0.6, 0.9]; g.userData.sayY = 2.0;
       bartenders.push(g);
