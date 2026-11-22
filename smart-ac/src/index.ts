@@ -6,7 +6,7 @@ import { HumState, HUM_DEFAULT, humDecide, findHumPowerScene } from './hum';
 import { Config, DEFAULT_CONFIG, Env, DesiredAcState, MODE_CODES, FAN_CODES } from './config';
 import * as hej from './hej';
 import { getWeather, Weather } from './weather';
-import { decide, scheduleState, nextTransition, Reading, Ctl, Stage } from './engine';
+import { decide, scheduleState, nextTransition, Reading, Ctl, Stage, BizOverride, scheduleWithOverride, nextTransitionWithOverride, extendUntil, closeUntil, activeOverride } from './engine';
 import { ICON_192, ICON_512 } from './icons';
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -101,6 +101,7 @@ interface RunStatus {
   sensors?: { id: string; name: string; temp: number | null; hum: number | null; online: boolean }[];
   sensorBasis?: 'avg' | 's1' | 's2';
   vaneNote?: string;
+  override?: BizOverride | null;
   hum?: { on: boolean; warn: boolean; auto: boolean; reason: string; low: number; high: number } | null;
   acLast?: { power: boolean; mode?: string; temperature?: number; fanSpeed?: string } | null;
   acWarn?: { type: 'noheat' | 'nocool'; dT: number } | null;
@@ -246,9 +247,11 @@ async function runOnce(env: Env, opts: { force?: boolean; preview?: boolean; log
 
     const reading: Reading = { indoorTemp: temp, indoorHumidity: humidity ?? undefined, outdoorTemp: weather?.outdoorTemp ?? null };
     // 영업시간: 쾌적 목표(22/25) / 비영업: 최저기준(12)~여름경고(30)로 세트백해 절전
-    const sched = scheduleState(new Date(), cfg);
+    const ov = await env.KV.get('override', 'json') as BizOverride | null; // 그날만 연장/일찍 마감
+    const sched = scheduleWithOverride(new Date(), cfg, ov);
     status.scheduleState = sched.state;
-    status.nextTransition = nextTransition(new Date(), cfg);
+    status.nextTransition = nextTransitionWithOverride(new Date(), cfg, ov);
+    status.override = activeOverride(ov, new Date());
     const effCfg = sched.comfort ? cfg : { ...cfg, winterTarget: cfg.alertCold, summerTarget: cfg.alertHot };
     const prevCtl = await env.KV.get('ctl', 'json') as Ctl | null;
     const decision = decide(reading, effCfg, sched.comfort, prevCtl);
@@ -428,6 +431,28 @@ export default {
       let power: string | null = null;
       try { const s = await getSession(env); const fams = await hej.getFamilies(s); power = findHumPowerScene(await hej.getScenes(s, fams[0].familyId))?.sceneId ?? null; } catch {}
       return json({ ok: true, hum: st, powerSceneId: power });
+    }
+    // 그날만 영업 연장 / 일찍 마감 / 취소 → 바로 한 번 실행해 반영
+    if (url.pathname === '/api/override' && req.method === 'POST') {
+      try {
+        const b = await req.json<{ action?: string; minutes?: number }>();
+        const cfg = await loadConfig(env);
+        const now = new Date();
+        const ov = await env.KV.get('override', 'json') as BizOverride | null;
+        if (b.action === 'extend') {
+          const mins = Number(b.minutes);
+          if (!(mins > 0 && mins <= 360)) return json({ ok: false, error: '연장 시간이 올바르지 않아요' }, 400);
+          await env.KV.put('override', JSON.stringify({ type: 'extend', until: extendUntil(now, cfg, ov, mins) }));
+        } else if (b.action === 'close') {
+          const until = closeUntil(now, cfg);
+          if (!until) return json({ ok: false, error: '지금은 마감할 영업이 없어요' }, 400);
+          await env.KV.put('override', JSON.stringify({ type: 'close', until }));
+        } else if (b.action === 'cancel') {
+          if (ov) await env.KV.delete('override');
+        } else return json({ ok: false, error: '알 수 없는 동작' }, 400);
+        const st = await runOnce(env, {});
+        return json({ ok: true, override: st.override ?? null, scheduleState: st.scheduleState, sent: st.sent ?? [] });
+      } catch (e: any) { return json({ ok: false, error: String(e?.message ?? e) }, 500); }
     }
     // 날개 고정 시험: 상하 켜고 sec초 뒤 멈춤
     if (url.pathname === '/api/vane' && req.method === 'POST') {
@@ -710,7 +735,7 @@ function renderUI(token: string): string {
 </style></head><body>
 <div class="topbar"><div style="flex:1;min-width:0">
   <div class="titlerow"><h1 id="title" style="margin:8px 0 2px">우리 매장</h1><button id="gear" class="gearbtn" aria-label="설정"><svg viewBox="0 0 24 24" width="23" height="23" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button></div>
-  <div style="color:var(--sec);font-size:14px">실내 환경 자동관리 <span id="sched" class="schedpill"></span></div>
+  <div style="color:var(--sec);font-size:14px">실내 환경 자동관리 <span id="sched" class="schedpill" style="cursor:pointer"></span></div>
 </div></div>
 <div style="height:8px"></div>
 
@@ -848,6 +873,17 @@ function renderUI(token: string): string {
   </div>
 </div>
 
+<div id="bizModal" class="modal" style="display:none">
+  <div class="sheet">
+    <div class="sheet-h"><b>🕐 오늘 영업 시간</b><button id="bizClose" class="x">✕</button></div>
+    <div id="bizInfo" style="font-size:16px;font-weight:600;margin-bottom:12px"></div>
+    <div class="aclabel">늦게까지 영업하면 연장</div>
+    <div class="acseg" id="bizExt"><button data-m="30">+30분</button><button data-m="60">+1시간</button><button data-m="120">+2시간</button></div>
+    <div class="acseg" style="margin-top:10px"><button id="bizCloseNow">지금 마감 (절전)</button><button id="bizCancel">연장·마감 취소</button></div>
+    <div class="mini" id="bizMsg" style="margin-top:10px;min-height:16px"></div>
+    <div class="mini" style="margin-top:6px">오늘 하루만 적용돼요. 다음 영업부터는 설정한 영업시간으로 돌아가요. 연장은 누를 때마다 더해져요.</div>
+  </div>
+</div>
 <div id="humModal" class="modal" style="display:none">
   <div class="sheet">
     <div class="sheet-h"><b>💧 가습기</b><button id="humClose" class="x">✕</button></div>
@@ -989,6 +1025,25 @@ document.getElementById('tDown').onclick=()=>{if(acTemp>16){acTemp--;showAcTemp(
 document.getElementById('wxClose').onclick=()=>document.getElementById('wxModal').style.display='none';
 document.getElementById('humid').onclick=function(e){e.stopPropagation();document.getElementById('humModal').style.display='flex';document.getElementById('humMsg').textContent='';var h=lastPv&&lastPv.indoorHumidity;document.getElementById('humNow').textContent='지금 실내 습도 '+(h!=null?h+'%':'–');showHum(null);refreshHum();loadHum();};
 document.getElementById('humClose').onclick=()=>document.getElementById('humModal').style.display='none';
+function bizRender(){var pv=lastPv||{},o=pv.override,i=document.getElementById('bizInfo');
+  if(o&&o.type==='extend')i.textContent='🟢 오늘 영업을 '+kstHM(o.until)+'까지 연장했어요';
+  else if(o&&o.type==='close')i.textContent='⚪ 오늘은 일찍 마감했어요'+(pv.nextTransition?' · 다음 영업 '+kstHM(pv.nextTransition.at):'');
+  else if(pv.scheduleState==='open'&&pv.nextTransition)i.textContent='🟢 영업 중 · '+kstHM(pv.nextTransition.at)+' 마감 예정';
+  else if(pv.scheduleState==='preheat')i.textContent='🟡 곧 영업 시작 (미리 데우는 중)';
+  else i.textContent='⚪ 지금은 비영업 시간이에요';
+  document.getElementById('bizCancel').style.display=o?'':'none';
+  document.getElementById('bizCloseNow').style.display=(pv.scheduleState==='open'||pv.scheduleState==='preheat')&&!(o&&o.type==='close')?'':'none';}
+document.getElementById('sched').onclick=function(){document.getElementById('bizModal').style.display='flex';document.getElementById('bizMsg').textContent='';bizRender();};
+document.getElementById('bizClose').onclick=()=>document.getElementById('bizModal').style.display='none';
+document.getElementById('bizModal').onclick=e=>{if(e.target.id==='bizModal')e.target.style.display='none'};
+async function bizSend(body,label){var m=document.getElementById('bizMsg');document.querySelectorAll('#bizModal button').forEach(function(b){b.disabled=true});m.textContent='적용 중…';let j;
+  try{j=await(await fetch(q('/api/override'),{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)})).json();}catch(e){j={ok:false,error:'전송 실패'}}
+  document.querySelectorAll('#bizModal button').forEach(function(b){b.disabled=false});
+  if(!j.ok){m.textContent='✗ '+(j.error||'');return}
+  await load();bizRender();m.textContent='✓ '+label+(j.sent&&j.sent.length?' · 보냄: '+j.sent.map(sentKo).join(', '):'');}
+document.querySelectorAll('#bizExt button').forEach(function(b){b.onclick=function(){bizSend({action:'extend',minutes:+b.dataset.m},b.textContent+' 연장했어요')}});
+document.getElementById('bizCloseNow').onclick=function(){if(confirm('오늘 영업을 지금 마감할까요? (비영업 절전 모드로 바뀌어요)'))bizSend({action:'close'},'지금 마감했어요')};
+document.getElementById('bizCancel').onclick=function(){bizSend({action:'cancel'},'원래 영업시간으로 돌아갔어요')};
 function showHum(st){var h=document.getElementById('humState'),w=document.getElementById('humWarn');if(!st){h.textContent='';w.textContent='';return}
   h.textContent='가습기: '+(st.on?'💧 켜짐':'꺼짐')+' (앱이 기억한 상태)';w.textContent=st.warn?'⚠️ 켰는데 습도가 안 올라요. 물이 있는지, 실제로 켜져 있는지 확인하고 아래에서 상태를 바로잡아 주세요. (그 전까지 자동 가습 멈춤)':'';}
 async function refreshHum(){try{var j=await(await fetch(q('/api/hum'))).json();showHum(j.hum);}catch(e){}}
@@ -1070,7 +1125,8 @@ async function load(){
   const chip=document.getElementById('chip');chip.className='chip '+f.c;
   chip.querySelector('.em').textContent=f.em;document.getElementById('chipt').textContent=f.t;
   const SM={open:'🟢 영업중',preheat:'🟡 예열중',closed:'⚪ 비영업'};
-  document.getElementById('sched').textContent=pv&&pv.scheduleState?SM[pv.scheduleState]||'':'';
+  const ovr=pv&&pv.override;
+  document.getElementById('sched').textContent=!pv||!pv.scheduleState?'':(ovr&&ovr.type==='extend'?'🟢 영업중 · '+kstHM(ovr.until)+'까지 연장 ›':ovr&&ovr.type==='close'?'⚪ 일찍 마감 ›':(SM[pv.scheduleState]||'')+' ›');
   document.getElementById('useSchedule').checked=c.useSchedule!==false;
   document.getElementById('humAuto').checked=!!c.humAuto;document.getElementById('vaneFix').checked=!!c.vaneFix;document.getElementById('humBizOnly').checked=c.humBizOnly!==false;
   document.getElementById('preheatMinutes').value=c.preheatMinutes!=null?c.preheatMinutes:60;
@@ -1131,7 +1187,7 @@ function updateClock(){
 }
 updateClock();setInterval(updateClock,1000);
 // 상시표시용 5분 자동 새로고침 (설정/리모컨 창 열려있으면 입력 보호 위해 건너뜀)
-function anyOpen(){return ['settingsModal','acModal','wxModal','chartModal','humModal'].some(function(id){var e=document.getElementById(id);return e&&e.style.display&&e.style.display!=='none'});}
+function anyOpen(){return ['settingsModal','acModal','wxModal','chartModal','humModal','bizModal'].some(function(id){var e=document.getElementById(id);return e&&e.style.display&&e.style.display!=='none'});}
 setInterval(function(){if(!anyOpen())load().catch(function(){})},300000);
 load();
 </script></body></html>`;

@@ -84,8 +84,9 @@ export function nextTransition(now: Date, cfg: Config): { opensNext: boolean; at
   const dm = (d: Date) => { const k = new Date(d.getTime() + 9 * 3600 * 1000); return { day: k.getUTCDay(), min: k.getUTCHours() * 60 + k.getUTCMinutes() }; };
   const cur = dm(now);
   const openNow = isOpenAt(cfg.hours, cur.day, cur.min);
+  const base = Math.floor(now.getTime() / (5 * 60000)) * 5 * 60000; // 5분 눈금에 맞춰 '13:01' 같은 어긋남 방지
   for (let step = 1; step <= 8 * 24 * 12; step++) { // 5분 간격
-    const t = new Date(now.getTime() + step * 5 * 60000);
+    const t = new Date(base + step * 5 * 60000);
     const x = dm(t);
     if (isOpenAt(cfg.hours, x.day, x.min) !== openNow) return { opensNext: !openNow, at: t.getTime() };
   }
@@ -158,4 +159,47 @@ export function decide(reading: Reading, cfg: Config, comfort = true, prevCtl: C
   return { action: 'set', seasonMode: season, stage, ctl, maintaining: true,
     desired: { power: true, mode, temperature: restSet, fanSpeed: 'low' },
     reason: `쉬기 · 실내 ${t1(indoor)}℃ (목표 ${target}℃보다 ${heating ? '따뜻함' : '시원함'}) → 설정 ${restSet}℃·바람 약으로 쉬며 관찰, 목표 ${heating ? '아래로 내려가면' : '위로 올라가면'} 다시 살살` };
+}
+
+// ---------- 그날만 영업 연장 / 일찍 마감 ----------
+/** 사장님이 직접 정한 그날의 예외: extend=until까지 영업 중, close=until(원래 마감)까지 비영업 */
+export interface BizOverride { type: 'extend' | 'close'; until: number; }
+
+export function activeOverride(ov: BizOverride | null | undefined, now: Date): BizOverride | null {
+  return ov && typeof ov.until === 'number' && ov.until > now.getTime() ? ov : null;
+}
+
+/** 예외를 반영한 영업 상태 */
+export function scheduleWithOverride(now: Date, cfg: Config, ov: BizOverride | null | undefined) {
+  const a = cfg.useSchedule === false ? null : activeOverride(ov, now);
+  if (!a) return scheduleState(now, cfg);
+  return a.type === 'extend' ? { state: 'open' as const, comfort: true } : { state: 'closed' as const, comfort: false };
+}
+
+/** 예외를 반영한 다음 영업 전환 시각 */
+export function nextTransitionWithOverride(now: Date, cfg: Config, ov: BizOverride | null | undefined) {
+  const a = cfg.useSchedule === false ? null : activeOverride(ov, now);
+  if (!a) return nextTransition(now, cfg);
+  if (a.type === 'extend') return { opensNext: false, at: a.until };
+  return nextTransition(new Date(a.until), cfg);
+}
+
+/** '+N분 연장'을 눌렀을 때의 새 연장 끝 시각: 이미 연장 중이면 거기서, 영업 중이면 원래 마감에서, 아니면 지금부터 */
+export function extendUntil(now: Date, cfg: Config, ov: BizOverride | null | undefined, minutes: number): number {
+  const a = activeOverride(ov, now);
+  let base = now.getTime();
+  if (a?.type === 'extend') base = a.until;
+  else if (scheduleState(now, cfg).state === 'open') base = nextTransition(now, cfg)?.at ?? base;
+  return base + minutes * 60000;
+}
+
+/** '지금 마감'의 끝 시각: 지금(또는 곧 시작할) 영업이 원래 끝나는 시각까지 비영업 */
+export function closeUntil(now: Date, cfg: Config): number | null {
+  const st = scheduleState(now, cfg).state;
+  if (st === 'closed') return null; // 영업 중·예열 중일 때만 (휴무일에 다음 영업을 미리 닫지 않게)
+  const nt = nextTransition(now, cfg);
+  if (!nt) return null;
+  if (st === 'open' && !nt.opensNext) return nt.at;
+  const after = nextTransition(new Date(nt.at), cfg); // 예열 중이면: 곧 열리고 → 그 영업이 끝나는 시각
+  return after && !after.opensNext ? after.at : null;
 }
