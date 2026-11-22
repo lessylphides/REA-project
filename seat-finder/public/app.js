@@ -111,6 +111,7 @@ function splitInteriorTints() {
   const clones = new Map();
   for (const [o, inside] of meshes) {
     const m = o.material, set = cls.get(m);
+    if (m.userData.forceOutside) { m.userData.inside = false; continue; }
     if (set.size === 1) { m.userData.inside = inside; continue; }
     if (!inside) { m.userData.inside = false; continue; }
     let c = clones.get(m);
@@ -516,6 +517,7 @@ function buildEdge(e, group, h, T) {
   t.repeat.set(gw / 0.5, (top - bl0) / 1.1);
   const mat = new THREE.MeshBasicMaterial({ map: t, color: "#fff6f2", transparent: true, side: THREE.DoubleSide, depthWrite: false });
   registerTint(mat);
+  mat.userData.forceOutside = true; // 세 면 모두 바깥 하늘빛 기준 (낮엔 햇빛 받아 밝게)
   mk(new THREE.PlaneGeometry(gw, top - bl0), mat, [gc, (top + bl0) / 2, 0], g, { outline: 0, shadow: false });
   mk(new THREE.PlaneGeometry(gw, bl0 - sill), clearGlass(), [gc, (bl0 + sill) / 2, 0], g, { outline: 0, shadow: false });
   if (group === roomGroup) { // 창틀로 나뉜 칸마다 같은 비침 (바깥쪽 -z 를 향함)
@@ -1020,6 +1022,7 @@ function buildInsideShell(T) {
     t.repeat.set(winW / 0.5, (2.75 - BLIND_BOTTOM) / 1.1);
     const bm = new THREE.MeshBasicMaterial({ map: t, color: "#fff6f2", transparent: true, depthWrite: false, side: THREE.DoubleSide });
     registerTint(bm);
+    bm.userData.forceOutside = true;
     const inner = mk(new THREE.PlaneGeometry(winW, 2.75 - BLIND_BOTTOM), bm, [(wx0 + wx1) / 2, (2.75 + BLIND_BOTTOM) / 2, R.d - 0.005], fpGroup, { outline: 0, shadow: false });
     mk(new THREE.PlaneGeometry(winW, BLIND_BOTTOM - 0.12), clearGlass(), [(wx0 + wx1) / 2, (BLIND_BOTTOM + 0.12) / 2, R.d + 0.02], fpGroup, { outline: 0, shadow: false });
     addGlassRefl(fpGroup, winW, 2.75 - 0.12, [(wx0 + wx1) / 2, (2.75 + 0.12) / 2, R.d + 0.04], 0);
@@ -2349,7 +2352,7 @@ function buildInteriorProp(p, g) {
     }
     case "door": { // 안 쓰는 출입문: 입구 문과 같은 크기·모양 (짙은 문틀 + 유리 + 긴 세로 나무 손잡이), 유리 바깥쪽(블라인드 뒤)
       const w = p.w ?? 1.1, h = p.h ?? 2.2, fr = "#4a3a32", oz = 0.12;
-      mk(box(w - 0.04, h - 0.04, 0.03), toon("#cfeaf5", { transparent: true, opacity: 0.35 }), [0, h / 2, oz], g, { outline: 0, shadow: false });
+      mk(box(w - 0.04, h - 0.04, 0.03), new THREE.MeshBasicMaterial({ color: "#cfeaf5", transparent: true, opacity: 0.25, depthWrite: false }), [0, h / 2, oz], g, { outline: 0, shadow: false }); // 깊이 안 씀: 뒤 블라인드가 가려지지 않게
       for (const fx of [-w / 2 + 0.025, w / 2 - 0.025]) mk(box(0.05, h, 0.06), fr, [fx, h / 2, oz], g, { outline: 0.006, shadow: false });
       for (const fy of [0.025, h - 0.025]) mk(box(w, 0.05, 0.06), fr, [0, fy, oz], g, { outline: 0.006, shadow: false });
       mk(box(0.04, 0.8, 0.04), "#a8743f", [w / 2 - 0.12, 1.1, oz + 0.08], g, { outline: 0.006, shadow: false }); // 긴 나무 손잡이
@@ -3276,24 +3279,39 @@ function interact(ev) {
   else if (u.seatId) tapSeat(seats.get(u.seatId));
 }
 
+// 바텐더를 연달아 누를 때 멘트 (10번째는 보틀 던지기)
+const BT_LINES = [
+  "어서 오세요!\n오늘은 어떤 한 잔 드릴까요?",
+  "천천히 고르세요.\n메뉴는 도망 안 가요.",
+  "술이 부담되시면\n커피도 내려 드려요.",
+  "와이파이는 메뉴판 QR 찍으시면\n안내되어 있어요.",
+  "화장실은 뒷문으로 나가셔서\n오른쪽 첫 번째입니다.",
+  "잔 닦는 중입니다만.",
+  "…아까부터 계속 누르시네요.",
+  "한 번만 더 누르면\n진짜 화냅니다.",
+  "경고했습니다. 😑",
+];
 function tapProp(u) {
   const bu = u.group.userData;
-  if (bu.path) { // 바텐더: 나를 쳐다보고, 10번 넘게 연달아 누르면 보틀을 던짐
+  let line = null;
+  if (bu.path) { // 바텐더: 나를 쳐다보고, 누를 때마다 멘트가 바뀌다가 10번째엔 보틀을 던짐
     bu.lookT = 3.6;
     const now = performance.now() / 1000;
-    bu.taps = (bu.taps || []).filter((t) => now - t < 8);
-    bu.taps.push(now);
-    if (bu.taps.length >= 10 && !bu.thrown) {
-      bu.taps = [];
+    if (!bu.lastTap || now - bu.lastTap > 8) bu.tapN = 0; // 잠시 안 누르면 처음부터
+    bu.lastTap = now;
+    bu.tapN = (bu.tapN || 0) + 1;
+    if (bu.tapN >= 10 && !bu.thrown) {
+      bu.tapN = 0;
       throwBottle(u.group);
       u.wiggle = 1;
       return;
     }
+    line = BT_LINES[Math.min(bu.tapN, BT_LINES.length) - 1];
   }
   u.wiggle = 1;
   u.onTap?.();
   const p = u.prop;
-  popBubble(p.say, u.group.position.x, u.sayY ?? SAY_HEIGHT[p.type] ?? 1.5, u.group.position.z, u.group.userData.path ? { follow: u.group } : undefined);
+  popBubble(line || p.say, u.group.position.x, u.sayY ?? SAY_HEIGHT[p.type] ?? 1.5, u.group.position.z, u.group.userData.path ? { follow: u.group } : undefined);
   if (!found.has(u.idx)) {
     found.add(u.idx);
     store.set("seat-found", JSON.stringify([...found]));
@@ -3823,6 +3841,7 @@ function updateWalk(dt, time) {
     const hit = ray.intersectObjects(hitboxes, false)[0];
     ray.far = Infinity;
     setAim(hit?.object.userData.seatId || null);
+    updateActBtns();
     drawMinimap();
     // 가까이 가면 손님이 손 흔들어 줌
     if (walk.frame % 20 === 0) {
@@ -3833,11 +3852,8 @@ function updateWalk(dt, time) {
   }
 }
 
-/** 앉기: 빈자리 가까이면 의자에 앉고, 손님 있는 자리는 "사용 중"(쪼그려 앉기), 그 밖엔 쪼그려 앉기 */
-function toggleSit() {
-  if (!walk.on || walk.tween) return;
-  if (walk.sit || walk.crouch) return standUp();
-  // 의자 바로 앞(약 70cm 안)에서 그 의자를 바라보고 있을 때만
+/** 의자 바로 앞(약 70cm 안)에서 그 의자를 바라보고 있을 때 그 의자 */
+function seatCandidate() {
   let best = null, bd = 0.75;
   const fx = -Math.sin(walk.yaw), fz = -Math.cos(walk.yaw);
   for (const s of seats.values()) {
@@ -3847,6 +3863,13 @@ function toggleSit() {
     if (d > 0.2 && (dx * fx + dz * fz) / d < 0.64) continue; // 앞쪽 약 50도 안
     bd = d; best = s;
   }
+  return best;
+}
+/** 앉기: 빈자리 가까이면 의자에 앉고, 손님 있는 자리는 "사용 중"(쪼그려 앉기), 그 밖엔 쪼그려 앉기 */
+function toggleSit() {
+  if (!walk.on || walk.tween) return;
+  if (walk.sit || walk.crouch) return standUp();
+  const best = seatCandidate();
   if (best && !best.occupied) {
     walk.back = walk.pos.clone();
     walk.sit = best.id;
@@ -3871,7 +3894,10 @@ function jump() {
 }
 function updateActBtns() {
   const b = $("sitBtn");
-  if (b) b.textContent = walk.sit || walk.crouch ? "일어서기" : "앉기";
+  if (!b) return;
+  const c = !walk.sit && !walk.crouch ? seatCandidate() : null;
+  const label = walk.sit || walk.crouch ? "일어서기" : c && !c.occupied ? "의자에<br>앉기" : "앉기";
+  if (b.dataset.l !== label) { b.dataset.l = label; b.innerHTML = label; }
 }
 
 function setAim(id) {
