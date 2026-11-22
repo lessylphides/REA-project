@@ -1143,7 +1143,8 @@ function buildInteriorProp(p, g) {
       mk(cyl(0.13, 0.15, 0.03, 18), dark, [0, y0 + 0.015, 0], g, { outline: 0.008, shadow: false });
       mk(cyl(0.012, 0.012, h - 0.2, 6), "#b08a4a", [0, y0 + (h - 0.2) / 2, 0], g, { outline: 0.004, shadow: false });
       const shade = new THREE.MeshBasicMaterial({ map: pleatTex, side: THREE.DoubleSide });
-      mk(new THREE.CylinderGeometry(0.14, 0.23, 0.34, 28, 1, true), shade, [0, y0 + h - 0.05, 0], g, { outline: 0.012, shadow: false });
+      const big = h > 1.2; // 바닥에 세운 긴 스탠드는 갓도 크게
+      mk(new THREE.CylinderGeometry(big ? 0.17 : 0.14, big ? 0.28 : 0.23, big ? 0.42 : 0.34, 28, 1, true), shade, [0, y0 + h - 0.05, 0], g, { outline: 0.012, shadow: false });
       addHalo(g, 0, y0 + h - 0.1, 0, 1.4, "#ffc2c8", true);
       g.userData.hit = [0.5, h, 0.5, y0 + h / 2]; g.userData.sayY = y0 + h + 0.3;
       return true;

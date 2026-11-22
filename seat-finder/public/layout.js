@@ -49,12 +49,12 @@ export default {
   props: [
     // 창 아래 뒷선반 (술병) — 유리를 따라
     // 창 아래 뒷장 3개 (모서리에서 끊김): 왼쪽 창 / 대각선 창 / 정면 창
-    { type: "backbar", path: [[0.3, 0.3], [0.3, 4.85]] },
+    { type: "backbar", path: [[0.3, 1.0], [0.3, 4.85]] }, // 안쪽 벽과 사이에 틈 (스탠드 자리)
     { type: "backbar", path: [[0.6, 5.78], [3.4, 8.58]] },
     { type: "backbar", path: [[4.6, 9.2], [7.0, 9.2]] },
-    { type: "floorlamp", x: 0.3, z: 0.75, y0: 0.99, h: 0.85, say: "주름 갓 스탠드\n은은한 분홍빛이 포인트예요" },
-    { type: "floorlamp", x: 4.85, z: 9.2, y0: 0.99, h: 0.85 },
-    { type: "floorlamp", x: 9.15, z: 9.1, h: 1.45 },
+    { type: "floorlamp", x: 0.38, z: 0.45, h: 1.75, say: "주름 갓 스탠드\n은은한 분홍빛이 포인트예요" },
+    { type: "floorlamp", x: 4.02, z: 9.0, h: 1.75 },
+    { type: "floorlamp", x: 9.15, z: 9.1, h: 1.75 },
     { type: "coffee", x: 6.4, z: 9.2, rot: 180, say: "커피도 내려 드려요\n원두 향이 솔솔" },
     // 조명
     { type: "pendant", kind: "linear", x: 2.1, z: 2.8, rot: 90, len: 1.8, y: 2.2 },
