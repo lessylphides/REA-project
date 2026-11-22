@@ -55,14 +55,14 @@ export default {
     // 창 아래 뒷선반 (술병) — 유리를 따라
     // 창 아래 뒷장 3개 (모서리에서 끊김): 왼쪽 창 / 대각선 창 / 정면 창
     { type: "backbar", path: [[0.3, 1.0], [0.3, 4.85]] }, // 안쪽 벽과 사이에 틈 (스탠드 자리)
-    { type: "backbar", path: [[1.75, 6.93], [3.86, 9.04]] }, // 안 쓰는 문 때문에 짧음, 모서리까지 늘려 창을 가림
-    { type: "backbar", path: [[4.85, 9.2], [7.0, 9.2]] }, // 정면 장 (모서리 쪽은 스탠드 자리)
+    { type: "backbar", path: [[1.553, 6.733], [3.86, 9.04]] }, // 안 쓰는 문 때문에 짧음, 모서리까지 늘려 창을 가림
+    { type: "backbar", path: [[4.85, 9.2], [7.3, 9.2]] }, // 정면 장 (모서리 쪽은 스탠드 자리)
     // 바텐더 (곡선 바 안쪽, 손님 쪽을 바라봄)
     { type: "bartender", x: 2.95, z: 6.95, rot: -135,
       walkPath: [[1.0, 1.7], [1.0, 5.3], [4.0, 8.3], [5.4, 8.3]], // 바 안쪽 통로 (바와 뒷장 사이, 홍콩야자 피해서)
       say: "어서 오세요!\n오늘은 어떤 한 잔 드릴까요?" },
     // 대각선 창 쪽 안 쓰는 출입문 + 문 앞 나무 스툴 (반죽기 / 가습기)
-    { type: "door", x: 0.66, z: 6.26, rot: 45, w: 1.0, say: "지금은 안 쓰는 문이에요\n대신 창밖 골목이 예뻐요" },
+    { type: "door", x: 0.919, z: 6.519, rot: 45, w: 1.1, say: "지금은 안 쓰는 문이에요\n대신 창밖 골목이 예뻐요" },
     { type: "sidetable", item: "humidifier", x: 0.78, z: 5.88, rot: 45, say: "가습기가 촉촉하게\n공기를 지켜 줘요" },
     { type: "sidetable", item: "mixer", itemRot: 90, x: 1.25, z: 6.35, rot: 45, say: "반죽기예요\n직접 만드는 안주가 있어요" },
     { type: "floorlamp", x: 0.38, z: 0.45, h: 1.75, say: "주름 갓 스탠드\n은은한 분홍빛이 포인트예요" },
@@ -75,10 +75,10 @@ export default {
     // 조명
     { type: "pendant", kind: "linear", x: 2.1, z: 2.8, rot: 90, len: 1.8, y: 2.2 },
     { type: "pendant", kind: "linear", x: 3.43, z: 6.06, rot: 45, len: 1.8, y: 2.2 },
-    { type: "pendant", kind: "linear", x: 6.05, z: 7.4, rot: 0, len: 1.8, y: 2.2, say: "바 위 나무 조명\n잔이 반짝이게 비춰 줘요" },
+    { type: "pendant", kind: "linear", x: 6.3, z: 7.4, rot: 0, len: 2.2, y: 2.2, say: "바 위 나무 조명\n잔이 반짝이게 비춰 줘요" },
     { type: "pendant", kind: "rattan", x: 5.7, z: 3.45, y: 2.15, say: "라탄 조명\n직접 골라 단 등이에요" },
 
-    { type: "projector", x: 5.9, z: 5.4, rot: -90, say: "프로젝터가 벽에\n영상을 비춰요" },
+    { type: "projector", x: 5.9, z: 4.9, rot: -90, say: "프로젝터가 벽에\n영상을 비춰요" },
     // 안쪽 벽 TV 장식장 (TV 는 아래 screens)
     { type: "tvshelf", standOnly: true, x: 5.7, z: 1.75, w: 3.8, h: 2.6, tvW: 2.35, tvY: 1.55, tvH: 1.32, say: "전자칠판 영상\n화분 사이로 숲을 보며 쉬어 가세요" },
     // 식물
@@ -105,7 +105,7 @@ export default {
     //   손님이 테이블을 누르면 반원 날개가 접혔다 펴져요
     { id: "T1", shape: "dropleaf", x: 5.7, z: 3.0, w: 1.2, d: 0.75, r: 0.6, seats: 3, chair: "rattan", color: "#b8743f", leg: "#7a4a2a" },
     // 벽 테이블: 입구에서 봤을 때 오른쪽 벽에 붙음, 의자 3개 (벽 쪽 빼고)
-    { id: "T2", shape: "rect", x: 9.08, z: 5.4, w: 0.8, d: 0.9, seats: 3, chair: "windsor", color: "#4a3328", leg: "#3a281f",
+    { id: "T2", shape: "rect", x: 9.08, z: 4.9, w: 0.8, d: 0.9, seats: 3, chair: "windsor", color: "#4a3328", leg: "#3a281f",
       chairs: [[-0.66, 0], [0, -0.68], [0, 0.68]], lamp: [0.22, -0.25] },
   ],
 
@@ -124,7 +124,7 @@ export default {
     },
     // 프로젝터가 오른쪽 벽(벽 테이블 위)에 비추는 화면 — 여기에도 광고
     {
-      wall: "right", projected: true, from: [6.07, 2.63, 5.4], z: 5.4, y: 1.95, w: 1.7, h: 0.96, interval: 8,
+      wall: "right", projected: true, from: [6.07, 2.63, 4.9], z: 4.9, y: 1.95, w: 1.7, h: 0.96, interval: 8,
       slides: [
         { title: "DIVE HIDE AWAY", sub: "오늘 밤도 천천히 쉬어 가세요", bg: "#2b2448", fg: "#f4e7d6" },
         { title: "이 벽에 광고하세요", sub: "동네 가게 소식을 비춰 드려요", bg: "#5b3a2e", fg: "#ffffff" },
@@ -137,12 +137,12 @@ export default {
   // 바: path 를 주면 그 길을 따라 휘어진 바 (창을 따라 곡선), seats = 바 의자 수
   bars: [
     // 창에서 2.1m 안쪽 (바텐더 공간 넓게), depth = 바 몸통 두께
-    { id: "BAR", path: [[2.1, 0.9], [2.1, 4.73], [4.77, 7.4], [7.3, 7.4]], radius: 1.2, depth: 0.66, seats: 8, chair: "barstool",
+    { id: "BAR", path: [[2.1, 0.9], [2.1, 4.73], [4.77, 7.4], [7.75, 7.4]], radius: 1.2, depth: 0.66, seats: 8, chair: "barstool",
       // 바 끝 창 쪽(커피머신 앞)에서 바를 사이에 두고 마주 보는 자리 → BAR-9
       extraSeats: [[6.3, 8.32, 0, -1]],
       // 바 안쪽으로 못 들어가게 막는 곳 [x, z, 반폭, 반깊이]: 안쪽 벽 쪽 끝 / 입구 쪽 끝
       // 입구 쪽 끝은 막고, 안쪽 벽 쪽 끝은 열어 둠 (그쪽으로 바 안쪽에 들어감)
-      block: [[7.42, 8.45, 0.14, 0.85]],
+      block: [[7.575, 8.4, 0.225, 0.6]],
       say: "곡선 바 9석\n바텐더와 이야기 나누기 좋은 자리" },
   ],
 };
