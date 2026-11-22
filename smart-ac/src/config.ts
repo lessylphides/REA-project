@@ -44,6 +44,8 @@ export interface Config {
   humHigh?: number;
   /** 영업시간에만 가습 (비영업엔 끔) */
   humBizOnly?: boolean;
+  /** 서큘레이터 자동: 영업 중 에어컨이 켜져 있으면 같이 켜고, 마감·에어컨 꺼짐이면 끔 */
+  circAuto?: boolean;
   /** 에어컨을 켜면(바람이 나오기 시작한 뒤) 상하 날개를 위로 고정 */
   vaneFix?: boolean;
   /** 상하를 켠 뒤 다시 눌러 멈출 때까지 시간(초). 매장에서 시험해 맞춤 */
@@ -89,6 +91,7 @@ export const DEFAULT_CONFIG: Config = {
   humLow: 40,
   humHigh: 55,
   humBizOnly: true,
+  circAuto: true,
   vaneFix: false,
   vaneStopSec: 3,
   alertHot: 30,
