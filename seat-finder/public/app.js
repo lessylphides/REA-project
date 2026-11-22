@@ -2943,6 +2943,7 @@ async function loadStats() {
 // ───────── 시작 ─────────
 async function main() {
   $("brand").textContent = `빈자리찾기 · ${LAYOUT.name}`;
+  if ($("boot")) $("boot").querySelector(".boot-name").textContent = (LAYOUT.front && LAYOUT.front.sign) || LAYOUT.name;
   document.title = `빈자리찾기 · ${LAYOUT.name}`;
   if (IS_ADMIN) $("hint").textContent = "자리를 누르면 손님 있음 ↔ 빈자리";
 
@@ -2994,6 +2995,9 @@ async function main() {
     } else showLogin();
   }
   startPolling();
+  // 첫 화면이 그려지면 로딩 화면 걷기
+  requestAnimationFrame(() => requestAnimationFrame(() => document.body.classList.remove("booting")));
+  setTimeout(() => $("boot")?.remove(), 1500);
   if (IS_ADMIN) {
     setInterval(() => { if (document.body.classList.contains("admin")) loadStats(); }, 60000);
     $("stats").addEventListener("click", () => {
