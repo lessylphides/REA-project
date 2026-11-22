@@ -1289,6 +1289,47 @@ function buildInteriorProp(p, g) {
       g.userData.hit = [0.9, 0.7, 0.6, y0 + 0.3]; g.userData.sayY = y0 + 0.75;
       return true;
     }
+    case "door": { // 안 쓰는 출입문 (유리 벽 안쪽에 문틀 + 손잡이)
+      const w = p.w ?? 1.0, h = p.h ?? 2.2, frame = "#3a2c26";
+      for (const sx of [-1, 1]) mk(box(0.06, h, 0.08), frame, [sx * w / 2, h / 2, 0], g, { outline: 0.01, shadow: false });
+      mk(box(w + 0.06, 0.06, 0.08), frame, [0, h, 0], g, { outline: 0.01, shadow: false });
+      mk(box(0.05, 0.05, 0.05), frame, [0, h * 0.55, 0], g, { outline: 0, shadow: false }); // 가운데 살
+      mk(box(0.03, 0.35, 0.04), "#c9b27a", [w / 2 - 0.12, 1.05, -0.06], g, { outline: 0.005, shadow: false });
+      mk(box(w - 0.1, 0.04, 0.02), frame, [0, 1.0, -0.04], g, { outline: 0, shadow: false });
+      g.userData.hit = [w, h, 0.3, h / 2]; g.userData.sayY = h + 0.15;
+      return true;
+    }
+    case "sidetable": { // 나무 스툴 위 소품 (반죽기 / 가습기)
+      const wood = "#a8784a", ty = 0.5;
+      mk(box(0.42, 0.04, 0.4), wood, [0, ty, 0], g, { outline: 0.01 });
+      for (const [lx, lz] of [[-0.17, -0.16], [0.17, -0.16], [-0.17, 0.16], [0.17, 0.16]]) mk(box(0.035, ty, 0.035), wood, [lx, ty / 2, lz], g, { outline: 0.006 });
+      mk(box(0.36, 0.025, 0.025), wood, [0, 0.16, 0.16], g, { outline: 0.004 });
+      const top = ty + 0.02, white = "#f1eeea";
+      if (p.item === "mixer") { // 반죽기
+        mk(box(0.22, 0.04, 0.32), white, [0, top + 0.02, 0], g, { outline: 0.008 });
+        mk(box(0.1, 0.3, 0.1), white, [0, top + 0.19, -0.1], g, { outline: 0.008 });
+        mk(box(0.2, 0.13, 0.36), white, [0, top + 0.39, 0.0], g, { outline: 0.01 });
+        mk(cyl(0.1, 0.07, 0.13, 16), "#b9bcc2", [0, top + 0.11, 0.06], g, { outline: 0.008 });
+        mk(cyl(0.012, 0.012, 0.1, 6), "#8a8f96", [0, top + 0.27, 0.06], g, { outline: 0, shadow: false });
+      } else { // 가습기 + 술병 3개 (김이 모락모락)
+        mk(cyl(0.12, 0.12, 0.55, 20), white, [-0.06, top + 0.275, -0.04], g, { outline: 0.01 });
+        mk(new THREE.TorusGeometry(0.09, 0.025, 8, 20), "#dedad5", [-0.06, top + 0.55, -0.04], g, { outline: 0 }).rotation.x = Math.PI / 2;
+        mk(box(0.14, 0.04, 0.01), "#2a2d33", [-0.06, top + 0.47, 0.08], g, { outline: 0, shadow: false });
+        mk(box(0.03, 0.02, 0.012), glowMat("#7fe0ff"), [-0.02, top + 0.47, 0.086], g, { outline: 0, shadow: false });
+        mk(cyl(0.022, 0.022, 0.35, 8), white, [-0.06, top + 0.72, -0.04], g, { outline: 0.004 });
+        for (const sx of [-1, 1]) mk(cyl(0.015, 0.015, 0.12, 6), white, [-0.06 + sx * 0.05, top + 0.85, -0.04], g, { outline: 0.003 }).rotation.z = sx * -0.6;
+        const [wx, wz] = rotXZ(-0.06, -0.04, p.rot);
+        steamSources.push(new THREE.Vector3(p.x + wx, top + 0.95, p.z + wz));
+        const bottles = [["#f4efe4", "#c8392b", 0.22], ["#eef2f2", "#d9d9d9", 0.26], ["#e9d9c0", "#2a2522", 0.18]];
+        bottles.forEach(([c, cap, h], i) => {
+          mk(cyl(0.035, 0.035, h, 10), c, [0.1 + (i - 1) * 0.08, top + h / 2, 0.12], g, { outline: 0.005 });
+          mk(cyl(0.015, 0.018, 0.05, 8), cap, [0.1 + (i - 1) * 0.08, top + h + 0.025, 0.12], g, { outline: 0.003 });
+        });
+      }
+      addObstacle(p.x, p.z, 0.24, 0.24, p.rot);
+      g.userData.hit = [0.5, 1.1, 0.5, 0.55]; g.userData.sayY = 1.35;
+      return true;
+    }
     case "projector": {
       mk(box(0.6, 0.04, 0.5), "#8a6a4a", [0, H - 0.18, 0], g, { outline: 0.008, shadow: false });
       mk(box(0.34, 0.12, 0.28), "#f1f1f1", [0, H - 0.27, 0], g, { outline: 0.008, shadow: false });
