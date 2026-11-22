@@ -73,7 +73,7 @@ export default {
     { type: "pendant", kind: "beehive", x: 8.75, z: 5.4, y: 2.1, say: "벌집 모양 원목 조명" },
     { type: "projector", x: 5.3, z: 5.4 },
     // 안쪽 벽 TV 장식장 (TV 는 아래 screens)
-    { type: "tvshelf", x: 5.2, z: 1.13, w: 3.8, h: 2.6, tvW: 2.35, tvY: 1.55, tvH: 1.32, say: "전자칠판 영상\n화분 사이로 숲을 보며 쉬어 가세요" },
+    { type: "tvshelf", standOnly: true, x: 5.2, z: 1.13, w: 3.8, h: 2.6, tvW: 2.35, tvY: 1.55, tvH: 1.32, say: "전자칠판 영상\n화분 사이로 숲을 보며 쉬어 가세요" },
     // 식물
     // 반원 테이블 바로 뒤 화분 3개 → 전자칠판 영상을 은은히 가림
     { type: "bigplant", kind: "palm", x: 4.35, z: 2.13, h: 1.95, say: "야자 화분이에요\n잎 사이로 영상이 살짝" },

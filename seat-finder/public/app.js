@@ -1477,6 +1477,18 @@ function buildInteriorProp(p, g) {
       return true;
     }
     case "tvshelf": { // 안쪽 벽 TV 장식장 (짙은 원목, 칸칸이 소품)
+      if (p.standOnly) { // 장식장 없이 스크린 크기에 맞는 스탠드만 (전자칠판 이동식 거치대)
+        const tw = p.tvW ?? 2.35, ty = p.tvY ?? 1.55, th = p.tvH ?? 1.32, dark = "#2a2522";
+        for (const sx of [-1, 1]) {
+          const x = sx * (tw / 2 - 0.25);
+          mk(box(0.06, ty - th / 2 + 0.1, 0.06), dark, [x, (ty - th / 2 + 0.1) / 2, 0.08], g, { outline: 0.006 });
+          mk(box(0.08, 0.04, 0.6), dark, [x, 0.02, 0.12], g, { outline: 0.006 }); // 발
+        }
+        mk(box(tw - 0.4, 0.05, 0.05), dark, [0, 0.35, 0.08], g, { outline: 0.005 });
+        addObstacle(p.x, (p.z || 0) + 0.12, tw / 2, 0.3);
+        g.userData.hit = [tw, ty + th / 2, 0.4, (ty + th / 2) / 2]; g.userData.sayY = ty + th / 2 + 0.2;
+        return true;
+      }
       const w = p.w ?? 3.8, h = p.h ?? 2.6, d = 0.42, tw = p.tvW ?? 2.35;
       const wood = "#3b2a22", shelf = "#4c362b";
       const side = (w - tw) / 2;
