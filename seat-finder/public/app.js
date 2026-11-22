@@ -648,13 +648,15 @@ function buildStorefront(T, door, dh) {
   mk(box(R.w + 8, 0.05, 1.0), LINE ? "#b8b2c4" : "#6b5a58", [R.w / 2, -0.1, R.d + T + 1.8], fpGroup, no).receiveShadow = true;
   mk(box(R.w + 8, 0.01, 0.12), "#d9b84a", [R.w / 2, -0.07, R.d + T + 2.6], fpGroup, no);
 
-  // ── 2층 창문 (흰 창틀, 어두운 유리)
-  const upW = Math.min(4.2, (opR - opL) * 1.15);
-  mk(box(upW + 0.16, upH, 0.08), white, [(opL + opR) / 2, upY, zO + 0.02], fpGroup, ol);
-  mk(box(upW, upH - 0.16, 0.06), toon(LINE ? "#bfe0f2" : "#2a3550"), [(opL + opR) / 2, upY, zO + 0.05], fpGroup, no);
-  mk(box(0.07, upH - 0.16, 0.08), white, [(opL + opR) / 2, upY, zO + 0.07], fpGroup, no);
-  // 밤이 되면 2층 창에 따뜻한 불이 켜짐
-  nightGlow.lit = mk(new THREE.PlaneGeometry(upW, upH - 0.16), new THREE.MeshBasicMaterial({ color: "#e9a35e", transparent: true, opacity: 0, depthWrite: false }), [(opL + opR) / 2, upY, zO + 0.085], fpGroup, no);
+  // ── 2층 창문 (front.upperWindow: true 일 때만)
+  if (F.upperWindow) {
+    const upW = Math.min(4.2, (opR - opL) * 1.15);
+    mk(box(upW + 0.16, upH, 0.08), white, [(opL + opR) / 2, upY, zO + 0.02], fpGroup, ol);
+    mk(box(upW, upH - 0.16, 0.06), toon(LINE ? "#bfe0f2" : "#2a3550"), [(opL + opR) / 2, upY, zO + 0.05], fpGroup, no);
+    mk(box(0.07, upH - 0.16, 0.08), white, [(opL + opR) / 2, upY, zO + 0.07], fpGroup, no);
+    // 밤이 되면 2층 창에 따뜻한 불이 켜짐
+    nightGlow.lit = mk(new THREE.PlaneGeometry(upW, upH - 0.16), new THREE.MeshBasicMaterial({ color: "#e9a35e", transparent: true, opacity: 0, depthWrite: false }), [(opL + opR) / 2, upY, zO + 0.085], fpGroup, no);
+  }
   // 오른쪽 이웃 건물 (흰 셔터)
   const nx0 = R.w + T + 0.02;
   mk(box(4, top - 0.4, 3), "#cfc9bf", [nx0 + 2, (top - 0.4) / 2, R.d - 1.5 + T], fpGroup, ol);
