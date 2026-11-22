@@ -308,17 +308,38 @@ function floorTexture() {
   const g = c.getContext("2d");
   g.fillStyle = R.floor; g.fillRect(0, 0, 512, 512);
   if (R.floorStyle === "concrete") {
-    // 콘크리트 바닥: 얼룩 + 짧은 금
+    // 오래된 에폭시 코팅 시멘트: 얼룩덜룩한 회갈색 + 은은한 광택 + 닳은 자국·끌린 자국·가는 금
     let seed = 11;
     const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
-    for (let i = 0; i < 26; i++) {
-      g.fillStyle = `rgba(${rnd() > 0.5 ? "255,255,255" : "60,50,60"},${0.03 + rnd() * 0.03})`;
-      g.beginPath(); g.ellipse(rnd() * 512, rnd() * 512, 20 + rnd() * 60, 10 + rnd() * 30, rnd() * 3, 0, Math.PI * 2); g.fill();
+    for (let i = 0; i < 60; i++) { // 얼룩 (밝고 어두운 구름 무늬)
+      const r = 30 + rnd() * 110, x = rnd() * 512, y = rnd() * 512, dark = rnd() < 0.55;
+      const grd = g.createRadialGradient(x, y, 0, x, y, r);
+      grd.addColorStop(0, dark ? `rgba(70,50,40,${0.05 + rnd() * 0.06})` : `rgba(255,240,225,${0.04 + rnd() * 0.05})`); grd.addColorStop(1, "rgba(0,0,0,0)");
+      g.fillStyle = grd; g.fillRect(x - r, y - r, r * 2, r * 2);
     }
-    g.strokeStyle = LINE ? "rgba(27,27,31,.55)" : "rgba(60,50,60,.25)"; g.lineWidth = LINE ? 3 : 2; g.lineCap = "round";
-    for (let i = 0; i < 9; i++) {
+    for (let i = 0; i < 8; i++) { // 코팅이 닳아 옅어진 곳
       const x = rnd() * 512, y = rnd() * 512;
-      g.beginPath(); g.moveTo(x, y); g.quadraticCurveTo(x + 10 + rnd() * 20, y + rnd() * 10, x + 25 + rnd() * 30, y - 5 + rnd() * 10); g.stroke();
+      g.fillStyle = `rgba(215,205,195,${0.05 + rnd() * 0.05})`;
+      g.beginPath(); g.ellipse(x, y, 25 + rnd() * 50, 12 + rnd() * 25, rnd() * 3, 0, Math.PI * 2); g.fill();
+    }
+    g.lineCap = "round";
+    for (let i = 0; i < 40; i++) { // 의자 끌린 자국 (옅은 짧은 선)
+      const x = rnd() * 512, y = rnd() * 512, a = rnd() * Math.PI, l = 8 + rnd() * 30;
+      g.strokeStyle = rnd() < 0.5 ? "rgba(255,245,235,.12)" : "rgba(60,45,40,.12)"; g.lineWidth = 1 + rnd() * 1.5;
+      g.beginPath(); g.moveTo(x, y); g.lineTo(x + Math.cos(a) * l, y + Math.sin(a) * l); g.stroke();
+    }
+    for (let i = 0; i < 6; i++) { // 가는 금 (아주 옅게)
+      let x = rnd() * 512, y = rnd() * 512;
+      g.strokeStyle = "rgba(70,55,50,.22)"; g.lineWidth = 1;
+      g.beginPath(); g.moveTo(x, y);
+      for (let k = 0; k < 6; k++) { x += (rnd() - 0.4) * 30; y += (rnd() - 0.5) * 30; g.lineTo(x, y); }
+      g.stroke();
+    }
+    for (let i = 0; i < 400; i++) { g.fillStyle = `rgba(${rnd() < 0.5 ? "255,255,255" : "40,30,25"},${0.06 + rnd() * 0.08})`; g.fillRect(rnd() * 512, rnd() * 512, 1.5, 1.5); } // 잔 점
+    for (let i = 0; i < 5; i++) { // 에폭시 광택 (부드러운 사선 빛)
+      const x = rnd() * 512, grd = g.createLinearGradient(x - 60, 0, x + 60, 0);
+      grd.addColorStop(0, "rgba(255,255,255,0)"); grd.addColorStop(0.5, "rgba(255,250,240,.05)"); grd.addColorStop(1, "rgba(255,255,255,0)");
+      g.save(); g.translate(256, 256); g.rotate(0.6); g.translate(-256, -256); g.fillStyle = grd; g.fillRect(x - 60, -200, 120, 900); g.restore();
     }
   } else {
     const t = plankTexture();
@@ -413,7 +434,7 @@ function buildEdge(e, group, h, T) {
   }
   // 창밖 거리 (1인칭에서만, 블라인드 틈으로 보임)
   if (R.outside?.[e.i] === "alley") ALLEY = buildAlley3D(e); // 창에서 길게 뻗은 3D 골목
-  else addStreetView((e.ax + e.bx) / 2, (e.az + e.bz) / 2, e.nx, e.nz, e.len + 6, 5, 3.5, 17 + e.i * 31, R.outside?.[e.i] || "street");
+  // (그 밖의 창밖은 buildStreets3D 의 3D 골목)
 }
 
 // ───────── 창밖 거리 풍경 (블라인드 틈으로 은은하게) ─────────
@@ -671,6 +692,105 @@ function buildAlley3D(e) {
   return { mx, mz, nx, nz, L0, L1 };
 }
 
+// ───────── 바깥 골목 3D (가게 앞 골목 · 왼쪽 골목) + 걸어 다닐 수 있는 구역 ─────────
+const FRONT_ACROSS = 6.2; // 가게 앞 골목 폭 (건너편 담장까지)
+/** a→b 를 따라 늘어선 주택 줄. f = 집 앞면이 바라보는 방향(골목 쪽) */
+function buildHouseRow(a, b, f, seed, opt = {}) {
+  let ux = b[0] - a[0], uz = b[1] - a[1];
+  const L = Math.hypot(ux, uz); ux /= L; uz /= L;
+  if (-uz * f[0] + ux * f[1] < 0) return buildHouseRow(b, a, f, seed, opt); // 로컬 +z 가 골목 쪽이 되도록
+  const g = new THREE.Group();
+  g.position.set(a[0], 0, a[1]);
+  g.rotation.y = Math.atan2(-uz, ux);
+  fpGroup.add(g);
+  let s = seed;
+  const rnd = () => ((s = (s * 16807) % 2147483647) / 2147483647);
+  const ol = { outline: 0.02, shadow: false }, no = { outline: 0, shadow: false };
+  const walls = ["#c46a4f", "#e6dccb", "#b9c3cf", "#d8a27a", "#cfc2a8", "#a8b4a0", "#9a5a46"];
+  let x = 0;
+  while (x < L - 1) {
+    const wid = Math.min(L - x, 3.4 + rnd() * 3), dep = 4 + rnd() * 3, floors = 2 + (rnd() < 0.45 ? 1 : 0), h = floors * 2.7 + 0.4;
+    const cx = x + wid / 2;
+    mk(box(wid - 0.2, h, dep), walls[Math.floor(rnd() * walls.length)], [cx, h / 2 - 0.1, -dep / 2 - 0.4], g, ol);
+    if (rnd() < 0.5) { // 경사 지붕
+      const roof = mk(new THREE.CylinderGeometry(0.01, 0.01, wid, 3), "#6f5a52", [cx, h + 0.55, -dep / 2 - 0.4], g, ol);
+      roof.rotation.z = Math.PI / 2; roof.scale.set(1, 1, 1);
+      roof.geometry = new THREE.CylinderGeometry(dep * 0.62, dep * 0.62, wid, 3); roof.scale.set(1, 0.35, 1);
+      roof.rotation.set(0, 0, Math.PI / 2); roof.position.y = h + 0.3;
+    } else mk(box(wid + 0.1, 0.2, dep + 0.3), "#6f5a52", [cx, h, -dep / 2 - 0.4], g, ol);
+    // 골목 쪽 창문 (밤엔 일부 은은한 호박색)
+    for (let fl = 0; fl < floors; fl++) for (let k = 0; k < Math.floor((wid - 0.4) / 1.5); k++) {
+      const wx = x + 0.9 + k * 1.5, wy = 1.5 + fl * 2.7;
+      const wm = new THREE.MeshBasicMaterial({ color: "#2b3150" });
+      registerTint(wm);
+      mk(new THREE.PlaneGeometry(0.75, 0.85), wm, [wx, wy, -0.39], g, no);
+      mk(box(0.85, 0.06, 0.06), "#f2efe8", [wx, wy - 0.47, -0.37], g, no);
+      if (rnd() < 0.4) { const lit = new THREE.MeshBasicMaterial({ color: "#d89a52", transparent: true, opacity: 0, depthWrite: false }); mk(new THREE.PlaneGeometry(0.75, 0.85), lit, [wx, wy, -0.38], g, no); upperWindows.push(lit); }
+    }
+    x += wid;
+  }
+  // 담장 (벽돌, 군데군데 철 대문) + 화분
+  if (opt.fence !== false) {
+    let z = 0;
+    while (z < L) {
+      const seg = Math.min(2.2 + rnd() * 2.5, L - z), h = 1.1 + rnd() * 0.4;
+      mk(box(seg - 0.05, h, 0.18), "#b56a4d", [z + seg / 2, h / 2 - 0.1, -0.09], g, ol);
+      if (rnd() < 0.45 && seg > 1.2) mk(box(0.8, 1.3, 0.06), "#5d6b72", [z + seg - 0.55, 0.55, -0.02], g, ol);
+      z += seg;
+    }
+    for (let i = 0; i < Math.floor(L / 4); i++) makePlant(g, 1 + rnd() * (L - 2), 0.3, 0.65);
+  }
+  // 전봇대 + 작은 가로등
+  if (opt.poles !== false) for (let px = 2.5; px < L - 1; px += 7.5) {
+    mk(cyl(0.1, 0.12, 7, 8), "#9c958c", [px, 3.4, 0.2], g, ol);
+    mk(box(1.0, 0.1, 0.1), "#9c958c", [px, 6.6, 0.2], g, ol);
+    mk(box(0.06, 0.06, 0.5), "#2a2522", [px, 3.6, 0.45], g, no);
+    mk(new THREE.SphereGeometry(0.1, 8, 6), new THREE.MeshBasicMaterial({ color: "#fff2c0" }), [px, 3.55, 0.7], g, no);
+    addHalo(g, px, 3.5, 0.75, 3.0, "#ffe0a0");
+    const [wx, wz] = [a[0] + ux * px + -uz * 0.2, a[1] + uz * px + ux * 0.2];
+    addObstacle(wx, wz, 0.13, 0.13);
+  }
+  return g;
+}
+
+/** 걸을 수 있는 바깥 구역 (회전 사각형) */
+const outdoorAreas = [];
+function addOutdoorArea(cx, cz, hw, hd, rad = 0) { outdoorAreas.push({ cx, cz, hw, hd, c: Math.cos(rad), s: Math.sin(rad) }); }
+function inOutdoor(x, z, m = 0) {
+  for (const a of outdoorAreas) {
+    const dx = x - a.cx, dz = z - a.cz, lx = dx * a.c + dz * a.s, lz = -dx * a.s + dz * a.c;
+    if (Math.abs(lx) <= a.hw - m && Math.abs(lz) <= a.hd - m) return true;
+  }
+  return false;
+}
+/** 매장 안쪽까지의 거리 (양수 = 안) */
+function storeSD(x, z) {
+  let m = Infinity;
+  for (const e of EDGES) m = Math.min(m, (x - e.ax) * e.nx + (z - e.az) * e.nz);
+  return m;
+}
+
+function buildStreets3D(T) {
+  const zF = R.d + T; // 가게 앞 벽 바깥면
+  const zA = zF + FRONT_ACROSS; // 건너편 담장
+  const A = ALLEY || { mx: 1.95, mz: 7.55, nx: -Math.SQRT1_2, nz: Math.SQRT1_2 };
+  // 가게 앞 골목: 건너편 주택 줄, 이웃 건물 옆 줄
+  buildHouseRow([0.6, zA], [18, zA], [0, -1], 501);
+  buildHouseRow([13.8, zF], [18, zF], [0, 1], 503, { poles: false });
+  addStreetView(18.6, (zF + zA) / 2, -1, 0, FRONT_ACROSS + 6, 9, 0, 511, "street", 0.2); // 골목 끝 (그림)
+  // 왼쪽 골목: 건너편 주택 줄, 가게 뒤쪽 줄
+  const xL = -T - 3.6;
+  buildHouseRow([xL, -7], [xL, 6.2], [1, 0], 521);
+  buildHouseRow([-T, -7], [-T, -T], [-1, 0], 523, { poles: false });
+  addStreetView((xL - T) / 2, -7.6, 0, 1, 10, 9, 0, 531, "street", 0.2); // 골목 끝 (그림)
+  // 걸을 수 있는 구역
+  addOutdoorArea(7.5, (zF + zA) / 2, 11, (zA - zF) / 2);                    // 가게 앞 골목
+  addOutdoorArea((xL - T) / 2, 2.4, (-T - xL) / 2, 9.6);                     // 왼쪽 골목
+  const yaw = Math.atan2(A.nz, A.nx), d0 = 1.2, d1 = 24;                    // 대각선 골목
+  addOutdoorArea(A.mx + A.nx * (d0 + d1) / 2, A.mz + A.nz * (d0 + d1) / 2, (d1 - d0) / 2, 1.45, yaw);
+  addOutdoorArea(-1.0, zF + 1.2, 2.6, 2.2);                                  // 삼거리 한가운데
+}
+
 let ALLEY = null;
 /** 삼거리 길바닥 흰 노면 표시, 맨홀, 머리 위 전깃줄, 방범용 CCTV */
 function buildStreetDetails(T, top) {
@@ -699,6 +819,7 @@ function buildStreetDetails(T, top) {
   }
   // 방범용 CCTV 기둥 (삼거리 건너편 모퉁이) + 노란 카메라 + 표지판
   const [cx, cz] = AL(5.2, 2.1);
+  addObstacle(cx, cz, 0.12, 0.12);
   const cg = new THREE.Group(); cg.position.set(cx, 0, cz); cg.rotation.y = yaw + Math.PI / 2; fpGroup.add(cg);
   mk(cyl(0.08, 0.1, 5.2, 10), "#9c958c", [0, 2.5, 0], cg, { outline: 0.012 });
   mk(cyl(0.035, 0.035, 1.8, 8), "#9c958c", [0, 4.6, 0.9], cg, { outline: 0.006 }).rotation.x = Math.PI / 2;
@@ -795,7 +916,7 @@ function buildInsideShell(T) {
       addSunPatch(sg, winW, 2.6);
     }
     // 정면(입구 쪽) 바깥 골목: 유리 밖 멀리 세움 (창·유리문 너머로 보임, 걸으면 각도 따라 달라짐)
-    addStreetView((FRONT_X0 + FRONT_X1) / 2 + 1.5, R.d, FRONT.nx, FRONT.nz, FRONT_X1 - FRONT_X0 + 10, 6, 4.2, 91, R.outside?.[FRONT.i] || "street");
+    // 가게 앞 골목은 buildStreets3D 에서 3D 로
     inner.rotation.y = Math.PI;
     // 유리문 한 짝: 왼쪽 경첩, 바깥쪽으로 열림, 오른쪽 가장자리에 긴 세로 나무 손잡이
     const glass = toon("#cfeaf5", { transparent: true, opacity: 0.45 });
@@ -1152,6 +1273,10 @@ function buildStorefront(T, door, dh) {
 
   // ── 고래꼬리 조명 상자
   const lx = opR + 0.15, lz = R.d + T + 1.15;
+  addObstacle(lx, lz, 0.2, 0.2);
+  addObstacle(opL + 0.35, R.d + T + 0.35, 0.2, 0.2);
+  for (const [dx, dz] of [[0.95, 0.4], [1.55, 0.95], [2.15, 0.95], [winW + door.w + 0.35, 0.45]]) addObstacle(opL + dx, R.d + T + dz, 0.2, 0.2);
+  addObstacle(opL - 0.2, R.d + T + 1.9, 0.2, 0.2);
   const lantern = new THREE.Group();
   lantern.position.set(lx, 0, lz);
   fpGroup.add(lantern);
@@ -1209,6 +1334,7 @@ function buildStorefront(T, door, dh) {
   // 정면 위층 창 + 길바닥 노면 표시 + 전깃줄·CCTV
   { const fg = new THREE.Group(); fg.position.set(0, 0, zO); fpGroup.add(fg); addUpperWindows(fg, FRONT_X0, FRONT_X1, 0.03, 31); }
   buildStreetDetails(T, top);
+  buildStreets3D(T);
 }
 
 // ───────── 시간대 (낮 → 노을 → 밤 조명) ─────────
@@ -1803,7 +1929,7 @@ function buildInteriorProp(p, g) {
           mk(new THREE.SphereGeometry(r, 12, 10), leafMat(r > 0.25 ? "#3d7a45" : "#4f9150"), [x, y, z], g, { outline: 0.015 });
         }
       }
-      addObstacle(p.x, p.z, 0.26, 0.26);
+      addObstacle(p.x, p.z, p.r ?? 0.26, p.r ?? 0.26);
       g.userData.hit = [0.7, k + 0.3, 0.7, (k + 0.3) / 2]; g.userData.sayY = k + 0.45;
       if (g.children.length) g.userData.wiggler = g;
       return true;
@@ -2515,7 +2641,10 @@ function buildScreens() {
     parent.add(g);
     let face;
     if (cfg.projected) { // 프로젝터가 벽에 비춘 화면: 테두리 없이 빛으로 (가장자리 살짝 흐림)
-      face = mk(new THREE.PlaneGeometry(cfg.w, cfg.h), new THREE.MeshBasicMaterial({ map: tex, transparent: true, opacity: 0.88, depthWrite: false }), [0, 0, 0.005], g, { outline: 0, shadow: false });
+      face = mk(new THREE.PlaneGeometry(cfg.w, cfg.h), new THREE.MeshBasicMaterial({ map: tex, transparent: true, opacity: 0.86, depthWrite: false }), [0, 0, 0.005], g, { outline: 0, shadow: false });
+      // 벽에 비친 빛이 화면 둘레로 은은하게 번짐
+      const spill = new THREE.Mesh(new THREE.PlaneGeometry(cfg.w * 1.5, cfg.h * 1.7), new THREE.MeshBasicMaterial({ map: poolTex, color: "#d9d4ff", transparent: true, opacity: 0.16, depthWrite: false, blending: THREE.AdditiveBlending }));
+      spill.position.z = 0.003; spill.renderOrder = 1; g.add(spill);
       face.renderOrder = 2;
       if (cfg.from) { // 프로젝터에서 화면으로 은은한 빛줄기
         const lens = new THREE.Vector3(...cfg.from);
@@ -2535,18 +2664,19 @@ function buildScreens() {
             c.fillStyle = grd; c.fillRect(0, y, w, 1);
           }
         });
-        const bm = new THREE.MeshBasicMaterial({ map: beamTex2, color: "#cfe0ff", transparent: true, opacity: 0.07, depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending });
+        const bm = new THREE.MeshBasicMaterial({ map: beamTex2, color: "#e6ecff", transparent: true, opacity: 0.035, depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending });
         // 빛 속 떠다니는 먼지
         const dust = [], dp = [];
-        for (let i = 0; i < 70; i++) {
-          const t = Math.random(), c = corners[Math.floor(Math.random() * 4)], c2 = corners[Math.floor(Math.random() * 4)], m = Math.random();
+        for (let i = 0; i < 28; i++) {
+          const t = 0.15 + Math.random() * 0.8, c = corners[Math.floor(Math.random() * 4)], c2 = corners[Math.floor(Math.random() * 4)], m = Math.random();
           const tx = c.x + (c2.x - c.x) * m, ty = c.y + (c2.y - c.y) * m, tz = c.z + (c2.z - c.z) * m;
           dp.push(lens.x + (tx - lens.x) * t, lens.y + (ty - lens.y) * t, lens.z + (tz - lens.z) * t);
           dust.push(Math.random() * 6);
         }
         const dg = new THREE.BufferGeometry();
         dg.setAttribute("position", new THREE.Float32BufferAttribute(dp, 3));
-        const dmat = new THREE.PointsMaterial({ color: "#fff6e0", size: 0.018, transparent: true, opacity: 0.35, depthWrite: false, blending: THREE.AdditiveBlending });
+        const dotTex = canvasTex(32, 32, (c) => { const grd = c.createRadialGradient(16, 16, 0, 16, 16, 16); grd.addColorStop(0, "rgba(255,255,255,1)"); grd.addColorStop(0.4, "rgba(255,255,255,.4)"); grd.addColorStop(1, "rgba(255,255,255,0)"); c.fillStyle = grd; c.fillRect(0, 0, 32, 32); });
+        const dmat = new THREE.PointsMaterial({ map: dotTex, color: "#fff6e6", size: 0.022, sizeAttenuation: true, transparent: true, opacity: 0.16, depthWrite: false, blending: THREE.AdditiveBlending });
         const pts = new THREE.Points(dg, dmat);
         pts.userData = { base: dp.slice(), seed: dust };
         fpGroup.add(pts);
@@ -3166,21 +3296,8 @@ function updateBartender(b, dt, time) {
   u.btHead.rotation.y = u.moving ? 0 : Math.sin(time * 0.5) * 0.25;
 }
 
-function collide(p) {
-  const door = LAYOUT.door?.wall === "front" ? LAYOUT.door : null;
-  const inDoor = door && Math.abs(p.x - door.x) < door.w / 2 - 0.05 && p.z > R.d - 1;
-  if (door && p.z > R.d - PR + 0.01) { // 문 밖: 문 바로 앞 턱까지만
-    const half = p.z < R.d + 0.25 ? door.w / 2 - PR * 0.5 : door.w / 2 + 0.25;
-    p.x = THREE.MathUtils.clamp(p.x, door.x - half, door.x + half);
-    p.z = Math.min(p.z, R.d + 0.95);
-    return;
-  }
-  // 벽 안쪽으로 (볼록한 방이라 각 벽에서 밀어내면 됨)
-  for (const e of EDGES) {
-    if (inDoor && e.kind === "front") continue; // 문은 지나갈 수 있음
-    const d = (p.x - e.ax) * e.nx + (p.z - e.az) * e.nz;
-    if (d < PR) { p.x += e.nx * (PR - d); p.z += e.nz * (PR - d); }
-  }
+let lastPos = null, wasOutdoor = false;
+function pushObstacles(p) {
   for (const o of obstacles) {
     const [lx, lz] = rotXZ(p.x - o.x, p.z - o.z, -o.deg);
     const hw = o.hw + PR, hd = o.hd + PR;
@@ -3192,6 +3309,42 @@ function collide(p) {
     p.x = o.x + wx;
     p.z = o.z + wz;
   }
+}
+function collide(p) {
+  const res = collideInner(p);
+  lastPos = { x: p.x, z: p.z };
+  return res;
+}
+function collideInner(p) {
+  const door = LAYOUT.door?.wall === "front" ? LAYOUT.door : null;
+  const T = 0.14;
+  const inDoor = door && Math.abs(p.x - door.x) < door.w / 2 - 0.05 && p.z > R.d - 1;
+  // 문틀 통로: 문 폭 안에서만 안↔밖
+  if (door && p.z > R.d - PR + 0.01 && p.z < R.d + T + PR - 0.005 && Math.abs(p.x - door.x) < door.w / 2 + 0.3) {
+    p.x = THREE.MathUtils.clamp(p.x, door.x - (door.w / 2 - 0.16), door.x + (door.w / 2 - 0.16));
+    wasOutdoor = false;
+    return;
+  }
+  // 바깥 골목
+  if (storeSD(p.x, p.z) < -T) {
+    pushObstacles(p);
+    const ok = (x, z) => inOutdoor(x, z, PR) && storeSD(x, z) < -(T + PR);
+    wasOutdoor = true;
+    if (ok(p.x, p.z)) return;
+    const L = lastPos || { x: p.x, z: p.z };
+    if (ok(p.x, L.z)) { p.z = L.z; return; } // 벽을 따라 미끄러지기
+    if (ok(L.x, p.z)) { p.x = L.x; return; }
+    p.x = L.x; p.z = L.z;
+    return;
+  }
+  if (wasOutdoor && lastPos) { p.x = lastPos.x; p.z = lastPos.z; return; } // 벽을 뚫고 들어오지 않게
+  // 벽 안쪽으로 (볼록한 방이라 각 벽에서 밀어내면 됨)
+  for (const e of EDGES) {
+    if (inDoor && e.kind === "front") continue; // 문은 지나갈 수 있음
+    const d = (p.x - e.ax) * e.nx + (p.z - e.az) * e.nz;
+    if (d < PR) { p.x += e.nx * (PR - d); p.z += e.nz * (PR - d); }
+  }
+  pushObstacles(p);
   // 장·가구에 밀려 유리창 밖으로 나가지 않게 벽을 마지막에 한 번 더
   for (const e of EDGES) {
     if (inDoor && e.kind === "front") continue;
@@ -3242,7 +3395,7 @@ function startIntro() {
   camera.fov = walkFov();
   camera.updateProjectionMatrix();
   const midX = (door.x - door.w / 2 - (LAYOUT.front?.windowW ?? 2.6) + door.x + door.w / 2 + 0.6) / 2;
-  camera.position.set(midX, EYE, R.d + 7.2);
+  camera.position.set(midX, EYE, R.d + 0.14 + FRONT_ACROSS - 0.7);
   camera.lookAt(midX, 1.45, R.d); // 가게가 화면 위쪽에 오도록 (아래는 입장 카드)
   $("introName").textContent = (LAYOUT.front && LAYOUT.front.sign) || LAYOUT.name;
 }
@@ -3503,7 +3656,7 @@ const DAY = { sky: new THREE.Color("#fff6ea"), ground: new THREE.Color("#c9a88a"
 const NIGHT = { sky: new THREE.Color("#7f8db5"), ground: new THREE.Color("#3a3140") };
 function updateWorld(dt, time) {
   // 밖(가게 앞)은 밤, 안으로 들어가면 밝게
-  const night = fpGroup.visible ? THREE.MathUtils.clamp((camera.position.z - (R.d + 0.4)) / 1.6, 0, 1) : 0;
+  const night = fpGroup.visible ? THREE.MathUtils.clamp((-storeSD(camera.position.x, camera.position.z) - 0.3) / 1.6, 0, 1) : 0;
   hemi.intensity = THREE.MathUtils.lerp(1.4, 0.55, night);
   hemi.color.copy(DAY.sky).lerp(NIGHT.sky, night);
   hemi.groundColor.copy(DAY.ground).lerp(NIGHT.ground, night);

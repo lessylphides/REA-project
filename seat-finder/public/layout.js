@@ -38,7 +38,7 @@ export default {
     // 창밖 풍경: 매장은 골목 삼거리 코너. street = 창과 나란히 지나가는 골목, alley = 창에서 똑바로 뻗어 나가는 골목
     //   대각선 창(안 쓰는 문 쪽)이 삼거리 골목 중 하나를 바라봄
     outside: ["", "", "street", "alley", "street"],
-    floor: "#b9aaa6", // 콘크리트 바닥
+    floor: "#a8968a", // 오래된 에폭시 코팅 시멘트
     floorStyle: "concrete",
     wall: "#f2e6ec", // 은은한 분홍빛 흰 벽
     ceiling: "#ddd0d3", // 천장은 조명이 없어 벽보다 어둡게
@@ -53,8 +53,8 @@ export default {
     // 창 아래 뒷선반 (술병) — 유리를 따라
     // 창 아래 뒷장 3개 (모서리에서 끊김): 왼쪽 창 / 대각선 창 / 정면 창
     { type: "backbar", path: [[0.3, 1.0], [0.3, 4.85]] }, // 안쪽 벽과 사이에 틈 (스탠드 자리)
-    { type: "backbar", path: [[1.75, 6.93], [3.15, 8.33]] }, // 안 쓰는 문 때문에 짧음 (끝에 스탠드 자리)
-    { type: "backbar", path: [[4.02, 9.2], [7.0, 9.2]] }, // 정면 장: 모서리까지 늘려 창을 가림
+    { type: "backbar", path: [[1.75, 6.93], [3.86, 9.04]] }, // 안 쓰는 문 때문에 짧음, 모서리까지 늘려 창을 가림
+    { type: "backbar", path: [[4.85, 9.2], [7.0, 9.2]] }, // 정면 장 (모서리 쪽은 스탠드 자리)
     // 바텐더 (곡선 바 안쪽, 손님 쪽을 바라봄)
     { type: "bartender", x: 2.95, z: 6.95, rot: -135,
       walkPath: [[1.0, 1.7], [1.0, 5.3], [4.0, 8.3], [5.4, 8.3]], // 바 안쪽 통로 (바와 뒷장 사이, 홍콩야자 피해서)
@@ -65,7 +65,7 @@ export default {
     { type: "sidetable", item: "mixer", itemRot: 90, x: 1.25, z: 6.35, rot: 45, say: "반죽기예요\n직접 만드는 안주가 있어요" },
     { type: "floorlamp", x: 0.38, z: 0.45, h: 1.75, say: "주름 갓 스탠드\n은은한 분홍빛이 포인트예요" },
     { type: "floorlamp", x: 0.4, z: 5.3, h: 1.75 }, // 왼쪽 장 ↔ 대각선 장 사이 틈
-    { type: "floorlamp", x: 3.42, z: 8.74, h: 1.75 }, // 대각선 장 끝, 모서리 기둥 앞
+    { type: "floorlamp", x: 4.38, z: 9.15, h: 1.75 }, // 모서리 기둥 옆, 정면 장 시작 쪽
     { type: "floorlamp", x: 9.15, z: 9.1, h: 1.75 },
     { type: "coffee", x: 1.68, z: 1.55, rot: 90, y0: 1.04, shelf: true, say: "커피도 내려 드려요\n원두 향이 솔솔" },
     // 정면 창 아래 장 위 양초
@@ -74,20 +74,20 @@ export default {
     { type: "pendant", kind: "linear", x: 2.1, z: 2.8, rot: 90, len: 1.8, y: 2.2 },
     { type: "pendant", kind: "linear", x: 3.43, z: 6.06, rot: 45, len: 1.8, y: 2.2 },
     { type: "pendant", kind: "linear", x: 6.05, z: 7.4, rot: 0, len: 1.8, y: 2.2, say: "바 위 나무 조명\n잔이 반짝이게 비춰 줘요" },
-    { type: "pendant", kind: "rattan", x: 5.8, z: 3.2, y: 2.15, say: "라탄 조명\n직접 골라 단 등이에요" },
+    { type: "pendant", kind: "rattan", x: 5.7, z: 3.45, y: 2.15, say: "라탄 조명\n직접 골라 단 등이에요" },
 
     { type: "projector", x: 5.9, z: 5.4, rot: -90, say: "프로젝터가 벽에\n영상을 비춰요" },
     // 안쪽 벽 TV 장식장 (TV 는 아래 screens)
-    { type: "tvshelf", standOnly: true, x: 5.8, z: 1.5, w: 3.8, h: 2.6, tvW: 2.35, tvY: 1.55, tvH: 1.32, say: "전자칠판 영상\n화분 사이로 숲을 보며 쉬어 가세요" },
+    { type: "tvshelf", standOnly: true, x: 5.7, z: 1.75, w: 3.8, h: 2.6, tvW: 2.35, tvY: 1.55, tvH: 1.32, say: "전자칠판 영상\n화분 사이로 숲을 보며 쉬어 가세요" },
     // 식물
     // 반원 테이블 바로 뒤 화분 3개 → 전자칠판 영상을 은은히 가림
-    { type: "bigplant", kind: "palm", front: true, x: 4.95, z: 2.13, h: 1.95, say: "야자 화분이에요\n잎 사이로 영상이 살짝" },
-    { type: "bigplant", kind: "palm", front: true, x: 5.8, z: 2.03, h: 2.1 },
-    { type: "bigplant", kind: "palm", front: true, x: 6.65, z: 2.13, h: 1.85 },
+    { type: "bigplant", kind: "palm", front: true, x: 4.85, z: 2.38, h: 1.95, say: "야자 화분이에요\n잎 사이로 영상이 살짝" },
+    { type: "bigplant", kind: "palm", front: true, x: 5.7, z: 2.28, h: 2.1 },
+    { type: "bigplant", kind: "palm", front: true, x: 6.55, z: 2.38, h: 1.85 },
     { type: "bigplant", kind: "norfolk", x: 8.95, z: 1.1, h: 1.7, say: "노퍽 소나무예요\n겨울엔 트리가 돼요" },
     // 바 안쪽 모퉁이 키 큰 홍콩야자
-    { type: "bigplant", kind: "umbrella", x: 1.5, z: 4.95, h: 2.75, pot: "#eeeae4", say: "키 큰 홍콩야자\n바 안쪽을 지켜 줘요" },
-    { type: "bigplant", kind: "tree", x: 8.95, z: 8.0, h: 2.0, say: "홍콩야자 나무\n매장의 터줏대감이에요" },
+    { type: "bigplant", kind: "umbrella", r: 0.12, x: 1.72, z: 4.55, h: 2.75, pot: "#eeeae4", say: "키 큰 홍콩야자\n바 안쪽을 지켜 줘요" },
+    { type: "bigplant", kind: "tree", x: 8.95, z: 7.3, h: 2.0, say: "홍콩야자 나무\n매장의 터줏대감이에요" },
     // 오른쪽 벽
     // 오른쪽 벽: 노퍽 소나무 옆 원목 행거
     { type: "coatrack", x: 9.25, z: 2.35, rot: 90, say: "외투는 여기에\n걸어 주세요" },
@@ -101,7 +101,7 @@ export default {
   tables: [
     // 반원 테이블: 사각 상판 + 접었다 펴는 반원 날개(홀 쪽). 평평한 쪽이 전자칠판을 봄, 의자 3개는 TV 쪽 빼고
     //   손님이 테이블을 누르면 반원 날개가 접혔다 펴져요
-    { id: "T1", shape: "dropleaf", x: 5.8, z: 2.75, w: 1.2, d: 0.75, r: 0.6, seats: 3, chair: "rattan", color: "#b8743f", leg: "#7a4a2a" },
+    { id: "T1", shape: "dropleaf", x: 5.7, z: 3.0, w: 1.2, d: 0.75, r: 0.6, seats: 3, chair: "rattan", color: "#b8743f", leg: "#7a4a2a" },
     // 벽 테이블: 입구에서 봤을 때 오른쪽 벽에 붙음, 의자 3개 (벽 쪽 빼고)
     { id: "T2", shape: "rect", x: 9.08, z: 5.4, w: 0.8, d: 0.9, seats: 3, chair: "windsor", color: "#4a3328", leg: "#3a281f",
       chairs: [[-0.66, 0], [0, -0.68], [0, 0.68]], lamp: [0.22, -0.25] },
@@ -112,7 +112,7 @@ export default {
   //   link 를 넣으면 손님이 화면을 눌렀을 때 그 주소로 이동 (광고 클릭)
   screens: [
     {
-      wall: "back", x: 5.8, z: 1.5, y: 1.55, w: 2.25, h: 1.27, interval: 7,
+      wall: "back", x: 5.7, z: 1.75, y: 1.55, w: 2.25, h: 1.27, interval: 7,
       slides: [
         { scene: "forest", duration: 14 },
         { title: "오늘의 위스키", sub: "바텐더에게 추천을 받아 보세요", bg: "#7a3b2e", fg: "#ffffff" },
