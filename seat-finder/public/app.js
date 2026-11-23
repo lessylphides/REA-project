@@ -2277,7 +2277,7 @@ function buildInteriorProp(p, g) {
         }
       }
       addObstacle(p.x, p.z, p.r ?? 0.26, p.r ?? 0.26);
-      g.userData.hit = [0.7, k + 0.3, 0.7, (k + 0.3) / 2]; g.userData.sayY = k + 0.45;
+      g.userData.hit = [0.7, k + 0.3, 0.7, (k + 0.3) / 2]; g.userData.sayY = Math.min(k + 0.45, 1.75); // 키 큰 화분은 눈높이 근처에
       if (g.children.length) g.userData.wiggler = g;
       return true;
     }
