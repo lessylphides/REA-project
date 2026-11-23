@@ -3761,18 +3761,19 @@ function tapProp(u) {
 }
 
 let shakeT = 0;
-function throwBottle(b) {
+function throwBottle(b, opt = {}) {
   const u = b.userData, held = u.bottle;
-  if (!held) return;
+  if (!held || u.thrown) return;
   u.thrown = true; u.lookT = 4;
-  popBubble("그만 좀 눌러요! 😤", b.position.x, 2.05, b.position.z, { fg: "#c0533f", follow: b, scale: 0.7 });
+  if (!opt.silent) popBubble("그만 좀 눌러요! 😤", b.position.x, 2.05, b.position.z, { fg: "#c0533f", follow: b, scale: 0.7 });
   const p0 = new THREE.Vector3(); held.getWorldPosition(p0);
   held.visible = false;
   const fly = held.clone(); fly.visible = true;
   fly.position.copy(p0);
   // 내 발 앞 0.7m 쯤에 떨어지게
   const fx = -Math.sin(walk.yaw), fz = -Math.cos(walk.yaw);
-  const tgt = walk.on ? new THREE.Vector3(camera.position.x + fx * 0.7, 0.05, camera.position.z + fz * 0.7) : new THREE.Vector3(camera.position.x * 0.5, 0.05, camera.position.z * 0.5);
+  const tgt = opt.land ? opt.land.clone() : walk.on ? new THREE.Vector3(camera.position.x + fx * 0.7, 0.05, camera.position.z + fz * 0.7) : new THREE.Vector3(camera.position.x * 0.5, 0.05, camera.position.z * 0.5);
+  const rollLen = opt.land ? 0.25 : 0.9; // 바 위에 떨어지면 조금만 구름
   const roll = new THREE.Vector3(tgt.x - p0.x, 0, tgt.z - p0.z).normalize();
   const T1 = 0.9, peak = Math.max(p0.y, 1.3) + 0.8;
   let landed = false;
@@ -3784,8 +3785,8 @@ function throwBottle(b) {
       fly.rotation.x = t * 14; fly.rotation.z = t * 6;
     } else { // 바닥에 누워 데굴데굴 굴러가다 멈춤
       if (!landed) { landed = true; shakeT = 0.25; }
-      const r = t - T1, d = 0.9 * (1 - Math.exp(-r * 2));
-      fly.position.set(tgt.x + roll.x * d, 0.05, tgt.z + roll.z * d);
+      const r = t - T1, d = rollLen * (1 - Math.exp(-r * 2));
+      fly.position.set(tgt.x + roll.x * d, tgt.y, tgt.z + roll.z * d);
       fly.rotation.set(0, Math.atan2(roll.x, roll.z), Math.PI / 2);
       fly.rotateY(d / 0.05);
       if (r > 3.2) fly.scale.setScalar(Math.max(0.001, 1 - (r - 3.2) / 1.2)); // 스르륵 사라짐
@@ -4076,7 +4077,11 @@ function serveWater(seat) {
   const u = b.userData, ice = iceMakers[0]?.position, top = barTopFor(seat);
   if (!top) return;
   waterVisits++;
-  if (waterVisits >= 3) { setTimeout(() => throwBottle(b), 600); return; } // 3번째 앉으면 술병을 던짐
+  if (waterVisits >= 3) { // 3번째부터: 말없이 내 앞까지 와서 바 위로 술병을 툭
+    u.job = [{ s: nearestS(u, top[0], top[1]), pause: 0.5, act: () => throwBottle(b, { silent: true, land: new THREE.Vector3(top[0], 1.08, top[1]) }) }];
+    u.jobDelay = 0.4; u.wait = 0;
+    return;
+  }
   popBubble(waterVisits === 2 ? "질긴 녀석이네" : "흐음..물이라도 드릴까요?", b.position.x, 2.0, b.position.z, { follow: b, scale: 0.7 });
   u.lookT = 2.5;
   u.job = [
