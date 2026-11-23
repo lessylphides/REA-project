@@ -821,7 +821,10 @@ function buildAlley3D(e) {
   for (let i = 0; i < 5; i++) { const side = rnd() < 0.5 ? -1 : 1; makePlant(g, side * (W / 2 - 0.3), 4 + rnd() * (len - 6), 0.7); }
   // 골목 맨 끝: 마주 보이는 주택가 (그림)
   const far = L1 + 0.5;
-  addStreetView(mx + nx * far, mz + nz * far, -nx, -nz, 16, 9, 0, 17 + e.i * 31, "street", 0.2);
+  { // 그림 대신 실제 3D 주택 줄 (하늘과 끊기지 않게)
+    const cx = mx + nx * far, cz = mz + nz * far, px = nz, pz = -nx;
+    buildHouseRow([cx - px * 10, cz - pz * 10], [cx + px * 10, cz + pz * 10], [-nx, -nz], 17 + e.i * 31, { poles: false });
+  }
   return { mx, mz, nx, nz, L0, L1 };
 }
 
@@ -946,12 +949,12 @@ function buildStreets3D(T) {
   // 가게 앞 골목: 건너편 주택 줄, 이웃 건물 옆 줄
   buildHouseRow([-12, zA], [19, zA], [0, -1], 501);
   buildHouseRow([13.8, zF], [19, zF], [0, 1], 503, { poles: false });
-  addStreetView(19.2, (zF + zA) / 2, -1, 0, FRONT_ACROSS + 6, 9, 0, 511, "street", 0.2); // 골목 끝 (그림)
+  buildHouseRow([19.2, zF - 6], [19.2, zA + 6], [-1, 0], 511, { poles: false }); // 골목 끝: 실제 3D 주택
   // 왼쪽 골목: 건너편 주택 줄, 가게 뒤쪽 줄
   const xL = -T - LEFT_W;
   buildHouseRow([xL, -7.5], [xL, zA + 2], [1, 0], 521);
   buildHouseRow([-T, -7.5], [-T, -T], [-1, 0], 523, { poles: false });
-  addStreetView((xL - T) / 2, -7.8, 0, 1, LEFT_W + 6, 9, 0, 531, "street", 0.2); // 골목 끝 (그림)
+  buildHouseRow([xL - 6, -7.8], [-T + 6, -7.8], [0, 1], 531, { poles: false }); // 골목 끝: 실제 3D 주택
 }
 
 let ALLEY = null;
