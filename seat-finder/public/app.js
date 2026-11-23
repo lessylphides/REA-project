@@ -2768,6 +2768,12 @@ function buildInteriorProp(p, g) {
       // 위스키 병 (호박색, 라벨, 목, 뚜껑)
       const bottle = new THREE.Group(); bottle.position.set(0.22, 1.33, 0.25); body.add(bottle);
       g.userData.bottle = bottle;
+      { // 물 서비스용 투명 하이볼잔 (평소엔 숨김)
+        const hg = new THREE.Group(); hg.position.copy(bottle.position); hg.visible = false; body.add(hg);
+        mk(new THREE.CylinderGeometry(0.036, 0.032, 0.15, 16, 1, true), new THREE.MeshBasicMaterial({ color: "#e8f4f8", transparent: true, opacity: 0.35, side: THREE.DoubleSide, depthWrite: false }), [0, 0, 0], hg, { outline: 0, shadow: false });
+        mk(cyl(0.032, 0.03, 0.11, 14), new THREE.MeshBasicMaterial({ color: "#cfe9f2", transparent: true, opacity: 0.5 }), [0, -0.018, 0], hg, { outline: 0, shadow: false });
+        g.userData.handGlass = hg;
+      }
       mk(cyl(0.05, 0.052, 0.22, 14), new THREE.MeshBasicMaterial({ color: "#c7782c" }), [0, 0, 0], bottle, { outline: 0.008 });
       mk(cyl(0.0515, 0.0535, 0.09, 14), "#f2ead6", [0, 0.01, 0], bottle, { outline: 0 });
       mk(cyl(0.02, 0.04, 0.06, 10), new THREE.MeshBasicMaterial({ color: "#b0651f" }), [0, 0.14, 0], bottle, { outline: 0.005 });
@@ -4047,8 +4053,60 @@ function closedGreeting() {
     u.greet = msg; u.target = u.L; u.wait = 0; u.sadNext = true; // 길 끝(입구 쪽)으로
   }
 }
+// ───────── 영업시간 외에 바 자리에 앉으면: 바텐더가 물 한 잔 (제빙기 → 자리 앞 바 위에 라탄 코스터 + 하이볼잔) ─────────
+const served = []; // 바 위에 올린 코스터·잔
+function nearestS(u, x, z) { let best = 0, bd = 1e9; for (let s = 0; s <= u.L; s += 0.05) { const q = pathAt(u, s), d = Math.hypot(q.x - x, q.z - z); if (d < bd) { bd = d; best = s; } } return best; }
+function barTopFor(seat) { // 자리 앞 바 상판 위 (손님 쪽 가장자리 근처)
+  const p = seat.group.position;
+  let best = null, bd = 1e9;
+  for (const b of LAYOUT.bars || []) for (let i = 0; i < b.path.length - 1; i++) {
+    const [ax, az] = b.path[i], [bx, bz] = b.path[i + 1], dx = bx - ax, dz = bz - az, L2 = dx * dx + dz * dz;
+    const t = Math.max(0, Math.min(1, ((p.x - ax) * dx + (p.z - az) * dz) / L2)), x = ax + dx * t, z = az + dz * t, d = Math.hypot(p.x - x, p.z - z);
+    if (d < bd) { bd = d; best = [x, z]; }
+  }
+  if (!best) return null;
+  const k = 0.3 / bd; return [best[0] + (p.x - best[0]) * k, best[1] + (p.z - best[1]) * k];
+}
+function serveWater(seat) {
+  if (!seat.id.startsWith("BAR")) return; // 바 자리에만
+  const b = bartenders.find((g) => g.userData.path); if (!b) return;
+  const u = b.userData, ice = iceMakers[0]?.position, top = barTopFor(seat);
+  if (!top) return;
+  popBubble("흐음..물이라도 드릴까요?", b.position.x, 2.0, b.position.z, { follow: b, scale: 0.7 });
+  u.lookT = 2.5;
+  u.job = [
+    { s: ice ? nearestS(u, ice.x, ice.z) : 0, pause: 1.2, act: () => { u.bottle.visible = false; u.handGlass.visible = true; } },
+    { s: nearestS(u, top[0], top[1]), pause: 0.8, act: () => {
+      u.handGlass.visible = false; u.bottle.visible = true;
+      const g = new THREE.Group(); g.position.set(top[0], 1.04, top[1]); roomGroup.add(g);
+      mk(cyl(0.055, 0.055, 0.008, 20), "#c99a5b", [0, 0.004, 0], g, { outline: 0.003, shadow: false });
+      mk(new THREE.TorusGeometry(0.045, 0.004, 4, 20), "#9a6a3a", [0, 0.009, 0], g, { outline: 0, shadow: false }).rotation.x = Math.PI / 2;
+      mk(new THREE.CylinderGeometry(0.036, 0.032, 0.15, 16, 1, true), new THREE.MeshBasicMaterial({ color: "#e8f4f8", transparent: true, opacity: 0.35, side: THREE.DoubleSide, depthWrite: false }), [0, 0.085, 0], g, { outline: 0, shadow: false });
+      mk(cyl(0.032, 0.03, 0.11, 14), new THREE.MeshBasicMaterial({ color: "#cfe9f2", transparent: true, opacity: 0.5 }), [0, 0.065, 0], g, { outline: 0, shadow: false });
+      served.push(g); u.lookT = 3;
+    } },
+  ];
+  u.jobDelay = 1.6; u.wait = 0;
+}
+function clearWater() {
+  for (const g of served) roomGroup.remove(g); served.length = 0;
+  for (const b of bartenders) { const u = b.userData; if (u.job) { u.job = null; u.handGlass && (u.handGlass.visible = false); u.bottle && (u.bottle.visible = true); } }
+}
 function updateBartender(b, dt, time) {
   const u = b.userData;
+  if (u.job?.length && u.path) { // 물 서비스: 목표 지점까지 걸어가서 할 일
+    if (u.jobDelay > 0) { u.jobDelay -= dt; u.moving = false; }
+    else {
+      const j = u.job[0], d = j.s - u.s, step = 0.9 * dt;
+      if (Math.abs(d) > step) { u.s += Math.sign(d) * step; u.moving = true; u.dir = Math.sign(d); }
+      else { u.s = j.s; u.moving = false; j.pause -= dt; if (j.pause <= 0) { j.act(); u.job.shift(); if (!u.job.length) { u.job = null; u.target = u.s; u.wait = 4; } } }
+    }
+    const q = pathAt(u, u.s); b.position.set(q.x, 0, q.z); u.prop.x = q.x; u.prop.z = q.z;
+    let fx = u.moving ? q.tx * (u.dir || 1) : camera.position.x - q.x, fz = u.moving ? q.tz * (u.dir || 1) : camera.position.z - q.z;
+    const yaw = Math.atan2(fx, fz); let dy = yaw - u.yaw; dy = Math.atan2(Math.sin(dy), Math.cos(dy)); u.yaw += dy * Math.min(1, dt * 5); b.rotation.y = u.yaw;
+    u.bt.position.y = Math.abs(Math.sin(time * (u.moving ? 7 : 1.6))) * (u.moving ? 0.025 : 0.008);
+    return;
+  }
   u.bt.position.y = Math.abs(Math.sin(time * (u.moving ? 7 : 1.6))) * (u.moving ? 0.025 : 0.008);
   u.btHead.rotation.z = Math.sin(time * 0.8) * 0.04;
   if (!u.path) { u.btHead.rotation.y = Math.sin(time * 0.5) * 0.35; return; }
@@ -4325,6 +4383,7 @@ function toggleSit() {
     walk.pos.set(best.group.position.x, 0, best.group.position.z);
     walk.yaw = best.group.rotation.y + Math.PI; // 바·테이블 쪽을 바라봄
     walk.pitch = -0.12;
+    if (!isOpenNow() && storeInfo?.hours && !isLockedNow()) serveWater(best);
   } else {
     if (best) popBubble("사용 중이에요", best.group.position.x, 1.5, best.group.position.z, { fg: "#c0533f" });
     walk.crouch = true;
@@ -4332,6 +4391,7 @@ function toggleSit() {
   updateActBtns();
 }
 function standUp() {
+  clearWater();
   if (walk.sit && walk.back) { walk.pos.copy(walk.back); collide(walk.pos); }
   walk.sit = null; walk.crouch = false; walk.back = null;
   updateActBtns();
@@ -4347,6 +4407,7 @@ function updateActBtns() {
   const c = !walk.sit && !walk.crouch ? seatCandidate() : null;
   const label = walk.sit || walk.crouch ? "일어서기" : c && !c.occupied ? "의자에<br>앉기" : "앉기";
   if (b.dataset.l !== label) { b.dataset.l = label; b.innerHTML = label; }
+  b.classList.toggle("seatable", label.startsWith("의자에"));
 }
 
 function setAim(id) {
@@ -4403,7 +4464,7 @@ function drawMinimap() {
 }
 
 function initWalk() {
-  if (new URLSearchParams(location.search).has("debug")) { window.__walk = walk; window.__cam = camera; window.__seats = seats; window.__bt = bartenders; window.__fx = { spillMilk, spillIce, freezerPuff, fridges, iceMakers, blindFaces, setBlindLevel, sayProps }; } // 확인용
+  if (new URLSearchParams(location.search).has("debug")) { window.__walk = walk; window.__cam = camera; window.__seats = seats; window.__bt = bartenders; window.__fx = { spillMilk, spillIce, freezerPuff, fridges, iceMakers, blindFaces, setBlindLevel, sayProps, served }; } // 확인용
   $("walkBtn").addEventListener("click", enterWalk);
   $("mapBtn").addEventListener("click", exitWalk);
   $("enterBtn").addEventListener("click", () => {
