@@ -4659,7 +4659,8 @@ function seatBoardPos() {
       const r = Math.hypot(ex, ez) + Q / 20 + 0.12;
       const [ox, oz] = [(dx / l) * r, (dz / l) * r];
       x = t.x + c.dx + ox; z = t.z + c.dz + oz;
-      out.set(s.id, [x * S, z * S, 0, Q]);
+      const sc = boardCfg.seats?.[s.id]; // 의자 하나하나 옮기기·회전
+      out.set(s.id, [(x + (sc?.dx || 0)) * S, (z + (sc?.dz || 0)) * S, sc?.r || 0, Q]);
       continue;
     }
     out.set(s.id, [x * S, z * S, 0, Q]);
@@ -4668,13 +4669,14 @@ function seatBoardPos() {
 }
 let boardEdit = false, boardSel = null, boardBackup = null;
 const isBarSeat = (id) => (LAYOUT.bars || []).some((b) => id.startsWith(b.id + "-"));
-const cfgOf = (id) => (isBarSeat(id) ? ((boardCfg.seats ||= {})[id] ||= { dx: 0, dz: 0, r: 0 }) : tcfg(id));
+const isSeatId = (id) => seats.has(id);
+const cfgOf = (id) => (isSeatId(id) ? ((boardCfg.seats ||= {})[id] ||= { dx: 0, dz: 0, r: 0 }) : tcfg(id));
 /** 편집 중 끌어서 옮기기 (테이블 / 바 의자 칸) */
 function makeDraggable(g2, id) {
   g2.addEventListener("pointerdown", (e) => {
     if (!boardEdit) return;
-    e.preventDefault();
-    boardSel = id; $("bdSel").textContent = isBarSeat(id) ? `바 ${id.replace(/^.*-/, "")}번 · 끌어서 옮기기, ⟲⟳ 회전, −+ 바 칸 크기` : `${id} · 끌어서 옮기기, −+ 크기`;
+    e.preventDefault(); e.stopPropagation(); // 의자 칸을 끌 때 테이블까지 끌리지 않게
+    boardSel = id; $("bdSel").textContent = isSeatId(id) ? `${isBarSeat(id) ? "바" : id.replace(/-\d+$/, "")} ${id.replace(/^.*-/, "")}번 의자 · 끌어서 옮기기, ⟲⟳ 회전, −+ ${isBarSeat(id) ? "바 칸" : "테이블"} 크기` : `${id} · 끌어서 옮기기, −+ 크기`;
     for (const g of document.querySelectorAll("#boardSvg .sel")) g.classList.remove("sel"); g2.classList.add("sel");
     const svg = $("boardSvg"), S = 10, inv = svg.getScreenCTM().inverse(), pt = svg.createSVGPoint();
     const toSvg = (ev) => { pt.x = ev.clientX; pt.y = ev.clientY; return pt.matrixTransform(inv); };
@@ -4730,7 +4732,7 @@ function buildBoard(force) {
     const ico = el("text", { class: "ico", y: 0 }, g, "");
     const mins = el("text", { class: "mins", y: 3 }, g, "");
     g.addEventListener("click", () => { if (!boardEdit) boardTap(id); });
-    if (isBarSeat(id)) { makeDraggable(g, id); g.dataset.base = `translate(${x},${y})`; if (boardSel === id) g.classList.add("sel"); }
+    { makeDraggable(g, id); g.dataset.base = `translate(${x},${y})`; if (boardSel === id) g.classList.add("sel"); }
     boardEls.set(id, { g, ico, mins });
   }
   renderBoard();
@@ -4744,12 +4746,13 @@ function selectBoard(id) {
 }
 function resizeBoard(dir) {
   if (!boardSel) return toast("크기를 바꿀 테이블이나 바를 먼저 눌러 주세요");
+  if (boardSel && isSeatId(boardSel) && !isBarSeat(boardSel)) boardSel = boardSel.replace(/-\d+$/, ""); // 테이블 의자 → 그 테이블 크기
   if (boardSel === "BAR" || isBarSeat(boardSel)) boardCfg.barQ = THREE.MathUtils.clamp(+(boardCfg.barQ + dir * 0.06).toFixed(2), 0.7, 1.8);
   else { const c = tcfg(boardSel); c.s = THREE.MathUtils.clamp(+(c.s + dir * 0.08).toFixed(2), 0.6, 2); }
   buildBoard(true);
 }
 function rotateBoard(dir) {
-  if (!boardSel || !isBarSeat(boardSel)) return toast("돌릴 바 의자 칸을 먼저 눌러 주세요");
+  if (!boardSel || !isSeatId(boardSel)) return toast("돌릴 의자 칸을 먼저 눌러 주세요");
   const c = cfgOf(boardSel);
   c.r = (((c.r || 0) + dir * 15) % 360 + 360) % 360;
   buildBoard(true);
@@ -4758,7 +4761,7 @@ function setBoardEdit(on) {
   boardEdit = on;
   document.body.classList.toggle("boardedit", on);
   $("boardEditBtn").textContent = on ? "편집 중" : "배치 편집";
-  if (on) { boardBackup = JSON.stringify(boardCfg); boardSel = null; $("bdSel").textContent = "테이블·바 의자 칸을 끌어서 옮기기 · 바 의자 칸은 눌러서 ⟲⟳ 회전"; }
+  if (on) { boardBackup = JSON.stringify(boardCfg); boardSel = null; $("bdSel").textContent = "테이블·의자 칸을 끌어서 옮기기 · 의자 칸은 눌러서 ⟲⟳ 회전"; }
   buildBoard(true);
 }
 async function loadBoard() {
