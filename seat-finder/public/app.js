@@ -4056,6 +4056,7 @@ function closedGreeting() {
 }
 // ───────── 영업시간 외에 바 자리에 앉으면: 바텐더가 물 한 잔 (제빙기 → 자리 앞 바 위에 라탄 코스터 + 하이볼잔) ─────────
 const served = []; // 바 위에 올린 코스터·잔
+let waterVisits = 0; // 영업시간 외에 바 자리에 앉은 횟수 (1: 물, 2: 질긴 녀석이네 + 물, 3~: 술병)
 function nearestS(u, x, z) { let best = 0, bd = 1e9; for (let s = 0; s <= u.L; s += 0.05) { const q = pathAt(u, s), d = Math.hypot(q.x - x, q.z - z); if (d < bd) { bd = d; best = s; } } return best; }
 function barTopFor(seat) { // 자리 앞 바 상판 위 (손님 쪽 가장자리 근처)
   const p = seat.group.position;
@@ -4073,7 +4074,9 @@ function serveWater(seat) {
   const b = bartenders.find((g) => g.userData.path); if (!b) return;
   const u = b.userData, ice = iceMakers[0]?.position, top = barTopFor(seat);
   if (!top) return;
-  popBubble("흐음..물이라도 드릴까요?", b.position.x, 2.0, b.position.z, { follow: b, scale: 0.7 });
+  waterVisits++;
+  if (waterVisits >= 3) { setTimeout(() => throwBottle(b), 600); return; } // 3번째 앉으면 술병을 던짐
+  popBubble(waterVisits === 2 ? "질긴 녀석이네" : "흐음..물이라도 드릴까요?", b.position.x, 2.0, b.position.z, { follow: b, scale: 0.7 });
   u.lookT = 2.5;
   u.job = [
     { s: ice ? nearestS(u, ice.x, ice.z) : 0, pause: 1.2, act: () => { u.bottle.visible = false; u.handGlass.visible = true; } },
