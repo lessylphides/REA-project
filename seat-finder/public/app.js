@@ -4273,7 +4273,7 @@ function enterStore() {
 function exitWalk() {
   if (!walk.on) return;
   walk.on = false;
-  if (walk.chair) { walk.chair.g.position.x = walk.chair.x; walk.chair.g.position.z = walk.chair.z; walk.chair = null; }
+  if (walk.chair) { walk.chair.g.position.x = walk.chair.x; walk.chair.g.position.z = walk.chair.z; walk.chair.g.rotation.y = walk.chair.r; walk.chair = null; }
   walk.sit = null; walk.crouch = false; walk.back = null; walk.jumpY = walk.vy = 0; walk.eye = EYE; updateActBtns();
   if (myLegs) myLegs.g.visible = false;
   walk.look = null;
@@ -4387,8 +4387,8 @@ function toggleSit() {
     walk.yaw = best.group.rotation.y + Math.PI; // 바·테이블 쪽을 바라봄
     walk.pitch = -0.12;
     { // 의자를 사람 앉은 만큼 뒤로 빼고 그 위에 앉음 (일어서면 원래 자리로)
-      const back = 0.28, g = best.group;
-      walk.chair = { g, x: g.position.x, z: g.position.z };
+      const back = best.id.startsWith("BAR") ? 0.12 : 0.28, g = best.group; // 바 자리는 무릎이 상판 밑에 살짝 들어가게
+      walk.chair = { g, x: g.position.x, z: g.position.z, r: g.rotation.y };
       g.position.x += Math.sin(walk.yaw) * back; g.position.z += Math.cos(walk.yaw) * back;
       walk.pos.set(g.position.x, 0, g.position.z);
     }
@@ -4424,6 +4424,7 @@ function updateMyLegs() {
   const footY = bar ? 0.3 : 0.04; // 바 의자는 발걸이, 테이블 의자는 바닥
   myLegs.g.position.set(walk.pos.x, 0, walk.pos.z);
   myLegs.g.rotation.y = walk.yaw;
+  if (walk.chair) walk.chair.g.rotation.y = walk.yaw - Math.PI; // 둘러보면 의자도 같이 돎
   if (myCoat >= 0) myLegs.pants.color.set(PANTS_FOR_COAT[myCoat % 3]);
   for (const { thigh, shin, foot } of myLegs.parts) {
     thigh.position.y = hip;
@@ -4433,7 +4434,7 @@ function updateMyLegs() {
 }
 function standUp() {
   clearWater();
-  if (walk.chair) { walk.chair.g.position.x = walk.chair.x; walk.chair.g.position.z = walk.chair.z; walk.chair = null; } // 의자 제자리로
+  if (walk.chair) { walk.chair.g.position.x = walk.chair.x; walk.chair.g.position.z = walk.chair.z; walk.chair.g.rotation.y = walk.chair.r; walk.chair = null; } // 의자 제자리로
   if (walk.sit && walk.back) { walk.pos.copy(walk.back); collide(walk.pos); }
   walk.sit = null; walk.crouch = false; walk.back = null;
   updateActBtns();
