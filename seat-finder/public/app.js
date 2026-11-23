@@ -2084,7 +2084,7 @@ const bandTex = canvasTex(256, 64, (c, w, h) => {
   const img = c.createImageData(w, h);
   for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
     const dx = (x - (w - 1) / 2) / ((w - 1) / 2), dy = (y - (h - 1) / 2) / ((h - 1) / 2);
-    const a = Math.exp(-dx * dx * 1.6) * Math.exp(-dy * dy * 3.0) * (1 - Math.pow(Math.abs(dx), 6)); // 테두리 없이 사라짐
+    const a = Math.exp(-dx * dx * 1.6) * Math.exp(-dy * dy * 2.2) * (1 - Math.pow(Math.abs(dx), 6)); // 테두리 없이 사라짐
     const i = (y * w + x) * 4; img.data[i] = img.data[i + 1] = img.data[i + 2] = 255; img.data[i + 3] = Math.round(a * 255);
   }
   c.putImageData(img, 0, 0);
@@ -2222,7 +2222,7 @@ function buildInteriorProp(p, g) {
         addHalo(g, len * 0.25, y - 0.2, 0, 1.0, "#ffd08a", true);
         // 상판에 고이는 부드러운 빛 (조명 아래가 가장 밝고 둘레로 서서히 사라짐, 폭 ≈ 상판 1/3)
         {
-          const L2 = p.glowLen ?? len + 1.2, off = p.glowOff ?? 0, w2 = 0.24;
+          const L2 = p.glowLen ?? len + 1.2, off = p.glowOff ?? 0, w2 = 0.3;
           // (공중 빛 기둥 도형은 없앰: 판처럼 보여 부자연스러움)
           const band = new THREE.Mesh(new THREE.PlaneGeometry(L2, w2 * 2), new THREE.MeshBasicMaterial({ map: bandTex, color: "#ffb065", transparent: true, opacity: 0.2, depthWrite: false, blending: THREE.AdditiveBlending, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -2 }));
           band.rotation.x = -Math.PI / 2; band.position.set(off, 1.046, 0); band.renderOrder = 2; g.add(band);
