@@ -3498,6 +3498,15 @@ function isOpenNow() {
   if (p && !p.closed) { const o = hm(p.open), c = hm(p.close); if (c <= o && min < c) return true; }
   return false;
 }
+/** 영업시간이 아닐 때 바텐더 안내 멘트 */
+function closedMessage() {
+  const H = storeInfo?.hours; if (!Array.isArray(H) || H.length !== 7) return "아직 영업시간 전입니다";
+  const { day, min } = kstNow(), t = H[day], p = H[(day + 6) % 7];
+  if (t?.closed) return "오늘은 휴무일이에요";
+  const prevEnded = p && !p.closed && hm(p.close) <= hm(p.open) && min >= hm(p.close) && min < hm(t.open); // 새벽에 영업이 끝난 뒤
+  const todayEnded = t && hm(t.close) > hm(t.open) && min >= hm(t.close); // 같은 날 영업이 끝난 뒤
+  return prevEnded || todayEnded ? "오늘 영업은 끝났습니다" : "아직 영업시간 전입니다";
+}
 /** 첫 화면 안내: "영업 중 · 02:00까지" / "오늘 18:00 오픈" / "오늘은 쉬어요" */
 function openLabel() {
   const H = storeInfo?.hours;
@@ -3689,7 +3698,7 @@ function tapProp(u) {
   }
   if (bu.path && !isOpenNow() && storeInfo?.hours) { // 영업시간 밖: 평소 멘트 대신 안내와 ㅠㅜ 만
     bu.lookT = 3.6;
-    const { day } = kstNow(), msg = storeInfo.hours[day]?.closed ? "오늘은 휴무일이에요" : "아직 영업시간 전입니다";
+    const msg = closedMessage();
     bu.closedTap = (bu.closedTap || 0) + 1;
     line = bu.closedTap % 2 ? "ㅠㅜ" : msg;
   } else if (bu.path) { // 바텐더: 나를 쳐다보고, 누를 때마다 멘트가 바뀌다가 10번째엔 보틀을 던짐
@@ -4010,8 +4019,7 @@ function pathAt(u, s) {
 /** 영업시간이 아닐 때 들어오면: 바텐더가 입구 쪽으로 걸어와 안내 */
 function closedGreeting() {
   if (isOpenNow() || !storeInfo?.hours) return;
-  const H = storeInfo.hours, { day } = kstNow();
-  const msg = H[day]?.closed ? "오늘은 휴무일이에요" : "아직 영업시간 전입니다";
+  const msg = closedMessage();
   for (const b of bartenders) {
     const u = b.userData; if (!u.path) continue;
     u.greet = msg; u.target = u.L; u.wait = 0; u.sadNext = true; // 길 끝(입구 쪽)으로
