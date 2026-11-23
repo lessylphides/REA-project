@@ -4585,12 +4585,35 @@ async function main() {
 // ───────── 관리자 자리 버튼판: 매장 배치 평면 + 큰 버튼, 누르고 3초 뒤 반영 (3초 안에 다시 누르면 취소) ─────────
 const pending = new Map(); // 자리 id → { target, timer }
 const boardEls = new Map();
+/** 꺾인 선을 옆으로 d 만큼 평행 이동 (+ = 손님 쪽) */
+function offsetPath(pts, d) {
+  const nrm = (a, b) => { const dx = b[0] - a[0], dz = b[1] - a[1], l = Math.hypot(dx, dz); return [dz / l, -dx / l]; };
+  return pts.map((p, i) => {
+    const n0 = i > 0 ? nrm(pts[i - 1], p) : null, n1 = i < pts.length - 1 ? nrm(p, pts[i + 1]) : null;
+    let nx = (n0?.[0] ?? 0) + (n1?.[0] ?? 0), nz = (n0?.[1] ?? 0) + (n1?.[1] ?? 0);
+    const l = Math.hypot(nx, nz); nx /= l; nz /= l;
+    const k = n0 && n1 ? 1 / Math.max(0.5, nx * n0[0] + nz * n0[1]) : 1; // 모서리 길이 보정
+    return [p[0] + nx * d * k, p[1] + nz * d * k];
+  });
+}
+function along(pts, t) { // 선 위 t(0~1) 위치
+  const seg = []; let L = 0;
+  for (let i = 0; i < pts.length - 1; i++) { const l = Math.hypot(pts[i + 1][0] - pts[i][0], pts[i + 1][1] - pts[i][1]); seg.push(l); L += l; }
+  let d = t * L;
+  for (let i = 0; i < seg.length; i++) { if (d <= seg[i] || i === seg.length - 1) { const k = Math.min(1, d / seg[i]); return [pts[i][0] + (pts[i + 1][0] - pts[i][0]) * k, pts[i][1] + (pts[i + 1][1] - pts[i][1]) * k]; } d -= seg[i]; }
+}
+const BOARD_BAR_SHIFT = -0.85, BOARD_BAR_SEATS = 0.95; // 버튼판: 바는 창가 쪽으로, 바 의자 버튼은 바 앞으로 고르게
 function seatBoardPos() {
   const out = new Map(), S = 10;
   const tables = LAYOUT.tables || [];
+  for (const b of LAYOUT.bars || []) { // 바 의자: 손님 쪽 평행선 위에 고른 간격으로
+    const line = offsetPath(b.path, BOARD_BAR_SEATS);
+    for (let i = 0; i < b.seats; i++) { const [x, z] = along(line, 0.01 + 0.98 * (b.seats === 1 ? 0.5 : i / (b.seats - 1))); out.set(`${b.id}-${i + 1}`, [x * S, z * S]); }
+    (b.extraSeats || []).forEach(([x, z], k) => out.set(`${b.id}-${b.seats + k + 1}`, [x * S, Math.min(R.d - 0.55, z + 0.6) * S])); // 바 너머 자리는 바 선 아래로
+  }
   for (const s of seats.values()) {
     const p = s.group?.position;
-    if (!p) continue;
+    if (!p || out.has(s.id)) continue;
     let x = p.x, z = p.z;
     const t = tables.find((t) => s.id.startsWith(t.id + "-"));
     if (t) { x = t.x + (x - t.x) * 1.6; z = t.z + (z - t.z) * 1.6; } // 테이블 의자는 바깥으로 벌려 누르기 쉽게
@@ -4612,8 +4635,9 @@ function buildBoard() {
     for (const id of ids) if (eff(id) !== target) boardTap(id);
   };
   for (const b of LAYOUT.bars || []) {
-    el("polyline", { class: "barline", points: b.path.map(([x, z]) => `${x * S},${z * S}`).join(" ") });
-    const m = b.path[1];
+    const bl = offsetPath(b.path, BOARD_BAR_SHIFT);
+    el("polyline", { class: "barline", points: bl.map(([x, z]) => `${x * S},${z * S}`).join(" ") });
+    const m = bl[1];
     const t = el("text", { class: "tlabel dark", x: m[0] * S - 6, y: m[1] * S - 10 }, svg, b.id);
     t.addEventListener("click", () => groupTap(tableGroups.find((g) => g.id === b.id)?.seatIds || []));
   }
@@ -4625,8 +4649,8 @@ function buildBoard() {
   }
   for (const [id, [x, y]] of seatBoardPos()) {
     const g = el("g", { class: "bs", transform: `translate(${x},${y})` });
-    el("circle", { class: "ring", r: 5.2 }, g);
-    el("circle", { class: "timer", r: 5.4 }, g);
+    el("circle", { class: "ring", r: 4.8 }, g);
+    el("circle", { class: "timer", r: 5.0 }, g);
     const ico = el("text", { class: "ico", y: 0 }, g, "");
     const mins = el("text", { class: "mins", y: 3 }, g, ""); // 앉은 시간 (원 안 아래)
     g.addEventListener("click", () => boardTap(id));
