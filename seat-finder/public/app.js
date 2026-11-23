@@ -3694,6 +3694,7 @@ function interact(ev) {
   if (bt && hit.object.userData.seatId && bt.distance - hit.distance < 1.5) hit = bt; // 의자에 가려진 경우만
   const u = hit.object.userData;
   if (u.kind === "screen") tapScreen(u.scr);
+  else if (u.kind === "prop" && walk.sit && u.prop?.type === "bar") return; // 바에 앉아 있을 땐 바 소개 말풍선이 뜨지 않게
   else if (u.kind === "prop") { // 걸어 다닐 땐 1.5m 안(가장 가까운 면 기준)의 소품만
     const reach = u.group?.userData.path ? 2.5 : 1.5; // 바텐더는 바 건너편에서도 닿게
     if (walk.on && Math.hypot(hit.point.x - walk.pos.x, hit.point.z - walk.pos.z) > reach) return;
