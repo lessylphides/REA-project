@@ -3498,6 +3498,8 @@ function isOpenNow() {
   if (p && !p.closed) { const o = hm(p.open), c = hm(p.close); if (c <= o && min < c) return true; }
   return false;
 }
+/** 새벽 4시 ~ 오전 10시(한국시간): 문이 잠긴 시간 */
+function isLockedNow() { const { min } = kstNow(); return min >= 4 * 60 && min < 10 * 60; }
 /** 영업시간이 아닐 때 바텐더 안내 멘트 */
 function closedMessage() {
   const H = storeInfo?.hours; if (!Array.isArray(H) || H.length !== 7) return "아직 영업시간 전입니다";
@@ -3527,7 +3529,7 @@ async function loadStore() {
 function applyStore() {
   const open = isOpenNow();
   if (doorSign) doorSign.material.map = open ? doorSignTex.open : doorSignTex.closed, doorSign.material.needsUpdate = true;
-  const el = $("introOpen"); if (el) { el.textContent = openLabel(); el.classList.toggle("closed", !open); }
+  const el = $("introOpen"); if (el) { el.textContent = isLockedNow() ? "문이 잠겼어요 · 10:00부터 입장" : openLabel(); el.classList.toggle("closed", !open); }
 }
 setInterval(() => { if (!document.hidden) loadStore(); }, 120000);
 // 빈자리 확인: 영업시간엔 화면을 보는 동안 5초마다, 영업시간이 아니면 화면을 열거나 다시 볼 때만 (서버 요청 아끼기)
@@ -4385,6 +4387,11 @@ function initWalk() {
   $("walkBtn").addEventListener("click", enterWalk);
   $("mapBtn").addEventListener("click", exitWalk);
   $("enterBtn").addEventListener("click", () => {
+    if (isLockedNow() && !IS_ADMIN) { // 새벽 4시 ~ 오전 10시: 문이 잠겨 입장 불가
+      toast("문이 잠겼어요\n오전 10시 이후에 들어올 수 있어요", 2200);
+      const d = doorPanels[0]?.g; if (d) { let k = 0; const iv = setInterval(() => { d.rotation.y = (k % 2 ? -1 : 1) * 0.03 * (k < 6 ? 1 : 0); if (++k > 6) clearInterval(iv); }, 70); } // 문 덜컹
+      return;
+    }
     enterStore();
     screens.forEach((scr) => scr.media[scr.idx]?.play?.().catch(() => {})); // 영상은 사용자 터치 후 재생 가능
   });
@@ -4645,7 +4652,7 @@ async function main() {
     $("walkBtn").hidden = false;
     const q = new URLSearchParams(location.search);
     if (!IS_ADMIN && !q.has("map")) startIntro(); // 손님: 가게 앞에서 시작
-    else if (q.has("walk")) setTimeout(enterWalk, 400);
+    else if (q.has("walk") && (IS_ADMIN || !isLockedNow())) setTimeout(enterWalk, 400);
     renderer.setAnimationLoop(tick);
   } else {
     buildTablesHeadless();
