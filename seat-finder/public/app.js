@@ -4768,7 +4768,7 @@ async function loadStats() {
 // ───────── 시작 ─────────
 async function main() {
   $("brand").textContent = `빈자리찾기 · ${LAYOUT.name}`;
-  if ($("boot")) $("boot").querySelector(".boot-name").textContent = (LAYOUT.front && LAYOUT.front.sign) || LAYOUT.name;
+  { const bn = $("boot")?.querySelector(".boot-name"); if (bn) bn.textContent = (LAYOUT.front && LAYOUT.front.sign) || LAYOUT.name; } // (로고 이미지를 쓰면 글자 없음)
   document.title = `빈자리찾기 · ${LAYOUT.name}`;
   if (IS_ADMIN) $("hint").textContent = "자리를 누르면 손님 있음 ↔ 빈자리";
 
