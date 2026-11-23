@@ -42,6 +42,14 @@ export class SeatStore extends DurableObject<Env> {
     return this.save(seats);
   }
 
+  async getBoard() {
+    return (await this.ctx.storage.get<unknown>("board")) ?? null;
+  }
+
+  async setBoard(board: unknown) {
+    await this.ctx.storage.put("board", board);
+  }
+
   async reset() {
     return this.save({});
   }
@@ -113,6 +121,11 @@ export default {
       return json(await store.snapshot());
     }
 
+    // 관리자 버튼판 배치 (누구나 읽기, 저장은 관리자)
+    if (url.pathname === "/api/board" && req.method === "GET") {
+      return json({ board: await store.getBoard() });
+    }
+
     // 손님 체류시간 기록 (로그인 없이, 숫자만 받음)
     if (url.pathname === "/api/visit" && req.method === "POST") {
       const b = (await req.json().catch(() => null)) as { sid?: unknown; ms?: unknown; ad?: unknown } | null;
@@ -131,6 +144,21 @@ export default {
 
       if (url.pathname === "/api/login") return json({ ok: true });
       if (url.pathname === "/api/reset") return json(await store.reset());
+      if (url.pathname === "/api/board") {
+        const b = (await req.json().catch(() => null)) as { board?: unknown } | null;
+        const raw = JSON.stringify(b?.board ?? null);
+        if (!b?.board || typeof b.board !== "object" || raw.length > 4000) return json({ error: "bad board" }, 400);
+        const num = (v: unknown, lo: number, hi: number, d: number) => (typeof v === "number" && Number.isFinite(v) ? Math.min(hi, Math.max(lo, v)) : d);
+        const src = b.board as { barQ?: unknown; tables?: Record<string, { dx?: unknown; dz?: unknown; s?: unknown }> };
+        const tables: Record<string, { dx: number; dz: number; s: number }> = {};
+        for (const [id, t] of Object.entries(src.tables ?? {})) {
+          if (!SEAT_ID.test(id) || Object.keys(tables).length >= 20) continue;
+          tables[id] = { dx: num(t?.dx, -10, 10, 0), dz: num(t?.dz, -10, 10, 0), s: num(t?.s, 0.5, 2.5, 1) };
+        }
+        const clean = { barQ: num(src.barQ, 0.5, 2, 1.12), tables };
+        await store.setBoard(clean);
+        return json({ ok: true, board: clean });
+      }
       if (url.pathname === "/api/stats") return json({ days: await store.stats([0, 1, 2, 3, 4, 5, 6].map(kstDay)) });
 
       const m = url.pathname.match(/^\/api\/seats\/([^/]+)$/);

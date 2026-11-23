@@ -78,9 +78,10 @@
   }
   .adminbar button.warn { background: var(--busy); }
   .adminbar button { white-space: nowrap; flex: none; padding: 8px 10px; }
-  .adminbar .stats { font-size: 11px; line-height: 1.3; min-width: 0; }
+  .adminbar { flex-wrap: wrap; justify-content: center; }
+  .adminbar .stats { font-size: 12px; line-height: 1.3; flex: 1 1 100%; text-align: center; }
   /* 관리자 자리 버튼판 */
-  .board { display: none; position: fixed; z-index: 4; left: 0; right: 0; top: calc(env(safe-area-inset-top) + 190px); bottom: calc(env(safe-area-inset-bottom) + 84px);
+  .board { display: none; position: fixed; z-index: 4; left: 0; right: 0; top: calc(env(safe-area-inset-top) + 190px); bottom: calc(env(safe-area-inset-bottom) + 112px);
     background: linear-gradient(170deg, var(--bg1) 0%, #fbe8d8 60%, var(--bg2) 100%); padding: 4px 10px; touch-action: manipulation; }
   body.admin:not(.view3d):not(.walking) .board { display: block; }
   body.admin:not(.view3d):not(.walking) .chips, body.admin:not(.view3d):not(.walking) #walkBtn, body.admin:not(.view3d):not(.walking) .hint { display: none !important; }
@@ -93,6 +94,18 @@
   .board .door { fill: none; stroke: #2fa877; stroke-width: 1.2; }
   .board .doorlabel { font: 700 3px sans-serif; fill: #2fa877; text-anchor: middle; }
   .board .bs { cursor: pointer; }
+  .bdtools { display: none; position: absolute; left: 8px; right: 8px; top: 2px; z-index: 2; gap: 6px; align-items: center; flex-wrap: wrap;
+    background: #3b2f2a; color: #fff; border-radius: 14px; padding: 6px 8px; font-size: 12px; font-weight: 700; }
+  body.boardedit .bdtools { display: flex; }
+  .bdtools span { flex: 1 1 100%; }
+  .bdtools button { border: 0; border-radius: 10px; padding: 7px 12px; font: inherit; font-size: 14px; background: rgba(255,255,255,.18); color: #fff; }
+  .bdtools button.ok { background: var(--empty); }
+  body.boardedit .board svg { padding-top: 70px; box-sizing: border-box; }
+  body.boardedit .board .tg { cursor: grab; }
+  body.boardedit .board .tg .tbl { stroke: #e8a37a; stroke-width: .9; stroke-dasharray: 1.5 1; }
+  .board .tg.sel .tbl, .board .tg.sel .ring { stroke: #3b2f2a; }
+  body.boardedit .board .tg, body.boardedit .board svg { touch-action: none; }
+  body.boardedit .adminbar #resetBtn, body.boardedit .adminbar #view3dBtn { display: none; }
   .board .bs .ring { fill: #fff; stroke: var(--empty); stroke-width: 1.1; transition: fill .2s; }
   .board .bs.occ .ring { fill: var(--busy); stroke: #c95a43; }
   .board .bs .ico { font: 800 4.4px sans-serif; text-anchor: middle; dominant-baseline: central; fill: var(--empty); pointer-events: none; }
@@ -265,7 +278,11 @@
   </header>
 
   <!-- 관리자 자리 버튼판 (기본 화면) -->
-  <div class="board" id="board"><svg id="boardSvg" viewBox="-8 -6 111 112" preserveAspectRatio="xMidYMid meet"></svg></div>
+  <div class="board" id="board">
+    <div class="bdtools"><span id="bdSel">테이블은 끌어서 옮기고, 누른 뒤 크기 조절</span>
+      <button type="button" id="bdMinus">−</button><button type="button" id="bdPlus">+</button>
+      <button type="button" id="bdReset">기본값</button><button type="button" id="bdCancel">취소</button><button type="button" class="ok" id="bdSave">저장</button></div>
+    <svg id="boardSvg" viewBox="-8 -6 111 112" preserveAspectRatio="xMidYMid meet"></svg></div>
 
   <footer class="bottom">
     <div class="hint" id="hint">손가락으로 돌려보고, 두 손가락으로 확대할 수 있어요</div>
@@ -276,6 +293,7 @@
     </button>
     <div class="adminbar">
       <span class="stats" id="stats" role="button" title="최근 7일 보기">관리자 · 자리를 눌러 바꾸기</span>
+      <button type="button" id="boardEditBtn">배치 편집</button>
       <button type="button" id="view3dBtn">3D 보기</button>
       <button type="button" class="warn" id="resetBtn">전체 비우기</button>
       <button type="button" id="logoutBtn">나가기</button>

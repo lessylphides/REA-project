@@ -3544,7 +3544,7 @@ $("loginForm").addEventListener("submit", async (e) => {
     store.set("seat-admin-token", token);
     $("login").classList.remove("show");
     document.body.classList.add("admin");
-    buildBoard();
+    loadBoard().then(() => buildBoard(true));
     loadStats();
     $("pw").value = "";
   } catch (err) {
@@ -3552,6 +3552,7 @@ $("loginForm").addEventListener("submit", async (e) => {
     $("loginErr").textContent = err.message;
   }
 });
+initBoardTools();
 $("view3dBtn")?.addEventListener("click", () => { // 버튼판 ↔ 3D 화면
   const on = document.body.classList.toggle("view3d");
   $("view3dBtn").textContent = on ? "버튼판" : "3D 보기";
@@ -4566,7 +4567,7 @@ async function main() {
   renderSummary();
   if (IS_ADMIN) {
     if (token) {
-      try { await api("/api/login"); document.body.classList.add("admin"); loadStats(); buildBoard(); }
+      try { await api("/api/login"); document.body.classList.add("admin"); loadStats(); await loadBoard(); buildBoard(); }
       catch (e) { showLogin(e.message); }
     } else showLogin();
   }
@@ -4602,85 +4603,160 @@ function along(pts, t) { // 선 위 t(0~1) 위치
   let d = t * L;
   for (let i = 0; i < seg.length; i++) { if (d <= seg[i] || i === seg.length - 1) { const k = Math.min(1, d / seg[i]); return [pts[i][0] + (pts[i + 1][0] - pts[i][0]) * k, pts[i][1] + (pts[i + 1][1] - pts[i][1]) * k, Math.atan2(pts[i + 1][1] - pts[i][1], pts[i + 1][0] - pts[i][0])]; } d -= seg[i]; }
 }
-const BOARD_TABLE_SHIFT = { T1: [0, -0.7] }; // 버튼판에서만 테이블 위치 조정
-const BOARD_BAR_SEATS = -0.25; // 바 자리 칸: 바를 따라 이어진 네모 칸 // 바 의자 버튼은 바 선에 바짝 // 버튼판: 바는 창가 쪽으로, 바 의자 버튼은 바 앞으로 고르게
+// 버튼판 배치 (관리자가 [배치 편집]으로 조정, 서버에 저장): 바 칸 크기, 테이블별 위치(m)·크기 배율
+const BOARD_DEFAULT = { barQ: 1.12, tables: { T1: { dx: 0, dz: -1.25, s: 1 }, T2: { dx: -0.55, dz: 0, s: 1 } } };
+let boardCfg = JSON.parse(JSON.stringify(BOARD_DEFAULT));
+const tcfg = (id) => (boardCfg.tables[id] ||= { dx: 0, dz: 0, s: 1 });
+const BOARD_BAR_SEATS = -0.25; // 바 자리 칸이 놓이는 선 (바 손님 쪽 가장자리 기준)
 function seatBoardPos() {
   const out = new Map(), S = 10;
   const tables = LAYOUT.tables || [];
-  for (const b of LAYOUT.bars || []) { // 바 의자: 손님 쪽 평행선 위에 고른 간격으로
+  for (const b of LAYOUT.bars || []) {
     const line = offsetPath(b.path, BOARD_BAR_SEATS);
-    // 꺾인 구간마다 칸을 나눠 놓음 (모서리에서 서로 겹치지 않게): 각 구간 칸 수
-    const Qm = 1.12, groups = b.boardGroups || [3, 3, 2], clear = Qm * 0.32;
-    let n = 0;
+    const groups = b.boardGroups || [2, 4, 2]; // 실제 의자 위치대로: 세로 2 / 대각선 4 / 가로 2
+    const Qm = boardCfg.barQ;
+    const corners = (cx, cz, a) => { const c = Math.cos(a), s2 = Math.sin(a), h = Qm / 2; return [[-h, -h], [h, -h], [h, h], [-h, h]].map(([x, z]) => [cx + x * c - z * s2, cz + x * s2 + z * c]); };
+    const overlap = (A, B) => { for (const P of [A, B]) for (let i = 0; i < 4; i++) { const [x1, z1] = P[i], [x2, z2] = P[(i + 1) % 4], nx = z2 - z1, nz = x1 - x2;
+      const pa = A.map(([x, z]) => x * nx + z * nz), pb = B.map(([x, z]) => x * nx + z * nz);
+      if (Math.max(...pa) <= Math.min(...pb) + 1e-4 || Math.max(...pb) <= Math.min(...pa) + 1e-4) return false; } return true; };
+    let n = 0, pc = null; const placed = [];
     groups.forEach((cnt, gi) => {
       const A = line[gi], B = line[gi + 1]; if (!B) return;
-      const L = Math.hypot(B[0] - A[0], B[1] - A[1]), ux = (B[0] - A[0]) / L, uz = (B[1] - A[1]) / L, deg = THREE.MathUtils.radToDeg(Math.atan2(uz, ux));
-      const first = gi === 0, last = gi === groups.length - 1;
-      // 첫 구간은 모서리 쪽(끝)에 붙이고, 마지막 구간은 모서리 쪽(시작)에 붙이고, 가운데 구간은 가운데에
-      let s0 = first ? L - clear - cnt * Qm : last ? clear : (L - cnt * Qm) / 2;
+      const L = Math.hypot(B[0] - A[0], B[1] - A[1]), ux = (B[0] - A[0]) / L, uz = (B[1] - A[1]) / L, ang = Math.atan2(uz, ux);
+      let t0;
+      if (gi === 0) t0 = L - Qm * (cnt - 0.5); // 첫 구간: 모서리에서 거꾸로
+      else { // 다음 구간: 앞 칸과 모서리가 맞닿는(겹치지 않는) 첫 자리
+        t0 = (pc[0] - A[0]) * ux + (pc[1] - A[1]) * uz;
+        while (t0 < L + 4 && placed.some((P) => overlap(P, corners(A[0] + ux * t0, A[1] + uz * t0, ang)))) t0 += 0.01;
+      }
       for (let k = 0; k < cnt && n < b.seats; k++, n++) {
-        const d = s0 + Qm * (k + 0.5);
-        out.set(`${b.id}-${n + 1}`, [(A[0] + ux * d) * S, (A[1] + uz * d) * S, deg, Qm * S]);
+        const d = t0 + Qm * k, x = A[0] + ux * d, z = A[1] + uz * d;
+        out.set(`${b.id}-${n + 1}`, [x * S, z * S, THREE.MathUtils.radToDeg(ang), Qm * S]);
+        pc = [x, z]; placed.push(corners(x, z, ang));
       }
     });
-    const lastSeg = line[line.length - 1];
-    (b.extraSeats || []).forEach(([x], k) => out.set(`${b.id}-${b.seats + k + 1}`, [x * S, (lastSeg[1] + Qm / 2 + 0.2 + 0.55) * S, 0, 11])); // 바 너머 자리: 7·8번 아래로 띄워서 // 바 너머 자리는 바 선 아래로
+    // 바 너머 자리: 마지막 칸들 아래로, 겹치지 않게
+    (b.extraSeats || []).forEach(([x], k) => {
+      let z = pc[1] + Qm;
+      while (z < R.d + 2 && placed.some((P) => overlap(P, corners(x, z, 0)))) z += 0.01;
+      out.set(`${b.id}-${b.seats + k + 1}`, [x * S, (z + 0.06) * S, 0, Qm * S]);
+    });
   }
   for (const s of seats.values()) {
     const p = s.group?.position;
     if (!p || out.has(s.id)) continue;
-    let x = p.x, z = p.z;
+    let x = p.x, z = p.z, Q = 12;
     const t = tables.find((t) => s.id.startsWith(t.id + "-"));
-    const sh = (t && BOARD_TABLE_SHIFT[t.id]) || [0, 0];
-    if (t) { // 테이블 의자: 테이블 가장자리에 바짝 붙여 둘레에
-      const dx = x - t.x, dz = z - t.z, l = Math.hypot(dx, dz) || 1;
-      const ex = (t.w / 2) * Math.abs(dx / l), ez = (t.d / 2) * Math.abs(dz / l); // 테이블 가장자리까지 거리(대략)
-      const r = Math.hypot(ex, ez) + 0.6 + 0.12; // 칸 반폭(0.6m) + 테이블과 간격 12cm
-      x = t.x + sh[0] + (dx / l) * r; z = t.z + sh[1] + (dz / l) * r;
+    if (t) { // 테이블 의자: 테이블 가장자리 둘레에 (테이블 크기 배율·위치 반영)
+      const c = tcfg(t.id), k = c.s, dx = x - t.x, dz = z - t.z, l = Math.hypot(dx, dz) || 1;
+      const ex = (t.w * k / 2) * Math.abs(dx / l), ez = (t.d * k / 2) * Math.abs(dz / l);
+      Q = 12 * k;
+      const r = Math.hypot(ex, ez) + Q / 20 + 0.12;
+      x = t.x + c.dx + (dx / l) * r; z = t.z + c.dz + (dz / l) * r;
     }
-    out.set(s.id, [x * S, z * S, 0, 12]);
+    out.set(s.id, [x * S, z * S, 0, Q]);
   }
   return out;
 }
-function buildBoard() {
+let boardEdit = false, boardSel = null, boardBackup = null;
+function buildBoard(force) {
   const svg = $("boardSvg");
-  if (!svg || svg.dataset.built) return;
+  if (!svg || (svg.dataset.built && !force)) return;
+  const first = !svg.dataset.built;
   svg.dataset.built = "1";
+  while (svg.firstChild) svg.removeChild(svg.firstChild);
+  boardEls.clear();
   const S = 10, NS = "http://www.w3.org/2000/svg";
   const el = (tag, attrs, parent = svg, text) => { const e = document.createElementNS(NS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); if (text != null) e.textContent = text; parent.appendChild(e); return e; };
   el("polygon", { class: "room", points: R.outline.map(([x, z]) => `${x * S},${z * S}`).join(" ") });
   const d = LAYOUT.door; if (d) { el("line", { class: "door", x1: (d.x - d.w / 2) * S, y1: R.d * S, x2: (d.x + d.w / 2) * S, y2: R.d * S }); el("text", { class: "doorlabel", x: d.x * S, y: R.d * S + 4 }, svg, "입구"); }
   const groupTap = (ids) => {
+    if (boardEdit) return;
     const eff = (id) => (pending.has(id) ? pending.get(id).target : seats.get(id).occupied);
-    const target = ids.some((id) => !eff(id)); // 한 자리라도 비었으면 모두 채우기, 다 차 있으면 모두 비우기
+    const target = ids.some((id) => !eff(id));
     for (const id of ids) if (eff(id) !== target) boardTap(id);
   };
   for (const b of LAYOUT.bars || []) {
-    const bl = offsetPath(b.path, BOARD_BAR_SEATS - 1.0); // (바 선은 그리지 않음) 이름표 자리만
-    const m = bl[1];
+    const m = offsetPath(b.path, BOARD_BAR_SEATS - 1.0)[1];
     const t = el("text", { class: "tlabel dark", x: m[0] * S - 2.5, y: m[1] * S - 8 }, svg, b.id);
-    t.addEventListener("click", () => groupTap(tableGroups.find((g) => g.id === b.id)?.seatIds || []));
+    t.addEventListener("click", () => (boardEdit ? selectBoard("BAR") : groupTap(tableGroups.find((g) => g.id === b.id)?.seatIds || [])));
   }
+  const tgroups = new Map();
   for (const t0 of LAYOUT.tables || []) {
-    const sh = BOARD_TABLE_SHIFT[t0.id] || [0, 0], t = { ...t0, x: t0.x + sh[0], z: t0.z + sh[1] };
-    if (t.shape === "rect" || t.type === "rect") el("rect", { class: "tbl", x: (t.x - t.w / 2) * S, y: (t.z - t.d / 2) * S, width: t.w * S, height: t.d * S, rx: 1 });
-    else el("ellipse", { class: "tbl", cx: t.x * S, cy: t.z * S, rx: (t.w / 2) * S, ry: (t.d / 2) * S });
-    const lb = el("text", { class: "tlabel", x: t.x * S, y: t.z * S }, svg, t.id);
-    lb.addEventListener("click", () => groupTap(tableGroups.find((g) => g.id === t.id)?.seatIds || []));
+    const c = tcfg(t0.id), t = { ...t0, x: t0.x + c.dx, z: t0.z + c.dz, w: t0.w * c.s, d: t0.d * c.s };
+    const tg = el("g", { class: "tg" + (boardSel === t0.id ? " sel" : "") });
+    tgroups.set(t0.id, tg);
+    if (t.shape === "rect" || t.type === "rect") el("rect", { class: "tbl", x: (t.x - t.w / 2) * S, y: (t.z - t.d / 2) * S, width: t.w * S, height: t.d * S, rx: 1 }, tg);
+    else el("ellipse", { class: "tbl", cx: t.x * S, cy: t.z * S, rx: (t.w / 2) * S, ry: (t.d / 2) * S }, tg);
+    const lb = el("text", { class: "tlabel", x: t.x * S, y: t.z * S }, tg, t0.id);
+    lb.addEventListener("click", () => groupTap(tableGroups.find((g) => g.id === t0.id)?.seatIds || []));
+    // 편집: 끌어서 옮기기
+    tg.addEventListener("pointerdown", (e) => {
+      if (!boardEdit) return;
+      e.preventDefault(); boardSel = t0.id; $("bdSel").textContent = `${t0.id} 크기 (끌어서 옮기기)`;
+      const g2 = tgroups.get(t0.id);
+      const inv = svg.getScreenCTM().inverse(), pt = svg.createSVGPoint();
+      const toSvg = (ev) => { pt.x = ev.clientX; pt.y = ev.clientY; return pt.matrixTransform(inv); };
+      const p0 = toSvg(e); let dx = 0, dy = 0;
+      const mv = (ev) => { const p1 = toSvg(ev); dx = p1.x - p0.x; dy = p1.y - p0.y; g2.setAttribute("transform", `translate(${dx},${dy})`); };
+      const up = () => { removeEventListener("pointermove", mv); removeEventListener("pointerup", up); removeEventListener("pointercancel", up);
+        if (Math.hypot(dx, dy) > 0.5) { tcfg(t0.id).dx += dx / S; tcfg(t0.id).dz += dy / S; }
+        buildBoard(true); };
+      addEventListener("pointermove", mv); addEventListener("pointerup", up); addEventListener("pointercancel", up);
+    });
   }
   for (const [id, [x, y, rot = 0, Q = 12]] of seatBoardPos()) {
-    const g = el("g", { class: "bs", transform: `translate(${x},${y})` });
+    const tid = id.replace(/-\d+$/, "");
+    const g = el("g", { class: "bs", transform: `translate(${x},${y})` }, tgroups.get(tid) || svg);
     el("rect", { class: "ring", x: -Q / 2, y: -Q / 2, width: Q, height: Q, rx: 1.8, transform: `rotate(${rot})` }, g);
     el("rect", { class: "timer", x: -Q / 2 - 0.5, y: -Q / 2 - 0.5, width: Q + 1, height: Q + 1, rx: 2.2, pathLength: 32, transform: `rotate(${rot})` }, g);
     const ico = el("text", { class: "ico", y: 0 }, g, "");
-    const mins = el("text", { class: "mins", y: 3 }, g, ""); // 앉은 시간 (원 안 아래)
-    g.addEventListener("click", () => boardTap(id));
+    const mins = el("text", { class: "mins", y: 3 }, g, "");
+    g.addEventListener("click", () => { if (boardEdit) { if (!tgroups.has(tid)) selectBoard("BAR"); return; } boardTap(id); });
     boardEls.set(id, { g, ico, mins });
   }
   renderBoard();
-  setInterval(renderBoard, 30000); // 앉은 시간 갱신
+  if (first) setInterval(renderBoard, 30000); // 앉은 시간 갱신
+}
+function selectBoard(id) {
+  boardSel = id;
+  $("bdSel").textContent = id === "BAR" ? "바 칸 크기" : `${id} 크기`;
+  for (const g of document.querySelectorAll("#boardSvg .tg")) g.classList.remove("sel");
+  buildBoard(true);
+}
+function resizeBoard(dir) {
+  if (!boardSel) return toast("크기를 바꿀 테이블이나 바를 먼저 눌러 주세요");
+  if (boardSel === "BAR") boardCfg.barQ = THREE.MathUtils.clamp(+(boardCfg.barQ + dir * 0.06).toFixed(2), 0.7, 1.8);
+  else { const c = tcfg(boardSel); c.s = THREE.MathUtils.clamp(+(c.s + dir * 0.08).toFixed(2), 0.6, 2); }
+  buildBoard(true);
+}
+function setBoardEdit(on) {
+  boardEdit = on;
+  document.body.classList.toggle("boardedit", on);
+  $("boardEditBtn").textContent = on ? "편집 중" : "배치 편집";
+  if (on) { boardBackup = JSON.stringify(boardCfg); boardSel = null; $("bdSel").textContent = "테이블은 끌어서 옮기고, 누른 뒤 크기 조절"; }
+  buildBoard(true);
+}
+async function loadBoard() {
+  try {
+    const r = await fetch("/api/board", { cache: "no-store" });
+    const j = r.ok ? await r.json() : null;
+    if (j?.board) boardCfg = { ...JSON.parse(JSON.stringify(BOARD_DEFAULT)), ...j.board, tables: { ...BOARD_DEFAULT.tables, ...(j.board.tables || {}) } };
+  } catch { /* 기본값 */ }
+}
+function initBoardTools() {
+  $("boardEditBtn")?.addEventListener("click", () => setBoardEdit(!boardEdit));
+  $("bdMinus")?.addEventListener("click", () => resizeBoard(-1));
+  $("bdPlus")?.addEventListener("click", () => resizeBoard(1));
+  $("bdReset")?.addEventListener("click", () => { boardCfg = JSON.parse(JSON.stringify(BOARD_DEFAULT)); buildBoard(true); });
+  $("bdCancel")?.addEventListener("click", () => { boardCfg = JSON.parse(boardBackup); setBoardEdit(false); });
+  $("bdSave")?.addEventListener("click", async () => {
+    try { await api("/api/board", { board: boardCfg }); toast("배치를 저장했어요"); setBoardEdit(false); }
+    catch (e) { toast(`저장 실패: ${e.message}`); }
+  });
 }
 function boardTap(id) {
+  if (boardEdit) return;
   const s = seats.get(id);
   if (!s) return;
   const pnd = pending.get(id);
