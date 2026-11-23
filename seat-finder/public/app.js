@@ -4275,6 +4275,7 @@ function exitWalk() {
   walk.on = false;
   if (walk.chair) { walk.chair.g.position.x = walk.chair.x; walk.chair.g.position.z = walk.chair.z; walk.chair = null; }
   walk.sit = null; walk.crouch = false; walk.back = null; walk.jumpY = walk.vy = 0; walk.eye = EYE; updateActBtns();
+  if (myLegs) myLegs.g.visible = false;
   walk.look = null;
   walk.keys.clear();
   setAim(null);
@@ -4340,6 +4341,7 @@ function updateWalk(dt, time) {
   const moving = Math.min(1, Math.hypot(f, r));
   walk.bob += dt * 9 * moving;
   camera.position.set(walk.pos.x, walk.eye + walk.jumpY + Math.sin(walk.bob) * 0.025 * moving * (walk.jumpY > 0 ? 0 : 1), walk.pos.z);
+  updateMyLegs();
   camera.rotation.set(walk.pitch, walk.yaw, Math.sin(walk.bob * 0.5) * 0.004 * moving);
   if (shakeT > 0) { shakeT -= dt; camera.position.x += (Math.random() - 0.5) * 0.03; camera.position.y += (Math.random() - 0.5) * 0.03; } // 보틀 떨어질 때 살짝
 
@@ -4348,7 +4350,7 @@ function updateWalk(dt, time) {
     ray.far = 2.5; // 가까이(약 2.5m)에서 의자를 똑바로 볼 때만 안내
     const hit = ray.intersectObjects([...aimBoxes, ...aimBlockers], false)[0]; // 앞에 물건이 있으면 그 뒤 의자는 조준 안 됨
     ray.far = Infinity;
-    setAim(hit?.object.userData.seatId || null);
+    setAim(walk.sit ? null : hit?.object.userData.seatId || null); // 앉아 있을 땐 자리 안내 끄기
     updateActBtns();
     drawMinimap();
     // 가까이 가면 손님이 손 흔들어 줌
@@ -4396,6 +4398,38 @@ function toggleSit() {
     walk.crouch = true;
   }
   updateActBtns();
+}
+// ───────── 앉았을 때 보이는 내 다리 (허벅지·무릎·정강이·신발) ─────────
+let myLegs = null;
+function buildMyLegs() {
+  const g = new THREE.Group(); g.visible = false; scene.add(g);
+  const pants = toon("#4a4f5e", { unique: true }), shoe = toon("#2a2522", { unique: true });
+  const parts = [];
+  for (const sx of [-0.12, 0.12]) {
+    const thigh = mk(new THREE.CapsuleGeometry(0.055, 0.34, 6, 12), pants, [sx, 0, -0.24], g, { outline: 0.006, shadow: false });
+    thigh.rotation.x = Math.PI / 2;
+    const shin = mk(new THREE.CapsuleGeometry(0.048, 1, 6, 12), pants, [sx, 0, -0.44], g, { outline: 0.006, shadow: false });
+    const foot = mk(box(0.1, 0.07, 0.23), shoe, [sx, 0, -0.5], g, { outline: 0.006, shadow: false });
+    parts.push({ thigh, shin, foot });
+  }
+  myLegs = { g, parts, pants };
+}
+const PANTS_FOR_COAT = ["#5b4a3a", "#3c4350", "#2e3340"]; // 내 옷(코트/점퍼/패딩)에 어울리는 바지 색
+function updateMyLegs() {
+  if (!myLegs) buildMyLegs();
+  const s = walk.sit && seats.get(walk.sit);
+  myLegs.g.visible = !!s;
+  if (!s) return;
+  const seatY = s.seatY ?? 0.7, hip = seatY + 0.06, bar = s.id.startsWith("BAR") || seatY > 0.6;
+  const footY = bar ? 0.3 : 0.04; // 바 의자는 발걸이, 테이블 의자는 바닥
+  myLegs.g.position.set(walk.pos.x, 0, walk.pos.z);
+  myLegs.g.rotation.y = walk.yaw;
+  if (myCoat >= 0) myLegs.pants.color.set(PANTS_FOR_COAT[myCoat % 3]);
+  for (const { thigh, shin, foot } of myLegs.parts) {
+    thigh.position.y = hip;
+    const len = hip - footY; shin.scale.set(1, Math.max(0.2, (len - 0.12) / 1.0), 1); shin.position.y = footY + len / 2 + 0.03; shin.position.z = bar ? -0.44 : -0.48;
+    foot.position.y = footY + 0.035; foot.position.z = bar ? -0.5 : -0.56;
+  }
 }
 function standUp() {
   clearWater();
