@@ -14,6 +14,8 @@ export default {
   style: "line",
 
   name: "DIVE HIDE AWAY",
+  // 영업시간 (한국시간): 영업 중엔 5초마다 빈자리 확인, 그 밖엔 화면을 열 때만. 자정 넘김 가능 (예: 18:00 ~ 02:00)
+  // hours: { open: "18:00", close: "02:00" },
   model: null, // 예: "/models/store.glb"
 
   // 가게 앞 모습 (첫 화면) — 입구 사진 참고

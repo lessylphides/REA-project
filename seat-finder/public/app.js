@@ -8,7 +8,7 @@ document.addEventListener("dblclick", (e) => e.preventDefault(), { passive: fals
 { let lastEnd = 0; document.addEventListener("touchend", (e) => { const now = Date.now(); if (now - lastEnd < 320 && !e.target.closest?.("input, textarea")) e.preventDefault(); lastEnd = now; }, { passive: false }); }
 
 // ───────── 기본 설정 ─────────
-const POLL_MS = 3000;
+const POLL_MS = 5000; // 영업시간 중 빈자리 확인 간격
 const IS_ADMIN = location.pathname === "/admin" || decodeURIComponent(location.pathname) === "/관리자";
 const COLOR = { empty: "#2fa877", busy: "#ee7a62", outline: "#4a3a31", wood: "#b98a63", woodDark: "#8f6447" };
 const $ = (id) => document.getElementById(id);
@@ -3476,10 +3476,19 @@ async function poll() {
 }
 
 let pollTimer;
+/** 영업시간인지 (한국시간, layout.hours = { open: "18:00", close: "02:00" }, 자정 넘김 가능) */
+function isOpenNow() {
+  const h = LAYOUT.hours; if (!h) return true;
+  const kst = new Date(Date.now() + 9 * 3600e3), m = kst.getUTCHours() * 60 + kst.getUTCMinutes();
+  const t = (s) => { const [a, b] = s.split(":").map(Number); return a * 60 + (b || 0); };
+  const o = t(h.open), c = t(h.close);
+  return o <= c ? m >= o && m < c : m >= o || m < c;
+}
+// 빈자리 확인: 영업시간엔 화면을 보는 동안 5초마다, 영업시간이 아니면 화면을 열거나 다시 볼 때만 (서버 요청 아끼기)
 function startPolling() {
   clearInterval(pollTimer);
   poll();
-  pollTimer = setInterval(() => { if (!document.hidden) poll(); }, POLL_MS);
+  pollTimer = setInterval(() => { if (!document.hidden && (IS_ADMIN || isOpenNow())) poll(); }, POLL_MS);
 }
 document.addEventListener("visibilitychange", () => { if (!document.hidden) poll(); });
 setInterval(renderUpdated, 1000);
