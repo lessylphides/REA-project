@@ -3833,7 +3833,7 @@ function tapScreen(scr) {
   if (sl.link) {
     visit.ad++;
     sendVisit(true);
-    window.open(sl.link, "_blank", "noopener");
+    if (/^https?:\/\//i.test(String(sl.link))) window.open(sl.link, "_blank", "noopener,noreferrer"); // http(s) 주소만
   } else nextSlide(scr);
 }
 

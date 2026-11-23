@@ -56,12 +56,31 @@ export class SeatStore extends DurableObject<Env> {
     await this.ctx.storage.put(asDefault ? { board, boardDefault: board } : { board });
   }
 
+  /** 비밀번호 틀림 횟수 (IP별). blocked = 지금 막혀 있는지 */
+  async loginGate(ip: string, failed?: boolean) {
+    const key = `lf:${ip}`, now = Date.now();
+    let r = (await this.ctx.storage.get<{ n: number; t: number }>(key)) ?? { n: 0, t: now };
+    if (now - r.t > LOGIN_WINDOW_MS) r = { n: 0, t: now };
+    if (failed === true) { r.n++; await this.ctx.storage.put(key, r); }
+    else if (failed === false && r.n) await this.ctx.storage.delete(key);
+    return r.n >= LOGIN_MAX_FAILS;
+  }
+
+  /** 예전 테스트 방문 기록 지우기 (STATS_SINCE 이전) */
+  async purgeOldVisits() {
+    const all = await this.ctx.storage.list({ prefix: "v:" });
+    const old = [...all.keys()].filter((k) => k.slice(2) < STATS_SINCE);
+    if (old.length) await this.ctx.storage.delete(old);
+    return old.length;
+  }
+
   async reset() {
     return this.save({});
   }
 
   /** 손님 방문 기록: 하루(한국시간)마다 방문 id → [머문 시간 ms, 광고 클릭 수] */
   async recordVisit(day: string, sid: string, ms: number, ad: number) {
+    if (day < STATS_SINCE) return;
     const key = `v:${day}`;
     const m = (await this.ctx.storage.get<Record<string, [number, number]>>(key)) ?? {};
     if (!m[sid] && Object.keys(m).length >= MAX_VISITS_PER_DAY) return;
@@ -73,6 +92,7 @@ export class SeatStore extends DurableObject<Env> {
   async stats(days: string[]) {
     const out = [];
     for (const day of days) {
+      if (day < STATS_SINCE) { out.push({ day, visits: 0, avgMs: 0, adTaps: 0 }); continue; }
       const m = (await this.ctx.storage.get<Record<string, [number, number]>>(`v:${day}`)) ?? {};
       const v = Object.values(m);
       const total = v.reduce((a, [ms]) => a + ms, 0);
@@ -83,12 +103,24 @@ export class SeatStore extends DurableObject<Env> {
 }
 
 const MAX_VISITS_PER_DAY = 3000;
+/** 방문 통계는 이 날짜(한국시간) 0시부터 셈 — 개발·테스트 중 방문은 제외 */
+const STATS_SINCE = "2026-11-24";
+/** 관리자 비밀번호 틀림 제한: IP 하나당 15분에 10번 */
+const LOGIN_MAX_FAILS = 10, LOGIN_WINDOW_MS = 15 * 60e3;
 const kstDay = (offsetDays = 0) => new Date(Date.now() + 9 * 3600e3 - offsetDays * 86400e3).toISOString().slice(0, 10);
+
+const SEC_HEADERS: Record<string, string> = {
+  "x-content-type-options": "nosniff",
+  "referrer-policy": "strict-origin-when-cross-origin",
+  "permissions-policy": "camera=(), microphone=(), geolocation=()",
+};
+// 화면(HTML): 같은 사이트의 스크립트만, 다른 사이트에 끼워 넣기(iframe) 금지
+const CSP = "default-src 'self'; script-src 'self' 'sha256-x1TAhLj6rKB/Bc8IgFvrpLhJuvFs40ISRM3iiU77Ty4='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; media-src 'self' https: blob:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'";
 
 const json = (data: unknown, status = 200) =>
   new Response(JSON.stringify(data), {
     status,
-    headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" },
+    headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", ...SEC_HEADERS },
   });
 
 function timingSafeEqual(a: string, b: string) {
@@ -107,7 +139,9 @@ function isAdmin(req: Request, env: Env) {
 function serveAsset(req: Request, path: string): Response {
   const f = ASSETS[path];
   if (!f || (req.method !== "GET" && req.method !== "HEAD")) return new Response("Not found", { status: 404 });
-  const headers = {
+  const headers: Record<string, string> = {
+    ...SEC_HEADERS,
+    ...(f.type.startsWith("text/html") ? { "content-security-policy": CSP, "x-frame-options": "DENY" } : {}),
     "content-type": f.type,
     etag: f.etag,
     // 화면 파일은 매번 확인(수정 즉시 반영), three.js 라이브러리는 오래 캐시
@@ -155,6 +189,7 @@ export default {
 
     // 손님 체류시간 기록 (로그인 없이, 숫자만 받음)
     if (url.pathname === "/api/visit" && req.method === "POST") {
+      if (Number(req.headers.get("content-length") || 0) > 1024) return json({ error: "too large" }, 413);
       const b = (await req.json().catch(() => null)) as { sid?: unknown; ms?: unknown; ad?: unknown } | null;
       const sid = typeof b?.sid === "string" && /^[a-z0-9]{6,32}$/.test(b.sid) ? b.sid : null;
       const ms = typeof b?.ms === "number" && Number.isFinite(b.ms) ? Math.min(Math.max(0, Math.round(b.ms)), 3 * 3600e3) : null;
@@ -166,11 +201,16 @@ export default {
 
     if (url.pathname.startsWith("/api/")) {
       if (req.method !== "POST") return json({ error: "method" }, 405);
-      if (!env.ADMIN_TOKEN) return json({ error: "ADMIN_TOKEN 이 설정되지 않았습니다" }, 500);
-      if (!isAdmin(req, env)) return json({ error: "관리자 비밀번호가 틀렸습니다" }, 401);
+      if (!env.ADMIN_TOKEN) return json({ error: "관리자 설정이 필요합니다" }, 500);
+      if (Number(req.headers.get("content-length") || 0) > 16384) return json({ error: "too large" }, 413);
+      const ip = req.headers.get("cf-connecting-ip") || "unknown";
+      if (await store.loginGate(ip)) return json({ error: "비밀번호를 여러 번 틀렸어요. 15분 뒤에 다시 시도해 주세요" }, 429);
+      if (!isAdmin(req, env)) { await store.loginGate(ip, true); return json({ error: "관리자 비밀번호가 틀렸습니다" }, 401); }
+      if (url.pathname === "/api/login") await store.loginGate(ip, false);
 
       if (url.pathname === "/api/login") return json({ ok: true });
       if (url.pathname === "/api/reset") return json(await store.reset());
+      if (url.pathname === "/api/purge-visits") return json({ removed: await store.purgeOldVisits() });
       if (url.pathname === "/api/board") {
         const b = (await req.json().catch(() => null)) as { board?: unknown; asDefault?: unknown } | null;
         const raw = JSON.stringify(b?.board ?? null);
