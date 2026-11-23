@@ -3752,7 +3752,7 @@ function throwBottle(b) {
   const u = b.userData, held = u.bottle;
   if (!held) return;
   u.thrown = true; u.lookT = 4;
-  popBubble("그만 좀 눌러요! 😤", b.position.x, 2.05, b.position.z, { fg: "#c0533f", follow: b });
+  popBubble("그만 좀 눌러요! 😤", b.position.x, 2.05, b.position.z, { fg: "#c0533f", follow: b, scale: 0.7 });
   const p0 = new THREE.Vector3(); held.getWorldPosition(p0);
   held.visible = false;
   const fly = held.clone(); fly.visible = true;
