@@ -3579,8 +3579,8 @@ function interact(ev) {
   if (!hit) return;
   const u = hit.object.userData;
   if (u.kind === "screen") tapScreen(u.scr);
-  else if (u.kind === "prop") { // 걸어 다닐 땐 1m 안(가장 가까운 면 기준)의 소품만
-    if (walk.on && Math.hypot(hit.point.x - walk.pos.x, hit.point.z - walk.pos.z) > 1.0) return;
+  else if (u.kind === "prop") { // 걸어 다닐 땐 1.5m 안(가장 가까운 면 기준)의 소품만
+    if (walk.on && Math.hypot(hit.point.x - walk.pos.x, hit.point.z - walk.pos.z) > 1.5) return;
     tapProp(u);
   }
   else if (u.seatId) tapSeat(seats.get(u.seatId));
