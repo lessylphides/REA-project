@@ -103,7 +103,8 @@
   body.boardedit .board svg { padding-top: 70px; box-sizing: border-box; }
   body.boardedit .board .tg { cursor: grab; }
   body.boardedit .board .tg .tbl { stroke: #e8a37a; stroke-width: .9; stroke-dasharray: 1.5 1; }
-  .board .tg.sel .tbl, .board .tg.sel .ring { stroke: #3b2f2a; }
+  .board .tg.sel .tbl, .board .tg.sel .ring, .board .bs.sel .ring { stroke: #3b2f2a; stroke-width: 1.4; }
+  body.boardedit .board .bs { cursor: grab; }
   body.boardedit .board .tg, body.boardedit .board svg { touch-action: none; }
   body.boardedit .adminbar #resetBtn, body.boardedit .adminbar #view3dBtn { display: none; }
   .board .bs .ring { fill: #fff; stroke: var(--empty); stroke-width: 1.1; transition: fill .2s; }
@@ -279,7 +280,7 @@
 
   <!-- 관리자 자리 버튼판 (기본 화면) -->
   <div class="board" id="board">
-    <div class="bdtools"><span id="bdSel">테이블은 끌어서 옮기고, 누른 뒤 크기·회전 조절</span>
+    <div class="bdtools"><span id="bdSel">테이블·바 의자 칸을 끌어서 옮기기 · 바 의자 칸은 눌러서 ⟲⟳ 회전</span>
       <button type="button" id="bdMinus">−</button><button type="button" id="bdPlus">+</button><button type="button" id="bdRotL">⟲</button><button type="button" id="bdRotR">⟳</button>
       <button type="button" id="bdReset">기본값</button><button type="button" id="bdCancel">취소</button><button type="button" class="ok" id="bdSave">저장</button></div>
     <svg id="boardSvg" viewBox="-8 -6 111 112" preserveAspectRatio="xMidYMid meet"></svg></div>

@@ -147,15 +147,20 @@ export default {
       if (url.pathname === "/api/board") {
         const b = (await req.json().catch(() => null)) as { board?: unknown } | null;
         const raw = JSON.stringify(b?.board ?? null);
-        if (!b?.board || typeof b.board !== "object" || raw.length > 4000) return json({ error: "bad board" }, 400);
+        if (!b?.board || typeof b.board !== "object" || raw.length > 8000) return json({ error: "bad board" }, 400);
         const num = (v: unknown, lo: number, hi: number, d: number) => (typeof v === "number" && Number.isFinite(v) ? Math.min(hi, Math.max(lo, v)) : d);
-        const src = b.board as { barQ?: unknown; tables?: Record<string, { dx?: unknown; dz?: unknown; s?: unknown; r?: unknown }> };
+        const src = b.board as { barQ?: unknown; seats?: Record<string, { dx?: unknown; dz?: unknown; r?: unknown }>; tables?: Record<string, { dx?: unknown; dz?: unknown; s?: unknown; r?: unknown }> };
         const tables: Record<string, { dx: number; dz: number; s: number; r: number }> = {};
         for (const [id, t] of Object.entries(src.tables ?? {})) {
           if (!SEAT_ID.test(id) || Object.keys(tables).length >= 20) continue;
           tables[id] = { dx: num(t?.dx, -10, 10, 0), dz: num(t?.dz, -10, 10, 0), s: num(t?.s, 0.5, 2.5, 1), r: num(t?.r, 0, 360, 0) };
         }
-        const clean = { barQ: num(src.barQ, 0.5, 2, 1.12), tables };
+        const seats: Record<string, { dx: number; dz: number; r: number }> = {};
+        for (const [id, t] of Object.entries(src.seats ?? {})) {
+          if (!SEAT_ID.test(id) || Object.keys(seats).length >= 60) continue;
+          seats[id] = { dx: num(t?.dx, -10, 10, 0), dz: num(t?.dz, -10, 10, 0), r: num(t?.r, 0, 360, 0) };
+        }
+        const clean = { barQ: num(src.barQ, 0.5, 2, 1.12), seats, tables };
         await store.setBoard(clean);
         return json({ ok: true, board: clean });
       }
