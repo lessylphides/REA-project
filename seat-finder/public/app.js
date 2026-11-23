@@ -3700,6 +3700,7 @@ function tapProp(u) {
       return;
     }
     line = BT_LINES[Math.min(bu.tapN, BT_LINES.length) - 1];
+    if (bu.sadNext && !isOpenNow()) { bu.sadNext = false; line = "ㅠㅜ"; }
   }
   u.wiggle = 1;
   u.onTap?.();
@@ -4002,6 +4003,16 @@ function pathAt(u, s) {
     d -= u.seg[i];
   }
 }
+/** 영업시간이 아닐 때 들어오면: 바텐더가 입구 쪽으로 걸어와 안내 */
+function closedGreeting() {
+  if (isOpenNow() || !storeInfo?.hours) return;
+  const H = storeInfo.hours, { day } = kstNow();
+  const msg = H[day]?.closed ? "오늘은 휴무일이에요" : "아직 영업시간 전입니다";
+  for (const b of bartenders) {
+    const u = b.userData; if (!u.path) continue;
+    u.greet = msg; u.target = u.L; u.wait = 0; u.sadNext = true; // 길 끝(입구 쪽)으로
+  }
+}
 function updateBartender(b, dt, time) {
   const u = b.userData;
   u.bt.position.y = Math.abs(Math.sin(time * (u.moving ? 7 : 1.6))) * (u.moving ? 0.025 : 0.008);
@@ -4013,10 +4024,14 @@ function updateBartender(b, dt, time) {
   if (near) u.wait = Math.max(u.wait, 1.2);
   const looking = (u.lookT || 0) > 0; // 눌렀을 때: 멈춰서 나를 쳐다봄
   if (looking) { u.lookT -= dt; u.wait = Math.max(u.wait, 0.3); }
-  if (u.wait > 0) { u.wait -= dt; u.moving = false; }
+  if (u.greet && Math.abs(u.target - u.s) < 0.01) { // 입구 쪽에 도착 → 나를 보며 안내
+    popBubble(u.greet, b.position.x, 2.0, b.position.z, { follow: b });
+    u.greet = null; u.lookT = 4; u.wait = 6;
+  }
+  if (u.wait > 0 && !u.greet) { u.wait -= dt; u.moving = false; }
   else {
-    const step = 0.35 * dt, d = u.target - u.s;
-    if (Math.abs(d) <= step) { u.s = u.target; u.wait = 2 + Math.random() * 4; u.target = Math.random() * u.L; u.moving = false; }
+    const step = (u.greet ? 1.0 : 0.35) * dt, d = u.target - u.s;
+    if (Math.abs(d) <= step) { u.s = u.target; u.wait = 2 + Math.random() * 4; if (!u.greet) u.target = Math.random() * u.L; u.moving = false; }
     else { u.s += Math.sign(d) * step; u.moving = true; u.dir = Math.sign(d); }
   }
   const q = pathAt(u, u.s);
@@ -4157,6 +4172,7 @@ function enterStore() {
       walk.intro = false;
       walk.on = true;
       document.body.classList.remove("entering");
+      closedGreeting();
       showWalkHint();
     });
   });
