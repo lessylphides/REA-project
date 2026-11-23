@@ -3691,7 +3691,7 @@ function interact(ev) {
   // 바텐더가 바 의자 뒤에 가려져 있어도, 손가락 방향에 바텐더가 있으면 바텐더를 누른 것으로
   const all = ray.intersectObjects([...interactives, ...hitboxes], false);
   const bt = all.find((h) => h.object.userData.kind === "prop" && h.object.userData.group?.userData.path);
-  if (bt && bt.distance - hit.distance < 1.5) hit = bt;
+  if (bt && hit.object.userData.seatId && bt.distance - hit.distance < 1.5) hit = bt; // 의자에 가려진 경우만
   const u = hit.object.userData;
   if (u.kind === "screen") tapScreen(u.scr);
   else if (u.kind === "prop") { // 걸어 다닐 땐 1.5m 안(가장 가까운 면 기준)의 소품만
@@ -3699,6 +3699,7 @@ function interact(ev) {
     if (walk.on && Math.hypot(hit.point.x - walk.pos.x, hit.point.z - walk.pos.z) > reach) return;
     tapProp(u);
   }
+  else if (u.kind === "water") sipWater(u);
   else if (u.seatId) tapSeat(seats.get(u.seatId));
 }
 
@@ -4082,14 +4083,29 @@ function serveWater(seat) {
       mk(cyl(0.055, 0.055, 0.008, 20), "#c99a5b", [0, 0.004, 0], g, { outline: 0.003, shadow: false });
       mk(new THREE.TorusGeometry(0.045, 0.004, 4, 20), "#9a6a3a", [0, 0.009, 0], g, { outline: 0, shadow: false }).rotation.x = Math.PI / 2;
       mk(new THREE.CylinderGeometry(0.036, 0.032, 0.15, 16, 1, true), new THREE.MeshBasicMaterial({ color: "#e8f4f8", transparent: true, opacity: 0.35, side: THREE.DoubleSide, depthWrite: false }), [0, 0.085, 0], g, { outline: 0, shadow: false });
-      mk(cyl(0.032, 0.03, 0.11, 14), new THREE.MeshBasicMaterial({ color: "#cfe9f2", transparent: true, opacity: 0.5 }), [0, 0.065, 0], g, { outline: 0, shadow: false });
+      const water = mk(cyl(0.032, 0.03, 0.11, 14), new THREE.MeshBasicMaterial({ color: "#cfe9f2", transparent: true, opacity: 0.5 }), [0, 0.065, 0], g, { outline: 0, shadow: false });
+      // 물잔을 누르면 한 모금씩 줄고, 다 마시면 바텐더가 한마디
+      const hb = new THREE.Mesh(box(0.14, 0.2, 0.14), hitMat); hb.position.y = 0.09; g.add(hb);
+      hb.userData = { kind: "water", water, level: 4, g };
+      interactives.push(hb); g.userData.hit = hb;
       served.push(g); u.lookT = 3;
     } },
   ];
   u.jobDelay = 1.6; u.wait = 0;
 }
+function sipWater(u) {
+  if (u.level <= 0) return;
+  u.level--;
+  const k = u.level / 4;
+  u.water.scale.y = Math.max(0.001, k); u.water.position.y = 0.01 + 0.055 * k; u.water.visible = k > 0;
+  if (navigator.vibrate) navigator.vibrate(8);
+  if (u.level === 0) {
+    const b = bartenders.find((g) => g.userData.path);
+    if (b) setTimeout(() => { b.userData.lookT = 3; popBubble("다 마셨으면 가...", b.position.x, 2.0, b.position.z, { follow: b, scale: 0.7 }); }, 700);
+  }
+}
 function clearWater() {
-  for (const g of served) roomGroup.remove(g); served.length = 0;
+  for (const g of served) { const i = interactives.indexOf(g.userData.hit); if (i >= 0) interactives.splice(i, 1); roomGroup.remove(g); } served.length = 0;
   for (const b of bartenders) { const u = b.userData; if (u.job) { u.job = null; u.handGlass && (u.handGlass.visible = false); u.bottle && (u.bottle.visible = true); } }
 }
 function updateBartender(b, dt, time) {
@@ -4320,7 +4336,7 @@ function updateWalk(dt, time) {
   if (mag > 1) { f /= mag; r /= mag; }
   if (walk.sit) {
     const s = seats.get(walk.sit);
-    if (mag > 0.15 || !s || s.occupied) standUp(); // 움직이거나 그 자리에 손님이 오면 일어서기
+    if (!s || s.occupied) standUp(); // 앉으면 잠금: [일어서기] 버튼으로만 일어섬 (그 자리에 손님이 오면 자동으로)
     f = r = 0;
   }
   const speed = (k.has("shift") ? 2.6 : 1.5) * (walk.crouch ? 0.5 : 1) * dt;
@@ -4448,16 +4464,17 @@ function standUp() {
 }
 function jump() {
   if (!walk.on || walk.tween) return;
-  if (walk.sit || walk.crouch) { standUp(); return; }
+  if (walk.sit) return; // 앉아 있을 땐 점프 안 됨
+  if (walk.crouch) { standUp(); return; }
   if (walk.jumpY === 0) walk.vy = 3.1;
 }
 function updateActBtns() {
   const b = $("sitBtn");
   if (!b) return;
   const c = !walk.sit && !walk.crouch ? seatCandidate() : null;
-  const label = walk.sit || walk.crouch ? "일어서기" : c && !c.occupied ? "의자에<br>앉기" : "앉기";
+  const label = walk.sit ? "의자에서<br>일어나기" : walk.crouch ? "일어서기" : c && !c.occupied ? "의자에<br>앉기" : "앉기";
   if (b.dataset.l !== label) { b.dataset.l = label; b.innerHTML = label; }
-  b.classList.toggle("seatable", label.startsWith("의자에"));
+  b.classList.toggle("seatable", label.startsWith("의자에")); // 앉을 수 있을 때·앉아 있을 때 초록
 }
 
 function setAim(id) {
