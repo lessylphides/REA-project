@@ -3406,6 +3406,7 @@ let localSeq = 0;
 function applyState(serverSeats) {
   for (const s of seats.values()) {
     const occ = Object.prototype.hasOwnProperty.call(serverSeats, s.id);
+    if (occ) s.since = serverSeats[s.id];
     setOccupiedVisual(s, occ);
   }
   renderSummary();
@@ -3414,6 +3415,8 @@ function applyState(serverSeats) {
 function setOccupiedVisual(s, occ) {
   if (s.occupied === occ) return;
   s.occupied = occ;
+  if (occ && !s.since) s.since = Date.now();
+  if (!occ) s.since = 0;
   s.target = occ ? 1 : 0;
   s.bump = 1;
   if (!LINE) s.cushion.material.color.set(occ ? COLOR.busy : COLOR.empty);
@@ -3430,6 +3433,7 @@ function renderSummary() {
   n.textContent = empty;
   n.classList.toggle("zero", empty === 0);
   $("nTotal").textContent = `/ ${total} 석`;
+  renderBoard();
   $("chips").innerHTML = tableGroups
     .map((t) => {
       const e = t.seatIds.filter((id) => !seats.get(id).occupied).length;
@@ -3540,12 +3544,18 @@ $("loginForm").addEventListener("submit", async (e) => {
     store.set("seat-admin-token", token);
     $("login").classList.remove("show");
     document.body.classList.add("admin");
+    buildBoard();
     loadStats();
     $("pw").value = "";
   } catch (err) {
     token = null;
     $("loginErr").textContent = err.message;
   }
+});
+$("view3dBtn")?.addEventListener("click", () => { // 버튼판 ↔ 3D 화면
+  const on = document.body.classList.toggle("view3d");
+  $("view3dBtn").textContent = on ? "버튼판" : "3D 보기";
+  if (on) fitCamera?.();
 });
 $("logoutBtn").addEventListener("click", () => {
   if (walk.on) { exitWalk(); return; } // 매장 안에서는 관리자 전체 화면으로 돌아가기
@@ -4556,7 +4566,7 @@ async function main() {
   renderSummary();
   if (IS_ADMIN) {
     if (token) {
-      try { await api("/api/login"); document.body.classList.add("admin"); loadStats(); }
+      try { await api("/api/login"); document.body.classList.add("admin"); loadStats(); buildBoard(); }
       catch (e) { showLogin(e.message); }
     } else showLogin();
   }
@@ -4569,6 +4579,92 @@ async function main() {
     $("stats").addEventListener("click", () => {
       if (statsDays.length) toast(statsDays.map((d) => `${d.day.slice(5)}  ${d.visits}명 · 평균 ${fmtDur(d.avgMs)}${d.adTaps ? ` · 광고 ${d.adTaps}` : ""}`).join("\n"), 5000);
     });
+  }
+}
+
+// ───────── 관리자 자리 버튼판: 매장 배치 평면 + 큰 버튼, 누르고 3초 뒤 반영 (3초 안에 다시 누르면 취소) ─────────
+const pending = new Map(); // 자리 id → { target, timer }
+const boardEls = new Map();
+function seatBoardPos() {
+  const out = new Map(), S = 10;
+  const tables = LAYOUT.tables || [];
+  for (const s of seats.values()) {
+    const p = s.group?.position;
+    if (!p) continue;
+    let x = p.x, z = p.z;
+    const t = tables.find((t) => s.id.startsWith(t.id + "-"));
+    if (t) { x = t.x + (x - t.x) * 1.6; z = t.z + (z - t.z) * 1.6; } // 테이블 의자는 바깥으로 벌려 누르기 쉽게
+    out.set(s.id, [x * S, z * S]);
+  }
+  return out;
+}
+function buildBoard() {
+  const svg = $("boardSvg");
+  if (!svg || svg.dataset.built) return;
+  svg.dataset.built = "1";
+  const S = 10, NS = "http://www.w3.org/2000/svg";
+  const el = (tag, attrs, parent = svg, text) => { const e = document.createElementNS(NS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); if (text != null) e.textContent = text; parent.appendChild(e); return e; };
+  el("polygon", { class: "room", points: R.outline.map(([x, z]) => `${x * S},${z * S}`).join(" ") });
+  const d = LAYOUT.door; if (d) { el("line", { class: "door", x1: (d.x - d.w / 2) * S, y1: R.d * S, x2: (d.x + d.w / 2) * S, y2: R.d * S }); el("text", { class: "doorlabel", x: d.x * S, y: R.d * S + 4 }, svg, "입구"); }
+  const groupTap = (ids) => {
+    const eff = (id) => (pending.has(id) ? pending.get(id).target : seats.get(id).occupied);
+    const target = ids.some((id) => !eff(id)); // 한 자리라도 비었으면 모두 채우기, 다 차 있으면 모두 비우기
+    for (const id of ids) if (eff(id) !== target) boardTap(id);
+  };
+  for (const b of LAYOUT.bars || []) {
+    el("polyline", { class: "barline", points: b.path.map(([x, z]) => `${x * S},${z * S}`).join(" ") });
+    const m = b.path[1];
+    const t = el("text", { class: "tlabel dark", x: m[0] * S - 6, y: m[1] * S - 10 }, svg, b.id);
+    t.addEventListener("click", () => groupTap(tableGroups.find((g) => g.id === b.id)?.seatIds || []));
+  }
+  for (const t of LAYOUT.tables || []) {
+    if (t.shape === "rect" || t.type === "rect") el("rect", { class: "tbl", x: (t.x - t.w / 2) * S, y: (t.z - t.d / 2) * S, width: t.w * S, height: t.d * S, rx: 1 });
+    else el("ellipse", { class: "tbl", cx: t.x * S, cy: t.z * S, rx: (t.w / 2) * S, ry: (t.d / 2) * S });
+    const lb = el("text", { class: "tlabel", x: t.x * S, y: t.z * S }, svg, t.id);
+    lb.addEventListener("click", () => groupTap(tableGroups.find((g) => g.id === t.id)?.seatIds || []));
+  }
+  for (const [id, [x, y]] of seatBoardPos()) {
+    const g = el("g", { class: "bs", transform: `translate(${x},${y})` });
+    el("circle", { class: "ring", r: 5.2 }, g);
+    el("circle", { class: "timer", r: 5.4 }, g);
+    const ico = el("text", { class: "ico", y: 0 }, g, "");
+    const mins = el("text", { class: "mins", y: 3 }, g, ""); // 앉은 시간 (원 안 아래)
+    g.addEventListener("click", () => boardTap(id));
+    boardEls.set(id, { g, ico, mins });
+  }
+  renderBoard();
+  setInterval(renderBoard, 30000); // 앉은 시간 갱신
+}
+function boardTap(id) {
+  const s = seats.get(id);
+  if (!s) return;
+  const pnd = pending.get(id);
+  if (pnd) { clearTimeout(pnd.timer); pending.delete(id); renderBoard(); toast(`${id} · 취소`); return; } // 3초 안에 다시 누르면 취소
+  const target = !s.occupied;
+  if (navigator.vibrate) navigator.vibrate(10);
+  pending.set(id, { target, timer: setTimeout(() => {
+    pending.delete(id);
+    if (seats.get(id).occupied !== target) toggleSeat(id); else renderBoard();
+    const e = boardEls.get(id); if (e) { e.g.classList.remove("pop"); void e.g.getBBox(); e.g.classList.add("pop"); }
+  }, 3000) });
+  renderBoard();
+}
+function renderBoard() {
+  if (!boardEls.size) return;
+  const now = Date.now();
+  for (const [id, e] of boardEls) {
+    const s = seats.get(id), p = pending.get(id);
+    const occ = s.occupied;
+    e.g.classList.toggle("occ", occ && !p);
+    const wasPend = e.g.classList.contains("pend");
+    e.g.classList.toggle("pend", !!p);
+    e.g.classList.toggle("toocc", !!p && p.target);
+    e.g.classList.toggle("toempty", !!p && !p.target);
+    if (p && !wasPend) { const t = e.g.querySelector(".timer"); t.style.animation = "none"; void t.getBBox(); t.style.animation = ""; } // 타이머 처음부터
+    e.ico.textContent = p ? (p.target ? "손님" : "비움") : occ ? "손님" : id.replace(/^.*-/, "");
+    const m = occ && !p && s.since ? Math.max(0, Math.floor((now - s.since) / 60000)) : -1;
+    e.mins.textContent = m < 0 ? "" : m >= 60 ? `${Math.floor(m / 60)}시간+` : `${m}분`;
+    e.ico.setAttribute("y", m >= 0 ? -1.2 : 0);
   }
 }
 
