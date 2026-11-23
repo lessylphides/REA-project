@@ -3680,12 +3680,17 @@ try { found = new Set(JSON.parse(store.get("seat-found") || "[]")); } catch { fo
 function interact(ev) {
   // 가게 밖(첫 화면·골목)에서는 유리 너머 매장 안 소품·자리가 눌리지 않게
   if (fpGroup.visible && storeSD(camera.position.x, camera.position.z) < 0) return;
-  const hit = pick(ev, [...interactives, ...hitboxes]);
+  let hit = pick(ev, [...interactives, ...hitboxes]);
   if (!hit) return;
+  // 바텐더가 바 의자 뒤에 가려져 있어도, 손가락 방향에 바텐더가 있으면 바텐더를 누른 것으로
+  const all = ray.intersectObjects([...interactives, ...hitboxes], false);
+  const bt = all.find((h) => h.object.userData.kind === "prop" && h.object.userData.group?.userData.path);
+  if (bt && bt.distance - hit.distance < 1.5) hit = bt;
   const u = hit.object.userData;
   if (u.kind === "screen") tapScreen(u.scr);
   else if (u.kind === "prop") { // 걸어 다닐 땐 1.5m 안(가장 가까운 면 기준)의 소품만
-    if (walk.on && Math.hypot(hit.point.x - walk.pos.x, hit.point.z - walk.pos.z) > 1.5) return;
+    const reach = u.group?.userData.path ? 2.5 : 1.5; // 바텐더는 바 건너편에서도 닿게
+    if (walk.on && Math.hypot(hit.point.x - walk.pos.x, hit.point.z - walk.pos.z) > reach) return;
     tapProp(u);
   }
   else if (u.seatId) tapSeat(seats.get(u.seatId));
@@ -3738,7 +3743,7 @@ function tapProp(u) {
   if (p.type === "aircon" && storeInfo?.temp != null) line = `에어컨이에요\n지금 매장 ${Math.round(storeInfo.temp * 10) / 10}℃${storeInfo.acOn ? " · 작동 중" : ""}`;
   if (p.type === "sidetable" && p.item === "humidifier" && storeInfo?.hum != null) line = `가습기예요\n지금 습도 ${Math.round(storeInfo.hum)}%`;
   const sp = bu.sayPos || [u.group.position.x, u.group.position.z];
-  popBubble(line || p.say, sp[0], u.sayY ?? SAY_HEIGHT[p.type] ?? 1.5, sp[1], bu.path ? { follow: u.group } : bu.sayScale ? { scale: bu.sayScale } : undefined);
+  popBubble(line || p.say, sp[0], u.sayY ?? SAY_HEIGHT[p.type] ?? 1.5, sp[1], bu.path ? { follow: u.group, scale: 0.7 } : bu.sayScale ? { scale: bu.sayScale } : undefined);
   if (!found.has(u.idx)) {
     found.add(u.idx);
     store.set("seat-found", JSON.stringify([...found]));
@@ -4054,7 +4059,7 @@ function updateBartender(b, dt, time) {
   const looking = (u.lookT || 0) > 0; // 눌렀을 때: 멈춰서 나를 쳐다봄
   if (looking) { u.lookT -= dt; u.wait = Math.max(u.wait, 0.3); }
   if (u.greet && Math.abs(u.target - u.s) < 0.01) { // 입구 쪽에 도착 → 나를 보며 안내
-    popBubble(u.greet, b.position.x, 2.0, b.position.z, { follow: b });
+    popBubble(u.greet, b.position.x, 2.0, b.position.z, { follow: b, scale: 0.7 });
     u.greet = null; u.lookT = 4; u.wait = 6;
   }
   if (u.wait > 0 && !u.greet) { u.wait -= dt; u.moving = false; }
