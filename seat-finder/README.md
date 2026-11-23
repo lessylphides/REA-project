@@ -89,7 +89,6 @@ npm run deploy                        # public/ 화면 파일을 Worker 에 넣�
 로컬 테스트: `.dev.vars` 파일에 `ADMIN_TOKEN=아무거나` 적고 `npm run dev` → http://localhost:8787
 
 주소: https://빈자리찾기.com · https://빈자리찾기.kr (www 포함) · 예비 https://seat-finder.hanguk-soek.workers.dev  ·  관리자: 가게 앞 환풍기 또는 `/관리자`
-매장용 QR: `빈자리찾기-QR.png`
 
 ## 한글 주소 연결 (빈자리찾기.co.kr)
 한글 도메인은 내부적으로 **퓨니코드**로 바뀝니다: `빈자리찾기.co.kr` = `xn--ok0bu1teudt3lg0f.co.kr`
