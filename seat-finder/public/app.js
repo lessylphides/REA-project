@@ -1364,12 +1364,14 @@ function buildStorefront(T, door, dh) {
   }
 
   // ── 문에 거는 팻말
-  const openSign = canvasTex(256, 160, (g, w, h) => {
+  const signTex = (top, big) => canvasTex(256, 160, (g, w, h) => {
     g.fillStyle = "#f7efe2"; g.fillRect(0, 0, w, h);
     g.strokeStyle = "#2b2522"; g.lineWidth = 6; g.strokeRect(3, 3, w - 6, h - 6);
-    g.fillStyle = "#c8392b"; g.font = "800 30px sans-serif"; g.textAlign = "center"; g.fillText(F.doorSign?.[0] ?? "COME IN  we're", w / 2, 50);
-    g.fillStyle = "#2b2522"; g.font = "900 64px Georgia, serif"; g.fillText(F.doorSign?.[1] ?? "OPEN", w / 2, 122);
+    g.fillStyle = "#c8392b"; g.font = "800 30px sans-serif"; g.textAlign = "center"; g.fillText(top, w / 2, 50);
+    g.fillStyle = "#2b2522"; g.font = "900 64px Georgia, serif"; g.fillText(big, w / 2, 122);
   });
+  const openSign = signTex(F.doorSign?.[0] ?? "COME IN  we're", F.doorSign?.[1] ?? "OPEN");
+  doorSignTex.open = openSign; doorSignTex.closed = signTex("SORRY  we're", "CLOSED");
   doorSign = mk(new THREE.PlaneGeometry(0.34, 0.21), flat(openSign), [-door.w * 0.45, 1.45, 0.035], doorPanels[0]?.g || fpGroup, no);
 
   // ── 오른쪽 기둥: 번지판 + 나무 명판
@@ -1681,6 +1683,7 @@ function makeCypress(parent, x, z, k = 1) {
 let steamFan = null;
 let adminFanHit = null; // 환풍기 (누르면 관리자 로그인)
 let doorSign = null;
+const doorSignTex = {}; // 문 팻말: 영업 중 OPEN / 영업 끝 CLOSED
 
 function makePlant(parent, x, z, k = 1) {
   const g = new THREE.Group();
@@ -2124,10 +2127,14 @@ function updateIce(dt) {
 const fridges = [];
 const airCons = [];
 function updateAc(dt, time) {
-  for (const g of airCons) { const u = g.userData.ac; if (u.t < 0) continue; u.t += dt;
-    const a = Math.sin(u.t * 1.4) * 0.45 * Math.min(1, u.t, Math.max(0, 6 - u.t));
+  for (const g of airCons) {
+    const u = g.userData.ac;
+    if (u.t < 0 && storeInfo?.acOn && isOpenNow()) u.t = 0; // 실제 에어컨이 켜져 있으면 날개가 계속 천천히 움직임
+    if (u.t < 0) continue; u.t += dt;
+    const on = storeInfo?.acOn && isOpenNow();
+    const a = Math.sin(u.t * 1.4) * 0.45 * (on ? Math.min(1, u.t) : Math.min(1, u.t, Math.max(0, 6 - (u.t % 1e6))));
     u.flaps.forEach((f) => (f.rotation.x = -0.35 + a));
-    if (u.t > 6) { u.t = -1; u.flaps.forEach((f) => (f.rotation.x = -0.35)); } }
+    if (!on && u.t > 6) { u.t = -1; u.flaps.forEach((f) => (f.rotation.x = -0.35)); } }
 }
 function spillMilk(g) {
   const u = g.userData.fr;
@@ -3476,14 +3483,44 @@ async function poll() {
 }
 
 let pollTimer;
-/** 영업시간인지 (한국시간, layout.hours = { open: "18:00", close: "02:00" }, 자정 넘김 가능) */
+// ───────── 매장 정보 (에어컨 앱 연동: 영업시간·실내 온습도·에어컨 상태) ─────────
+let storeInfo = null;
+const hm = (s) => { const [a, b] = String(s).split(":").map(Number); return a * 60 + (b || 0); };
+const kstNow = () => { const k = new Date(Date.now() + 9 * 3600e3); return { day: k.getUTCDay(), min: k.getUTCHours() * 60 + k.getUTCMinutes() }; };
+/** 요일별 영업시간(0=일, 자정 넘김 처리)으로 지금 영업 중인지. 정보가 없으면 영업 중으로 봄 */
 function isOpenNow() {
-  const h = LAYOUT.hours; if (!h) return true;
-  const kst = new Date(Date.now() + 9 * 3600e3), m = kst.getUTCHours() * 60 + kst.getUTCMinutes();
-  const t = (s) => { const [a, b] = s.split(":").map(Number); return a * 60 + (b || 0); };
-  const o = t(h.open), c = t(h.close);
-  return o <= c ? m >= o && m < c : m >= o || m < c;
+  const H = storeInfo?.hours;
+  if (!Array.isArray(H) || H.length !== 7) return true;
+  const { day, min } = kstNow();
+  const t = H[day];
+  if (t && !t.closed) { const o = hm(t.open), c = hm(t.close); if (c > o ? min >= o && min < c : min >= o) return true; }
+  const p = H[(day + 6) % 7];
+  if (p && !p.closed) { const o = hm(p.open), c = hm(p.close); if (c <= o && min < c) return true; }
+  return false;
 }
+/** 첫 화면 안내: "영업 중 · 02:00까지" / "오늘 18:00 오픈" / "오늘은 쉬어요" */
+function openLabel() {
+  const H = storeInfo?.hours;
+  if (!Array.isArray(H) || H.length !== 7) return "";
+  const { day, min } = kstNow(), t = H[day], p = H[(day + 6) % 7];
+  if (isOpenNow()) {
+    const close = p && !p.closed && hm(p.close) <= hm(p.open) && min < hm(p.close) ? p.close : t.close;
+    return `영업 중 · ${close === "00:00" ? "자정" : close}까지`;
+  }
+  if (t && !t.closed && min < hm(t.open)) return `오늘 ${t.open} 오픈`;
+  for (let k = 1; k <= 7; k++) { const d = H[(day + k) % 7]; if (d && !d.closed) return `${k === 1 ? "내일" : ["일", "월", "화", "수", "목", "금", "토"][(day + k) % 7] + "요일"} ${d.open} 오픈`; }
+  return "오늘은 쉬어요";
+}
+async function loadStore() {
+  try { const r = await fetch("/api/store", { cache: "no-store" }); if (r.ok) storeInfo = await r.json(); } catch { /* 그대로 */ }
+  applyStore();
+}
+function applyStore() {
+  const open = isOpenNow();
+  if (doorSign) doorSign.material.map = open ? doorSignTex.open : doorSignTex.closed, doorSign.material.needsUpdate = true;
+  const el = $("introOpen"); if (el) { el.textContent = openLabel(); el.classList.toggle("closed", !open); }
+}
+setInterval(() => { if (!document.hidden) loadStore(); }, 120000);
 // 빈자리 확인: 영업시간엔 화면을 보는 동안 5초마다, 영업시간이 아니면 화면을 열거나 다시 볼 때만 (서버 요청 아끼기)
 function startPolling() {
   clearInterval(pollTimer);
@@ -3665,6 +3702,8 @@ function tapProp(u) {
   u.wiggle = 1;
   u.onTap?.();
   const p = u.prop;
+  if (p.type === "aircon" && storeInfo?.temp != null) line = `에어컨이에요\n지금 매장 ${Math.round(storeInfo.temp * 10) / 10}℃${storeInfo.acOn ? " · 작동 중" : ""}`;
+  if (p.type === "sidetable" && p.item === "humidifier" && storeInfo?.hum != null) line = `가습기예요\n지금 습도 ${Math.round(storeInfo.hum)}%`;
   const sp = bu.sayPos || [u.group.position.x, u.group.position.z];
   popBubble(line || p.say, sp[0], u.sayY ?? SAY_HEIGHT[p.type] ?? 1.5, sp[1], bu.path ? { follow: u.group } : bu.sayScale ? { scale: bu.sayScale } : undefined);
   if (!found.has(u.idx)) {
@@ -4589,6 +4628,7 @@ async function main() {
       catch (e) { showLogin(e.message); }
     } else showLogin();
   }
+  loadStore();
   startPolling();
   // 첫 화면이 그려지면 로딩 화면 걷기
   requestAnimationFrame(() => requestAnimationFrame(() => document.body.classList.remove("booting")));

@@ -4,6 +4,8 @@ import { ASSETS } from "./assets.generated";
 export interface Env {
   SEATS: DurableObjectNamespace<SeatStore>;
   ADMIN_TOKEN?: string;
+  /** 매장 에어컨 앱(heyhome-smart-ac)의 KV — 읽기만 함 (영업시간·실내 온습도·에어컨 상태) */
+  AC?: KVNamespace;
 }
 
 type SeatMap = Record<string, number>; // 자리 id -> 손님 앉은 시각(ms). 없으면 빈자리
@@ -123,6 +125,27 @@ export default {
 
     if (url.pathname === "/api/seats" && req.method === "GET") {
       return json(await store.snapshot());
+    }
+
+    // 매장 정보 (에어컨 앱이 저장한 값을 읽기만): 영업시간, 실내 온도·습도, 에어컨 켜짐
+    if (url.pathname === "/api/store" && req.method === "GET") {
+      const cache = (caches as unknown as { default: Cache }).default;
+      const key = new Request(new URL("/api/store", url.origin).toString());
+      const hit = await cache.match(key);
+      if (hit) return hit;
+      let body: Record<string, unknown> = {};
+      if (env.AC) {
+        const [cfg, state, last] = await Promise.all([
+          env.AC.get<{ hours?: unknown }>("config", "json").catch(() => null),
+          env.AC.get<{ status?: { ts?: string; indoorTemp?: number | null; indoorHumidity?: number | null } }>("state", "json").catch(() => null),
+          env.AC.get<{ power?: boolean; mode?: string }>("lastCommand", "json").catch(() => null),
+        ]);
+        const st = state?.status;
+        body = { hours: cfg?.hours ?? null, temp: st?.indoorTemp ?? null, hum: st?.indoorHumidity ?? null, at: st?.ts ?? null, acOn: last ? !!last.power : null, acMode: last?.mode ?? null };
+      }
+      const res = new Response(JSON.stringify(body), { headers: { "content-type": "application/json; charset=utf-8", "cache-control": "public, max-age=60" } });
+      await cache.put(key, res.clone()).catch(() => {});
+      return res;
     }
 
     // 관리자 버튼판 배치 (누구나 읽기, 저장은 관리자)

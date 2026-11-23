@@ -21,3 +21,8 @@ new_sqlite_classes = ["SeatStore"]
 
 # 관리자 비밀번호는 파일에 두지 말고:
 #   npx wrangler secret put ADMIN_TOKEN
+
+# 매장 에어컨 앱(heyhome-smart-ac)의 KV 를 읽기 전용으로 같이 씀: 영업시간·실내 온습도·에어컨 상태
+[[kv_namespaces]]
+binding = "AC"
+id = "f801f704a4f04f63b511650e94febdd6"

@@ -174,6 +174,10 @@
     animation: rise .6s cubic-bezier(.2,1.4,.4,1) both .3s;
   }
   .introcard small { display: none; }
+  .introname { display: flex; flex-direction: column; line-height: 1.15; }
+  .introname em { font-style: normal; font-size: 11px; font-weight: 700; color: var(--empty); }
+  .introname em:empty { display: none; }
+  .introname em.closed { color: var(--busy); }
   .introcard strong { font-size: 14px; font-weight: 800; letter-spacing: .02em; }
   .introcard .walkbtn { padding: 8px 18px; font-size: 14px; border-radius: 999px; box-shadow: 0 3px 0 #1f7a55; }
   .introcard .walkbtn:active { transform: translateY(2px); box-shadow: 0 1px 0 #1f7a55; }
@@ -314,7 +318,7 @@
   <div class="introbox" id="intro">
     <div class="introcard">
       <small>어서 오세요</small>
-      <strong id="introName">DIVE HIDE AWAY</strong>
+      <span class="introname"><strong id="introName">DIVE HIDE AWAY</strong><em id="introOpen"></em></span>
       <button type="button" class="walkbtn" id="enterBtn">입장하기</button>
     </div>
   </div>
