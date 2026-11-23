@@ -4608,8 +4608,10 @@ function seatBoardPos() {
   const tables = LAYOUT.tables || [];
   for (const b of LAYOUT.bars || []) { // 바 의자: 손님 쪽 평행선 위에 고른 간격으로
     const line = offsetPath(b.path, BOARD_BAR_SEATS);
-    for (let i = 0; i < b.seats; i++) { const [x, z, a] = along(line, 0.04 + 0.92 * (b.seats === 1 ? 0.5 : i / (b.seats - 1))); out.set(`${b.id}-${i + 1}`, [x * S, z * S, THREE.MathUtils.radToDeg(a)]); }
-    (b.extraSeats || []).forEach(([x, z], k) => out.set(`${b.id}-${b.seats + k + 1}`, [x * S, Math.min(R.d - 0.55, z + 0.6) * S])); // 바 너머 자리는 바 선 아래로
+    let L = 0; for (let i = 0; i < line.length - 1; i++) L += Math.hypot(line[i + 1][0] - line[i][0], line[i + 1][1] - line[i][1]);
+    const span = Math.min(0.92, (b.seats - 1) * 1.45 / L), Qb = (span * L / Math.max(1, b.seats - 1)) * S; // 칸 한 변 = 칸 간격 → 서로 딱 붙음
+    for (let i = 0; i < b.seats; i++) { const [x, z, a] = along(line, (1 - span) / 2 + span * (b.seats === 1 ? 0.5 : i / (b.seats - 1))); out.set(`${b.id}-${i + 1}`, [x * S, z * S, THREE.MathUtils.radToDeg(a), Qb]); }
+    (b.extraSeats || []).forEach(([x, z], k) => out.set(`${b.id}-${b.seats + k + 1}`, [x * S, Math.min(R.d - 0.56, z + 0.7) * S, 0, 11])); // 바 너머 자리는 바 선 아래로
   }
   for (const s of seats.values()) {
     const p = s.group?.position;
@@ -4619,10 +4621,10 @@ function seatBoardPos() {
     if (t) { // 테이블 의자: 테이블 가장자리에 바짝 붙여 둘레에
       const dx = x - t.x, dz = z - t.z, l = Math.hypot(dx, dz) || 1;
       const ex = (t.w / 2) * Math.abs(dx / l), ez = (t.d / 2) * Math.abs(dz / l); // 테이블 가장자리까지 거리(대략)
-      const r = Math.hypot(ex, ez) + 0.5;
+      const r = Math.hypot(ex, ez) + 0.6 + 0.12; // 칸 반폭(0.6m) + 테이블과 간격 12cm
       x = t.x + (dx / l) * r; z = t.z + (dz / l) * r;
     }
-    out.set(s.id, [x * S, z * S]);
+    out.set(s.id, [x * S, z * S, 0, 12]);
   }
   return out;
 }
@@ -4651,9 +4653,8 @@ function buildBoard() {
     const lb = el("text", { class: "tlabel", x: t.x * S, y: t.z * S }, svg, t.id);
     lb.addEventListener("click", () => groupTap(tableGroups.find((g) => g.id === t.id)?.seatIds || []));
   }
-  for (const [id, [x, y, rot = 0]] of seatBoardPos()) {
+  for (const [id, [x, y, rot = 0, Q = 12]] of seatBoardPos()) {
     const g = el("g", { class: "bs", transform: `translate(${x},${y})` });
-    const Q = 10.6; // 네모 칸 한 변
     el("rect", { class: "ring", x: -Q / 2, y: -Q / 2, width: Q, height: Q, rx: 1.8, transform: `rotate(${rot})` }, g);
     el("rect", { class: "timer", x: -Q / 2 - 0.5, y: -Q / 2 - 0.5, width: Q + 1, height: Q + 1, rx: 2.2, pathLength: 32, transform: `rotate(${rot})` }, g);
     const ico = el("text", { class: "ico", y: 0 }, g, "");
