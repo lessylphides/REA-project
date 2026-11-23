@@ -4716,7 +4716,7 @@ function buildBoard(force) {
     void bc;
     const bgp = el("g", { class: "tg bar" + (boardSel === "BAR" ? " sel" : "") });
     tgroups.set(b.id, bgp);
-    const t = el("text", { class: "tlabel dark barlabel", x: m[0] * S + 4 + ((boardCfg.bar?.dx) || 0) * S, y: m[1] * S + 11 + ((boardCfg.bar?.dz) || 0) * S }, bgp, b.id);
+    const t = el("text", { class: "tlabel dark barlabel", x: m[0] * S + 1 + ((boardCfg.bar?.dx) || 0) * S, y: m[1] * S + 35 + ((boardCfg.bar?.dz) || 0) * S }, bgp, b.id);
     makeDraggable(t, "BAR", bgp); // BAR 글자를 끌면 바 의자 전체가 함께 움직임
     t.addEventListener("click", () => (boardEdit ? selectBoard("BAR") : groupTap(tableGroups.find((g) => g.id === b.id)?.seatIds || [])));
   }
