@@ -231,7 +231,7 @@ function popBubble(text, x, y, z, opts) {
   for (const e of effects) if (e.key === `${x},${z}`) e.t = e.life;
   // 멀리 있어도 읽을 수 있게 거리만큼 키움
   const dist = Math.hypot(camera.position.x - x, camera.position.y - y, camera.position.z - z);
-  const sp = bubbleSprite(text, { ...opts, size: 0.055 * Math.max(1, dist / 2.8) * ((opts?.scale ?? 0.5) / 0.5) });
+  const sp = bubbleSprite(text, { ...opts, size: 0.0715 * Math.max(1, dist / 2.8) * ((opts?.scale ?? 0.5) / 0.5) });
   sp.position.set(x, y, z);
   const base = sp.scale.clone();
   const follow = opts?.follow; // 움직이는 소품(바텐더)을 따라다니는 말풍선
