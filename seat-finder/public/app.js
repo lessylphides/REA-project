@@ -1368,7 +1368,9 @@ function buildStorefront(T, door, dh) {
     g.fillStyle = "#f7efe2"; g.fillRect(0, 0, w, h);
     g.strokeStyle = "#2b2522"; g.lineWidth = 6; g.strokeRect(3, 3, w - 6, h - 6);
     g.fillStyle = "#c8392b"; g.font = "800 30px sans-serif"; g.textAlign = "center"; g.fillText(top, w / 2, 50);
-    g.fillStyle = "#2b2522"; g.font = "900 64px Georgia, serif"; g.fillText(big, w / 2, 122);
+    let fs = 64; g.font = `900 ${fs}px Georgia, serif`;
+    while (g.measureText(big).width > w - 28 && fs > 30) { fs -= 2; g.font = `900 ${fs}px Georgia, serif`; } // 팻말 폭에 맞게 (CLOSED 잘림 방지)
+    g.fillStyle = "#2b2522"; g.fillText(big, w / 2, 122);
   });
   const openSign = signTex(F.doorSign?.[0] ?? "COME IN  we're", F.doorSign?.[1] ?? "OPEN");
   doorSignTex.open = openSign; doorSignTex.closed = signTex("SORRY  we're", "CLOSED");
