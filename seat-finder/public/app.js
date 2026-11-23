@@ -3652,6 +3652,8 @@ let found;
 try { found = new Set(JSON.parse(store.get("seat-found") || "[]")); } catch { found = new Set(); }
 
 function interact(ev) {
+  // 가게 밖(첫 화면·골목)에서는 유리 너머 매장 안 소품·자리가 눌리지 않게
+  if (fpGroup.visible && storeSD(camera.position.x, camera.position.z) < 0) return;
   const hit = pick(ev, [...interactives, ...hitboxes]);
   if (!hit) return;
   const u = hit.object.userData;
