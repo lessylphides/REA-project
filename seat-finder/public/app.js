@@ -235,7 +235,7 @@ function popBubble(text, x, y, z, opts) {
   for (const e of effects) if (e.key === `${x},${z}`) e.t = e.life;
   // 멀리 있어도 읽을 수 있게 거리만큼 키움
   const dist = Math.hypot(camera.position.x - x, camera.position.y - y, camera.position.z - z);
-  const sp = bubbleSprite(text, { ...opts, size: 0.0715 * Math.max(1, dist / 2.8) * ((opts?.scale ?? 0.5) / 0.5) });
+  const sp = bubbleSprite(text, { ...opts, size: 0.093 * Math.max(1, dist / 2.8) * ((opts?.scale ?? 0.5) / 0.5) });
   sp.position.set(x, y, z);
   const base = sp.scale.clone();
   const follow = opts?.follow; // 움직이는 소품(바텐더)을 따라다니는 말풍선
@@ -3687,7 +3687,12 @@ function tapProp(u) {
     bu.lastTap = now; bu.tapN = (bu.tapN || 0) + 1;
     if (bu.tapN >= 3) { bu.tapN = 0; spillIce(u.group); }
   }
-  if (bu.path) { // 바텐더: 나를 쳐다보고, 누를 때마다 멘트가 바뀌다가 10번째엔 보틀을 던짐
+  if (bu.path && !isOpenNow() && storeInfo?.hours) { // 영업시간 밖: 평소 멘트 대신 안내와 ㅠㅜ 만
+    bu.lookT = 3.6;
+    const { day } = kstNow(), msg = storeInfo.hours[day]?.closed ? "오늘은 휴무일이에요" : "아직 영업시간 전입니다";
+    bu.closedTap = (bu.closedTap || 0) + 1;
+    line = bu.closedTap % 2 ? "ㅠㅜ" : msg;
+  } else if (bu.path) { // 바텐더: 나를 쳐다보고, 누를 때마다 멘트가 바뀌다가 10번째엔 보틀을 던짐
     bu.lookT = 3.6;
     const now = performance.now() / 1000;
     if (!bu.lastTap || now - bu.lastTap > 8) bu.tapN = 0; // 잠시 안 누르면 처음부터
@@ -3700,7 +3705,6 @@ function tapProp(u) {
       return;
     }
     line = BT_LINES[Math.min(bu.tapN, BT_LINES.length) - 1];
-    if (bu.sadNext && !isOpenNow()) { bu.sadNext = false; line = "ㅠㅜ"; }
   }
   u.wiggle = 1;
   u.onTap?.();
