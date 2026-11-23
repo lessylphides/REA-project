@@ -4,7 +4,7 @@
 
 | 화면 | 주소 | 할 수 있는 것 |
 |---|---|---|
-| 손님 | `https://빈자리찾기.co.kr` | 빈자리 수·위치 보기 (돌려보기/확대만, **자리 터치 불가**) |
+| 손님 | `https://빈자리찾기.com` (또는 `빈자리찾기.kr`) | 빈자리 수·위치 보기 (돌려보기/확대만, **자리 터치 불가**) |
 | 관리자 | 가게 앞 **문 위 환풍기**를 누르면 비밀번호 창 (또는 `/관리자`, `/admin`) | 비밀번호 로그인 → 자리 터치: **빈자리 → 손님 있음 → 빈자리** |
 
 - 손님이 있는 자리에는 귀여운 캐릭터가 앉고, 빈자리는 바닥에 초록 불이 반짝입니다.
@@ -88,7 +88,8 @@ npm run deploy                        # public/ 화면 파일을 Worker 에 넣�
 ```
 로컬 테스트: `.dev.vars` 파일에 `ADMIN_TOKEN=아무거나` 적고 `npm run dev` → http://localhost:8787
 
-테스트 주소(현재 배포): https://seat-finder.hanguk-soek.workers.dev  ·  관리자: `/관리자`
+주소: https://빈자리찾기.com · https://빈자리찾기.kr (www 포함) · 예비 https://seat-finder.hanguk-soek.workers.dev  ·  관리자: 가게 앞 환풍기 또는 `/관리자`
+매장용 QR: `빈자리찾기-QR.png`
 
 ## 한글 주소 연결 (빈자리찾기.co.kr)
 한글 도메인은 내부적으로 **퓨니코드**로 바뀝니다: `빈자리찾기.co.kr` = `xn--ok0bu1teudt3lg0f.co.kr`
