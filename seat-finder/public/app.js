@@ -4606,7 +4606,7 @@ function along(pts, t) { // 선 위 t(0~1) 위치
 // 버튼판 배치 (관리자가 [배치 편집]으로 조정, 서버에 저장): 바 칸 크기, 테이블별 위치(m)·크기 배율
 const BOARD_DEFAULT = { barQ: 1.12, tables: { T1: { dx: 0, dz: -1.25, s: 1 }, T2: { dx: -0.55, dz: 0, s: 1 } } };
 let boardCfg = JSON.parse(JSON.stringify(BOARD_DEFAULT));
-const tcfg = (id) => (boardCfg.tables[id] ||= { dx: 0, dz: 0, s: 1 });
+const tcfg = (id) => { const c = (boardCfg.tables[id] ||= { dx: 0, dz: 0, s: 1, r: 0 }); c.r ??= 0; return c; };
 const BOARD_BAR_SEATS = -0.25; // 바 자리 칸이 놓이는 선 (바 손님 쪽 가장자리 기준)
 function seatBoardPos() {
   const out = new Map(), S = 10;
@@ -4652,7 +4652,10 @@ function seatBoardPos() {
       const ex = (t.w * k / 2) * Math.abs(dx / l), ez = (t.d * k / 2) * Math.abs(dz / l);
       Q = 12 * k;
       const r = Math.hypot(ex, ez) + Q / 20 + 0.12;
-      x = t.x + c.dx + (dx / l) * r; z = t.z + c.dz + (dz / l) * r;
+      const [ox, oz] = rotXZ((dx / l) * r, (dz / l) * r, c.r); // 테이블 회전
+      x = t.x + c.dx + ox; z = t.z + c.dz + oz;
+      out.set(s.id, [x * S, z * S, c.r, Q]);
+      continue;
     }
     out.set(s.id, [x * S, z * S, 0, Q]);
   }
@@ -4686,8 +4689,9 @@ function buildBoard(force) {
     const c = tcfg(t0.id), t = { ...t0, x: t0.x + c.dx, z: t0.z + c.dz, w: t0.w * c.s, d: t0.d * c.s };
     const tg = el("g", { class: "tg" + (boardSel === t0.id ? " sel" : "") });
     tgroups.set(t0.id, tg);
-    if (t.shape === "rect" || t.type === "rect") el("rect", { class: "tbl", x: (t.x - t.w / 2) * S, y: (t.z - t.d / 2) * S, width: t.w * S, height: t.d * S, rx: 1 }, tg);
-    else el("ellipse", { class: "tbl", cx: t.x * S, cy: t.z * S, rx: (t.w / 2) * S, ry: (t.d / 2) * S }, tg);
+    const rotA = `rotate(${c.r} ${t.x * S} ${t.z * S})`;
+    if (t.shape === "rect" || t.type === "rect") el("rect", { class: "tbl", x: (t.x - t.w / 2) * S, y: (t.z - t.d / 2) * S, width: t.w * S, height: t.d * S, rx: 1, transform: rotA }, tg);
+    else el("ellipse", { class: "tbl", cx: t.x * S, cy: t.z * S, rx: (t.w / 2) * S, ry: (t.d / 2) * S, transform: rotA }, tg);
     const lb = el("text", { class: "tlabel", x: t.x * S, y: t.z * S }, tg, t0.id);
     lb.addEventListener("click", () => groupTap(tableGroups.find((g) => g.id === t0.id)?.seatIds || []));
     // 편집: 끌어서 옮기기
@@ -4730,11 +4734,16 @@ function resizeBoard(dir) {
   else { const c = tcfg(boardSel); c.s = THREE.MathUtils.clamp(+(c.s + dir * 0.08).toFixed(2), 0.6, 2); }
   buildBoard(true);
 }
+function rotateBoard(dir) {
+  if (!boardSel || boardSel === "BAR") return toast("돌릴 테이블을 먼저 눌러 주세요");
+  const c = tcfg(boardSel); c.r = ((c.r + dir * 15) % 360 + 360) % 360;
+  buildBoard(true);
+}
 function setBoardEdit(on) {
   boardEdit = on;
   document.body.classList.toggle("boardedit", on);
   $("boardEditBtn").textContent = on ? "편집 중" : "배치 편집";
-  if (on) { boardBackup = JSON.stringify(boardCfg); boardSel = null; $("bdSel").textContent = "테이블은 끌어서 옮기고, 누른 뒤 크기 조절"; }
+  if (on) { boardBackup = JSON.stringify(boardCfg); boardSel = null; $("bdSel").textContent = "테이블은 끌어서 옮기고, 누른 뒤 크기·회전 조절"; }
   buildBoard(true);
 }
 async function loadBoard() {
@@ -4748,6 +4757,8 @@ function initBoardTools() {
   $("boardEditBtn")?.addEventListener("click", () => setBoardEdit(!boardEdit));
   $("bdMinus")?.addEventListener("click", () => resizeBoard(-1));
   $("bdPlus")?.addEventListener("click", () => resizeBoard(1));
+  $("bdRotL")?.addEventListener("click", () => rotateBoard(-1));
+  $("bdRotR")?.addEventListener("click", () => rotateBoard(1));
   $("bdReset")?.addEventListener("click", () => { boardCfg = JSON.parse(JSON.stringify(BOARD_DEFAULT)); buildBoard(true); });
   $("bdCancel")?.addEventListener("click", () => { boardCfg = JSON.parse(boardBackup); setBoardEdit(false); });
   $("bdSave")?.addEventListener("click", async () => {
