@@ -1357,6 +1357,11 @@ function buildStorefront(T, door, dh) {
   mk(new THREE.PlaneGeometry(0.42, 0.42), toon("#e9e6e1"), [door.x + door.w * 0.3, dh + 0.33, wz], fpGroup, no);
   const fanMesh = mk(new THREE.PlaneGeometry(0.4, 0.4), new THREE.MeshBasicMaterial({ map: fan, transparent: true }), [door.x + door.w * 0.3, dh + 0.33, wz + 0.01], fpGroup, no);
   steamFan = fanMesh;
+  { // 숨은 관리자 입구: 문 위 환풍기를 누르면 관리자 로그인
+    const hb = new THREE.Mesh(new THREE.PlaneGeometry(0.7, 0.7), hitMat);
+    hb.position.set(door.x + door.w * 0.3, dh + 0.33, wz + 0.03);
+    fpGroup.add(hb); adminFanHit = hb;
+  }
 
   // ── 문에 거는 팻말
   const openSign = canvasTex(256, 160, (g, w, h) => {
@@ -1674,6 +1679,7 @@ function makeCypress(parent, x, z, k = 1) {
   }
 }
 let steamFan = null;
+let adminFanHit = null; // 환풍기 (누르면 관리자 로그인)
 let doorSign = null;
 
 function makePlant(parent, x, z, k = 1) {
@@ -3542,6 +3548,7 @@ $("loginForm").addEventListener("submit", async (e) => {
   try {
     await api("/api/login");
     store.set("seat-admin-token", token);
+    if (!IS_ADMIN) { location.href = "/admin"; return; } // 환풍기로 들어온 경우: 관리자 화면으로
     $("login").classList.remove("show");
     document.body.classList.add("admin");
     loadBoard().then(() => buildBoard(true));
@@ -3553,6 +3560,7 @@ $("loginForm").addEventListener("submit", async (e) => {
   }
 });
 initBoardTools();
+$("login").querySelector("a")?.addEventListener("click", (e) => { if (!IS_ADMIN) { e.preventDefault(); $("login").classList.remove("show"); } });
 $("view3dBtn")?.addEventListener("click", () => { // 버튼판 ↔ 3D 화면
   const on = document.body.classList.toggle("view3d");
   $("view3dBtn").textContent = on ? "버튼판" : "3D 보기";
@@ -3763,6 +3771,7 @@ function bindPointer() {
     down = null;
     endLook(e);
     if (moved > 8 || !quick) return;
+    if (!IS_ADMIN && adminFanHit && fpGroup.visible && pick(e, [adminFanHit])) { if (token) location.href = "/admin"; else showLogin(); return; }
     if (document.body.classList.contains("admin")) {
       const id = seatAt(e);
       if (id) toggleSeat(id);
