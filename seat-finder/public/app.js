@@ -2549,7 +2549,17 @@ function buildInteriorProp(p, g) {
         const [ox, oz] = rotXZ(0, 0.1, p.rot);
         addObstacle(p.x + ox, p.z + oz, 0.25, 0.17, p.rot);
       }
-      g.userData.hit = [0.9, 0.8, 0.6, y0 + 0.35]; g.userData.sayY = y0 + 0.85;
+      // 숨은 발견 3곳으로 나눔: 머신 / 그라인더 / 아이패드 (각각 누르기, 말풍선은 작게 바로 위에)
+      for (const [lx, lz, hit, sy, say] of [
+        [0, 0, [0.42, 0.42, 0.48, by + 0.2], by + 0.55, "라마르조꼬 머신이에요\n커피도 내려 드려요"],
+        [(G1 + G2) / 2, GZ, [0.42, 0.62, 0.26, y0 + 0.3], y0 + 0.78, "그라인더 두 대\n원두 향이 솔솔"],
+        [0, -0.01, [0.3, 0.24, 0.14, ty + 0.17], ty + 0.42, "바텐더 전용 아이패드\n몰래 보면 안 돼요"],
+      ]) {
+        const hg = new THREE.Group(); hg.position.set(lx, 0, lz); g.add(hg);
+        const [wx, wz] = rotXZ(lx, lz, p.rot);
+        hg.userData.sayPos = [p.x + wx, p.z + wz]; hg.userData.sayScale = 0.45;
+        addSayHit({ type: "coffee", x: p.x + wx, z: p.z + wz, say }, hg, hit, sy);
+      }
       return true;
     }
     case "icemaker": { // 바 몸통 안 언더카운터 제빙기 (로컬 +z = 바텐더 쪽 앞면): 위 = 문(안에 얼음 더미), 아래 = 환기 그릴
