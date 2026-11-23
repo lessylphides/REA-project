@@ -4383,7 +4383,7 @@ function toggleSit() {
     walk.pos.set(best.group.position.x, 0, best.group.position.z);
     walk.yaw = best.group.rotation.y + Math.PI; // 바·테이블 쪽을 바라봄
     walk.pitch = -0.12;
-    if (!isOpenNow() && storeInfo?.hours && !isLockedNow()) serveWater(best);
+    if (closedMessage() === "오늘은 휴무일이에요" && storeInfo?.hours && !isOpenNow() && !isLockedNow()) serveWater(best); // 휴무일에만
   } else {
     if (best) popBubble("사용 중이에요", best.group.position.x, 1.5, best.group.position.z, { fg: "#c0533f" });
     walk.crouch = true;
