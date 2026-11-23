@@ -4383,6 +4383,7 @@ function toggleSit() {
     walk.pos.set(best.group.position.x, 0, best.group.position.z);
     walk.yaw = best.group.rotation.y + Math.PI; // 바·테이블 쪽을 바라봄
     walk.pitch = -0.12;
+    if (best.id.startsWith("BAR")) { const back = 0.28; walk.pos.x += Math.sin(walk.yaw) * back; walk.pos.z += Math.cos(walk.yaw) * back; } // 바 자리: 시선을 살짝 뒤로
     if (storeInfo?.hours && !isOpenNow() && !isLockedNow()) serveWater(best); // 휴무일 + 영업시간 외 (문 잠긴 시간 제외)
   } else {
     if (best) popBubble("사용 중이에요", best.group.position.x, 1.5, best.group.position.z, { fg: "#c0533f" });
