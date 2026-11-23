@@ -1172,8 +1172,8 @@ function cageLamp(g, x, y, z) {
   mk(new THREE.SphereGeometry(0.06, 10, 8), new THREE.MeshBasicMaterial({ color: "#ffd08a" }), [x, y - 0.05, z + 0.14], g, { outline: 0, shadow: false });
   for (const dy of [-0.02, -0.08]) mk(new THREE.TorusGeometry(0.065, 0.006, 4, 14), ink, [x, y + dy, z + 0.14], g, { outline: 0, shadow: false }).rotation.x = Math.PI / 2;
   for (let i = 0; i < 4; i++) { const a = (i / 4) * Math.PI * 2; mk(box(0.006, 0.1, 0.006), ink, [x + Math.cos(a) * 0.064, y - 0.05, z + 0.14 + Math.sin(a) * 0.064], g, { outline: 0, shadow: false }); }
-  addHalo(g, x, y - 0.05, z + 0.2, 1.1, "#ffb26a");
-  addHalo(g, x, y - 0.3, z + 0.05, 2.4, "#ff8a4a"); // 벽돌에 번지는 주황빛
+  addHalo(g, x, y - 0.05, z + 0.2, 1.1, "#ffb26a").userData.store = true; // 가게 조명 (문 잠긴 시간엔 꺼짐)
+  addHalo(g, x, y - 0.3, z + 0.05, 2.4, "#ff8a4a").userData.store = true; // 벽돌에 번지는 주황빛
 }
 
 /** 대각선 면·왼쪽 면 바깥 꾸밈: 위층 창, 흰 창틀, 창 아래 술병 선반 + LED + 사선 패널, 계단, 벽등, 화분 */
@@ -1457,6 +1457,7 @@ function buildStorefront(T, door, dh) {
     g.beginPath(); g.ellipse(cx, cy + 30, 56, 15, 0, Math.PI * 0.95, Math.PI * 1.9, true); g.stroke();
   });
   const glow = new THREE.MeshBasicMaterial({ map: logo });
+  nightGlow.lanternMat = glow; // 문 잠긴 시간엔 불 꺼진 사각 등
   for (const [rx, rz, ry] of [[0, 0.16, 0], [0.16, 0, Math.PI / 2], [-0.16, 0, -Math.PI / 2], [0, -0.16, Math.PI]]) {
     mk(new THREE.PlaneGeometry(0.3, 0.6), glow, [rx, 0.62, rz], lantern, no).rotation.y = ry;
   }
@@ -1470,14 +1471,15 @@ function buildStorefront(T, door, dh) {
   // 가운데만 살짝 밝고 가장자리는 바닥에 스며드는 빛 (테두리 없음)
   const pool = nightGlow.pool = new THREE.Mesh(new THREE.PlaneGeometry(2.4, 2.4), new THREE.MeshBasicMaterial({ map: poolTex, color: "#ffb08f", transparent: true, opacity: 0.2, depthWrite: false, blending: THREE.AdditiveBlending, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -4 }));
   pool.position.set(0, 0.006, 0); pool.rotation.x = -Math.PI / 2; pool.renderOrder = 2; lantern.add(pool);
-  addHalo(lantern, 0, 0.62, 0, 1.3, "#ffb98f");
-  addHalo(fpGroup, wx, 1.4, zO + 0.3, 2.6, "#ff9f5a");
+  addHalo(lantern, 0, 0.62, 0, 1.3, "#ffb98f").userData.store = true;
+  addHalo(fpGroup, wx, 1.4, zO + 0.3, 2.6, "#ff9f5a").userData.store = true;
   const lampLight = new THREE.PointLight("#ffb3c0", 3, 4, 1.6);
   lampLight.position.set(0, 0.7, 0.2);
   lantern.add(lampLight);
   const winLight = new THREE.PointLight("#ff9a5c", 1.2, 3, 1.6);
   winLight.position.set(wx, 0.7, zO + 0.9);
   fpGroup.add(winLight);
+  nightGlow.storeLights = [[lampLight, 3], [winLight, 1.2]];
 
   // ── 주차금지 표지 (검은 받침)
   const cone = new THREE.Group();
@@ -1517,6 +1519,7 @@ function addHalo(parent, x, y, z, size, color, inner = false) {
   if (inner) sp.material.color.lerp(new THREE.Color("#ffa65c"), 0.6); // 실내 조명은 오렌지빛
   parent.add(sp);
   nightGlow.halos.push(sp);
+  return sp;
 }
 /** 밤하늘: 달 + 별 */
 function buildNightSky(top) {
@@ -1568,13 +1571,24 @@ const IN_DAY = new THREE.Color("#7f6a5e"), IN_NIGHT = new THREE.Color("#6a5348")
 const tmpIn = new THREE.Color();
 const tmpC = new THREE.Color();
 let lastTint = -1;
+let lockState = null;
+const IS_ADMIN_VIEW = () => document.body.classList.contains("admin"); // 관리자는 잠긴 시간에도 평소처럼
 function applyTime(outside, time) {
   const k = timeK; // 바깥 하늘/건물 색은 시간 기준 (밖에 있을 때만 보임)
   const phase = k < 0.15 ? "day" : k < 0.75 ? "dusk" : "night";
   const root = document.documentElement.classList;
   for (const p of ["day", "dusk", "night"]) root.toggle(`sky-${p}`, p === phase);
   updateStreetViews(phase);
-  const key = k + outside * 10;
+  // 문 잠긴 시간(새벽 4시~오전 10시): 가게 안팎 조명 끄기 + 블라인드 완전히 닫기 + 바텐더 퇴근
+  const locked = isLockedNow() && !IS_ADMIN_VIEW(), on = locked ? 0 : 1;
+  if (locked !== lockState) {
+    lockState = locked;
+    for (const f of blindFaces.values()) { if (locked) { f.saved = f.level; setBlindLevel(f, 2); } else setBlindLevel(f, f.saved ?? 0); }
+    for (const b of bartenders) b.visible = !locked;
+    for (const [l, i] of nightGlow.storeLights || []) l.intensity = locked ? 0 : i;
+    if (nightGlow.lanternMat) nightGlow.lanternMat.color.set(locked ? "#5a5560" : "#ffffff");
+  }
+  const key = k + outside * 10 + (locked ? 100 : 0);
   if (Math.abs(key - lastTint) > 0.005) {
     lastTint = key;
     // 바깥: 낮 → 노을(분홍빛) → 밤(푸르고 어둡게) / 안: 밤에 은은한 분홍빛
@@ -1594,15 +1608,15 @@ function applyTime(outside, time) {
       const inside = m.userData.inside ?? tintSplit === false;
       m.color.copy(m.userData.base).multiply(inside ? tmpIn : tmpC);
       if (m.userData.extraDark && inside) m.color.multiplyScalar(1 - m.userData.extraDark * gk);
-      if (inside) m.color.multiplyScalar(inMul);
+      if (inside) m.color.multiplyScalar(inMul * (on ? 1 : 0.38)); // 조명이 꺼지면 매장 안이 어둡게
       if (m.userData.blindOpen != null) m.color.multiplyScalar(1 - (1 - m.userData.blindOpen) * (0.25 + 0.3 * dayL)); // 닫힌 블라인드는 뒤에서 비치는 빛이 줄어 어둡게
     }
   }
   const glow = THREE.MathUtils.smoothstep(k, 0.3, 1);
   const gIn = Math.max(0.85, glow); // 매장 안 조명은 낮에도 켜져 있음
-  for (const h of nightGlow.halos) h.material.opacity = h.userData.inner ? 0.08 + gIn * 0.48 : glow * 0.38;
+  for (const h of nightGlow.halos) h.material.opacity = (h.userData.inner ? 0.08 + gIn * 0.48 : glow * 0.38) * (h.userData.inner || h.userData.store ? on : 1);
   for (const m of nightGlow.windows) m.color.copy(WHITE).lerp(WIN_NIGHT, glow * 0.85);
-  for (const [m, lo, hi] of innerGlows) m.opacity = Math.min(1, (lo + (hi - lo) * gIn) * 1.4); // 조명 둘레 빛을 조금 더 진하게
+  for (const [m, lo, hi] of innerGlows) m.opacity = Math.min(1, (lo + (hi - lo) * gIn) * 1.4) * on; // 조명 둘레 빛을 조금 더 진하게
   const dayAmt = 1 - THREE.MathUtils.smoothstep(k, 0.2, 0.7);
   const duskAmt = Math.max(0, 1 - Math.abs(k - 0.45) / 0.3);
   for (const m of sunPatches) m.opacity = 0; // 매장 안은 늘 어스름한 조명 분위기: 바닥 햇살 줄무늬 없음
@@ -1611,8 +1625,8 @@ function applyTime(outside, time) {
     const tw = s.userData.tw != null ? 0.6 + 0.4 * Math.sin(time * 2 + s.userData.tw) : 1;
     s.material.opacity = glow * tw;
   }
-  if (nightGlow.strip) nightGlow.strip.material.opacity = 0.3 + glow * 0.25;
-  if (nightGlow.pool) nightGlow.pool.material.opacity = 0.08 + glow * 0.3;
+  if (nightGlow.strip) nightGlow.strip.material.opacity = (0.3 + glow * 0.25) * on;
+  if (nightGlow.pool) nightGlow.pool.material.opacity = (0.08 + glow * 0.3) * on;
   if (nightGlow.lit) nightGlow.lit.material.opacity = glow * 0.55;
   for (const m of alleyWindows) m.opacity = glow * 0.9;
   for (const m of upperWindows) m.opacity = glow * 0.22; // 아주 은은한 호박색
@@ -3499,7 +3513,8 @@ function isOpenNow() {
   return false;
 }
 /** 새벽 4시 ~ 오전 10시(한국시간): 문이 잠긴 시간 */
-function isLockedNow() { const { min } = kstNow(); return min >= 4 * 60 && min < 10 * 60; }
+const FORCE_LOCK = new URLSearchParams(location.search).has("locked"); // 확인용: ?locked
+function isLockedNow() { if (FORCE_LOCK) return true; const { min } = kstNow(); return min >= 4 * 60 && min < 10 * 60; }
 /** 영업시간이 아닐 때 바텐더 안내 멘트 */
 function closedMessage() {
   const H = storeInfo?.hours; if (!Array.isArray(H) || H.length !== 7) return "아직 영업시간 전입니다";
@@ -3529,7 +3544,7 @@ async function loadStore() {
 function applyStore() {
   const open = isOpenNow();
   if (doorSign) doorSign.material.map = open ? doorSignTex.open : doorSignTex.closed, doorSign.material.needsUpdate = true;
-  const el = $("introOpen"); if (el) { el.textContent = isLockedNow() ? "문이 잠겼어요 · 10:00부터 입장" : openLabel(); el.classList.toggle("closed", !open); }
+  const el = $("introOpen"); if (el) { el.textContent = isLockedNow() ? "문이 잠겼어요" : openLabel(); el.classList.toggle("closed", !open); }
 }
 setInterval(() => { if (!document.hidden) loadStore(); }, 120000);
 // 빈자리 확인: 영업시간엔 화면을 보는 동안 5초마다, 영업시간이 아니면 화면을 열거나 다시 볼 때만 (서버 요청 아끼기)
@@ -4388,7 +4403,7 @@ function initWalk() {
   $("mapBtn").addEventListener("click", exitWalk);
   $("enterBtn").addEventListener("click", () => {
     if (isLockedNow() && !IS_ADMIN) { // 새벽 4시 ~ 오전 10시: 문이 잠겨 입장 불가
-      toast("문이 잠겼어요\n오전 10시 이후에 들어올 수 있어요", 2200);
+      toast("문이 잠겼어요", 1800);
       const d = doorPanels[0]?.g; if (d) { let k = 0; const iv = setInterval(() => { d.rotation.y = (k % 2 ? -1 : 1) * 0.03 * (k < 6 ? 1 : 0); if (++k > 6) clearInterval(iv); }, 70); } // 문 덜컹
       return;
     }
