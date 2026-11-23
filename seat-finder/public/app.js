@@ -4412,7 +4412,12 @@ function buildMyLegs() {
     const foot = mk(box(0.1, 0.07, 0.23), shoe, [sx, 0, -0.5], g, { outline: 0.006, shadow: false });
     parts.push({ thigh, shin, foot });
   }
-  myLegs = { g, parts, pants };
+  // 몸통: 골반(바지) + 배·가슴(내 옷 색). 고개를 숙이면 무릎 사이로 보임
+  const top = toon("#8f7a62", { unique: true });
+  const pelvis = mk(box(0.34, 0.14, 0.24), pants, [0, 0, -0.05], g, { outline: 0.006, shadow: false });
+  const torso = mk(new THREE.CapsuleGeometry(0.14, 0.08, 6, 14), top, [0, 0, 0.07], g, { outline: 0.006, shadow: false });
+  torso.scale.set(1.15, 1, 0.8);
+  myLegs = { g, parts, pants, top, pelvis, torso };
 }
 const PANTS_FOR_COAT = ["#5b4a3a", "#3c4350", "#2e3340"]; // 내 옷(코트/점퍼/패딩)에 어울리는 바지 색
 function updateMyLegs() {
@@ -4425,7 +4430,9 @@ function updateMyLegs() {
   myLegs.g.position.set(walk.pos.x, 0, walk.pos.z);
   myLegs.g.rotation.y = walk.yaw;
   if (walk.chair) walk.chair.g.rotation.y = walk.yaw - Math.PI; // 둘러보면 의자도 같이 돎
-  if (myCoat >= 0) myLegs.pants.color.set(PANTS_FOR_COAT[myCoat % 3]);
+  if (myCoat >= 0) { myLegs.pants.color.set(PANTS_FOR_COAT[myCoat % 3]); myLegs.top.color.set(["#8f7a62", "#6b3f3a", "#4b5a73"][myCoat % 3]); } // 옷걸이에 건 내 옷과 같은 색
+  myLegs.pelvis.position.y = hip + 0.02;
+  myLegs.torso.position.y = hip + 0.13; // 위끝이 눈보다 약 20cm 아래, 살짝 뒤
   for (const { thigh, shin, foot } of myLegs.parts) {
     thigh.position.y = hip;
     const len = hip - footY; shin.scale.set(1, Math.max(0.2, (len - 0.12) / 1.0), 1); shin.position.y = footY + len / 2 + 0.03; shin.position.z = bar ? -0.44 : -0.48;
