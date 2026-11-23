@@ -42,12 +42,16 @@ export class SeatStore extends DurableObject<Env> {
     return this.save(seats);
   }
 
+  /** 버튼판 배치 + 기본값 (기본값이 아직 없으면 지금 저장된 배치를 기본값으로 삼음) */
   async getBoard() {
-    return (await this.ctx.storage.get<unknown>("board")) ?? null;
+    const board = (await this.ctx.storage.get<unknown>("board")) ?? null;
+    let def = (await this.ctx.storage.get<unknown>("boardDefault")) ?? null;
+    if (!def && board) { def = board; await this.ctx.storage.put("boardDefault", board); }
+    return { board, def };
   }
 
-  async setBoard(board: unknown) {
-    await this.ctx.storage.put("board", board);
+  async setBoard(board: unknown, asDefault = false) {
+    await this.ctx.storage.put(asDefault ? { board, boardDefault: board } : { board });
   }
 
   async reset() {
@@ -123,7 +127,7 @@ export default {
 
     // 관리자 버튼판 배치 (누구나 읽기, 저장은 관리자)
     if (url.pathname === "/api/board" && req.method === "GET") {
-      return json({ board: await store.getBoard() });
+      return json(await store.getBoard());
     }
 
     // 손님 체류시간 기록 (로그인 없이, 숫자만 받음)
@@ -145,11 +149,11 @@ export default {
       if (url.pathname === "/api/login") return json({ ok: true });
       if (url.pathname === "/api/reset") return json(await store.reset());
       if (url.pathname === "/api/board") {
-        const b = (await req.json().catch(() => null)) as { board?: unknown } | null;
+        const b = (await req.json().catch(() => null)) as { board?: unknown; asDefault?: unknown } | null;
         const raw = JSON.stringify(b?.board ?? null);
         if (!b?.board || typeof b.board !== "object" || raw.length > 8000) return json({ error: "bad board" }, 400);
         const num = (v: unknown, lo: number, hi: number, d: number) => (typeof v === "number" && Number.isFinite(v) ? Math.min(hi, Math.max(lo, v)) : d);
-        const src = b.board as { barQ?: unknown; seats?: Record<string, { dx?: unknown; dz?: unknown; r?: unknown }>; tables?: Record<string, { dx?: unknown; dz?: unknown; s?: unknown; r?: unknown }> };
+        const src = b.board as { barQ?: unknown; bar?: { dx?: unknown; dz?: unknown }; seats?: Record<string, { dx?: unknown; dz?: unknown; r?: unknown }>; tables?: Record<string, { dx?: unknown; dz?: unknown; s?: unknown; r?: unknown }> };
         const tables: Record<string, { dx: number; dz: number; s: number; r: number }> = {};
         for (const [id, t] of Object.entries(src.tables ?? {})) {
           if (!SEAT_ID.test(id) || Object.keys(tables).length >= 20) continue;
@@ -160,8 +164,8 @@ export default {
           if (!SEAT_ID.test(id) || Object.keys(seats).length >= 60) continue;
           seats[id] = { dx: num(t?.dx, -10, 10, 0), dz: num(t?.dz, -10, 10, 0), r: num(t?.r, 0, 360, 0) };
         }
-        const clean = { barQ: num(src.barQ, 0.5, 2, 1.12), seats, tables };
-        await store.setBoard(clean);
+        const clean = { barQ: num(src.barQ, 0.5, 2, 1.12), bar: { dx: num(src.bar?.dx, -10, 10, 0), dz: num(src.bar?.dz, -10, 10, 0) }, seats, tables };
+        await store.setBoard(clean, b.asDefault === true);
         return json({ ok: true, board: clean });
       }
       if (url.pathname === "/api/stats") return json({ days: await store.stats([0, 1, 2, 3, 4, 5, 6].map(kstDay)) });

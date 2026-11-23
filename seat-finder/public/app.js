@@ -4604,8 +4604,9 @@ function along(pts, t) { // 선 위 t(0~1) 위치
   for (let i = 0; i < seg.length; i++) { if (d <= seg[i] || i === seg.length - 1) { const k = Math.min(1, d / seg[i]); return [pts[i][0] + (pts[i + 1][0] - pts[i][0]) * k, pts[i][1] + (pts[i + 1][1] - pts[i][1]) * k, Math.atan2(pts[i + 1][1] - pts[i][1], pts[i + 1][0] - pts[i][0])]; } d -= seg[i]; }
 }
 // 버튼판 배치 (관리자가 [배치 편집]으로 조정, 서버에 저장): 바 칸 크기, 테이블별 위치(m)·크기 배율
-const BOARD_DEFAULT = { barQ: 1.12, seats: {}, tables: { T1: { dx: 0, dz: -1.25, s: 1 }, T2: { dx: -0.55, dz: 0, s: 1 } } };
+const BOARD_DEFAULT = { barQ: 1.12, bar: { dx: 0, dz: 0 }, seats: {}, tables: { T1: { dx: 0, dz: -1.25, s: 1 }, T2: { dx: -0.55, dz: 0, s: 1 } } };
 let boardCfg = JSON.parse(JSON.stringify(BOARD_DEFAULT));
+let boardDef = null; // 서버에 저장된 기본값 ([기본값] 버튼이 돌아가는 배치)
 const tcfg = (id) => { const c = (boardCfg.tables[id] ||= { dx: 0, dz: 0, s: 1, r: 0 }); c.r ??= 0; return c; };
 const BOARD_BAR_SEATS = -0.25; // 바 자리 칸이 놓이는 선 (바 손님 쪽 가장자리 기준)
 function seatBoardPos() {
@@ -4641,10 +4642,12 @@ function seatBoardPos() {
       while (z < R.d + 2 && placed.some((P) => overlap(P, corners(x, z, 0)))) z += 0.01;
       out.set(`${b.id}-${b.seats + k + 1}`, [x * S, (z + 0.06) * S, 0, Qm * S]);
     });
-    // 바 의자 칸 하나하나 옮기기·회전 (편집에서 조정)
+    // 바 의자 칸 하나하나 옮기기·회전 + 바 전체 옮기기 (편집에서 조정)
+    const bg = boardCfg.bar || {};
     for (const [id, v] of out) {
-      const c = boardCfg.seats?.[id]; if (!c || !id.startsWith(b.id + "-")) continue;
-      out.set(id, [v[0] + (c.dx || 0) * S, v[1] + (c.dz || 0) * S, v[2] + (c.r || 0), v[3]]);
+      if (!id.startsWith(b.id + "-")) continue;
+      const c = boardCfg.seats?.[id] || {};
+      out.set(id, [v[0] + ((c.dx || 0) + (bg.dx || 0)) * S, v[1] + ((c.dz || 0) + (bg.dz || 0)) * S, v[2] + (c.r || 0), v[3]]);
     }
   }
   for (const s of seats.values()) {
@@ -4670,13 +4673,14 @@ function seatBoardPos() {
 let boardEdit = false, boardSel = null, boardBackup = null;
 const isBarSeat = (id) => (LAYOUT.bars || []).some((b) => id.startsWith(b.id + "-"));
 const isSeatId = (id) => seats.has(id);
-const cfgOf = (id) => (isSeatId(id) ? ((boardCfg.seats ||= {})[id] ||= { dx: 0, dz: 0, r: 0 }) : tcfg(id));
+const cfgOf = (id) => (id === "BAR" ? (boardCfg.bar ||= { dx: 0, dz: 0 }) : isSeatId(id) ? ((boardCfg.seats ||= {})[id] ||= { dx: 0, dz: 0, r: 0 }) : tcfg(id));
 /** 편집 중 끌어서 옮기기 (테이블 / 바 의자 칸) */
-function makeDraggable(g2, id) {
-  g2.addEventListener("pointerdown", (e) => {
+function makeDraggable(handle, id, moveEl) {
+  const g2 = moveEl || handle;
+  handle.addEventListener("pointerdown", (e) => {
     if (!boardEdit) return;
     e.preventDefault(); e.stopPropagation(); // 의자 칸을 끌 때 테이블까지 끌리지 않게
-    boardSel = id; $("bdSel").textContent = isSeatId(id) ? `${isBarSeat(id) ? "바" : id.replace(/-\d+$/, "")} ${id.replace(/^.*-/, "")}번 의자 · 끌어서 옮기기, ⟲⟳ 회전, −+ ${isBarSeat(id) ? "바 칸" : "테이블"} 크기` : `${id} · 끌어서 옮기기, −+ 크기`;
+    boardSel = id; $("bdSel").textContent = id === "BAR" ? "바 의자 전체 · 끌어서 옮기기, −+ 바 칸 크기" : isSeatId(id) ? `${isBarSeat(id) ? "바" : id.replace(/-\d+$/, "")} ${id.replace(/^.*-/, "")}번 의자 · 끌어서 옮기기, ⟲⟳ 회전, −+ ${isBarSeat(id) ? "바 칸" : "테이블"} 크기` : `${id} · 끌어서 옮기기, −+ 크기`;
     for (const g of document.querySelectorAll("#boardSvg .sel")) g.classList.remove("sel"); g2.classList.add("sel");
     const svg = $("boardSvg"), S = 10, inv = svg.getScreenCTM().inverse(), pt = svg.createSVGPoint();
     const toSvg = (ev) => { pt.x = ev.clientX; pt.y = ev.clientY; return pt.matrixTransform(inv); };
@@ -4710,7 +4714,10 @@ function buildBoard(force) {
     const bc = boardCfg.bar || {};
     const m = offsetPath(b.path, BOARD_BAR_SEATS - 1.0)[1];
     void bc;
-    const t = el("text", { class: "tlabel dark", x: m[0] * S - 2.5, y: m[1] * S - 8 }, svg, b.id);
+    const bgp = el("g", { class: "tg bar" + (boardSel === "BAR" ? " sel" : "") });
+    tgroups.set(b.id, bgp);
+    const t = el("text", { class: "tlabel dark barlabel", x: m[0] * S - 2.5 + ((boardCfg.bar?.dx) || 0) * S, y: m[1] * S - 8 + ((boardCfg.bar?.dz) || 0) * S }, bgp, b.id);
+    makeDraggable(t, "BAR", bgp); // BAR 글자를 끌면 바 의자 전체가 함께 움직임
     t.addEventListener("click", () => (boardEdit ? selectBoard("BAR") : groupTap(tableGroups.find((g) => g.id === b.id)?.seatIds || [])));
   }
   for (const t0 of LAYOUT.tables || []) {
@@ -4768,6 +4775,7 @@ async function loadBoard() {
   try {
     const r = await fetch("/api/board", { cache: "no-store" });
     const j = r.ok ? await r.json() : null;
+    if (j?.def) boardDef = j.def;
     if (j?.board) boardCfg = { ...JSON.parse(JSON.stringify(BOARD_DEFAULT)), ...j.board, tables: { ...BOARD_DEFAULT.tables, ...(j.board.tables || {}) } };
   } catch { /* 기본값 */ }
 }
@@ -4777,7 +4785,12 @@ function initBoardTools() {
   $("bdPlus")?.addEventListener("click", () => resizeBoard(1));
   $("bdRotL")?.addEventListener("click", () => rotateBoard(-1));
   $("bdRotR")?.addEventListener("click", () => rotateBoard(1));
-  $("bdReset")?.addEventListener("click", () => { boardCfg = JSON.parse(JSON.stringify(BOARD_DEFAULT)); buildBoard(true); });
+  $("bdReset")?.addEventListener("click", () => { boardCfg = JSON.parse(JSON.stringify(boardDef || BOARD_DEFAULT)); buildBoard(true); });
+  $("bdSetDef")?.addEventListener("click", async () => {
+    if (!confirm("지금 배치를 [기본값]으로 저장할까요?")) return;
+    try { await api("/api/board", { board: boardCfg, asDefault: true }); boardDef = JSON.parse(JSON.stringify(boardCfg)); toast("지금 배치를 기본값으로 저장했어요"); setBoardEdit(false); }
+    catch (e) { toast(`저장 실패: ${e.message}`); }
+  });
   $("bdCancel")?.addEventListener("click", () => { boardCfg = JSON.parse(boardBackup); setBoardEdit(false); });
   $("bdSave")?.addEventListener("click", async () => {
     try { await api("/api/board", { board: boardCfg }); toast("배치를 저장했어요"); setBoardEdit(false); }
