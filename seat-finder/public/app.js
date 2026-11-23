@@ -3793,7 +3793,7 @@ function throwBottle(b, opt = {}) {
       fly.rotateY(d / 0.05);
       if (r > 3.2) fly.scale.setScalar(Math.max(0.001, 1 - (r - 3.2) / 1.2)); // 스르륵 사라짐
     }
-    if (t >= e.life - 0.05) { // 손에 새 보틀
+    if (t >= e.life - 0.05 && !e.done) { e.done = true; // 손에 새 보틀 (한 번만)
       held.visible = true; held.scale.setScalar(0.01);
       addEffect(new THREE.Object3D(), scene, 0.6, (e2) => { held.scale.setScalar(Math.min(1, 0.01 + e2.t / 0.5)); if (e2.t >= 0.55) { held.scale.setScalar(1); u.thrown = false; } });
     }
@@ -4542,7 +4542,7 @@ function drawMinimap() {
 }
 
 function initWalk() {
-  if (new URLSearchParams(location.search).has("debug")) { window.__walk = walk; window.__cam = camera; window.__seats = seats; window.__bt = bartenders; window.__fx = { spillMilk, spillIce, freezerPuff, fridges, iceMakers, blindFaces, setBlindLevel, sayProps, served }; } // 확인용
+  if (new URLSearchParams(location.search).has("debug")) { window.__walk = walk; window.__cam = camera; window.__seats = seats; window.__bt = bartenders; window.__fx = { effects, spillMilk, spillIce, freezerPuff, fridges, iceMakers, blindFaces, setBlindLevel, sayProps, served }; } // 확인용
   $("walkBtn").addEventListener("click", enterWalk);
   $("mapBtn").addEventListener("click", exitWalk);
   $("enterBtn").addEventListener("click", () => {
@@ -4744,8 +4744,8 @@ function updateWorld(dt, time) {
     e.update(e);
     if (e.t >= e.life) {
       e.parent.remove(e.obj);
-      if (e.obj.material.map && e.obj.material.map !== heartTex) e.obj.material.map.dispose();
-      e.obj.material.dispose();
+      const m = e.obj.material; // 술병·얼음처럼 묶음(Group)인 효과는 재질이 없음
+      if (m) { if (m.map && m.map !== heartTex) m.map.dispose(); m.dispose(); }
       effects.splice(i, 1);
     }
   }
