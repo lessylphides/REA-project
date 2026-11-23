@@ -2,6 +2,10 @@ import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import LAYOUT from "./layout.js";
+// 휴대폰에서 화면이 확대되어 버리지 않게 (손가락 두 개 벌리기·두 번 톡 확대 막기, Safari)
+for (const ev of ["gesturestart", "gesturechange", "gestureend"]) document.addEventListener(ev, (e) => e.preventDefault(), { passive: false });
+document.addEventListener("dblclick", (e) => e.preventDefault(), { passive: false });
+{ let lastEnd = 0; document.addEventListener("touchend", (e) => { const now = Date.now(); if (now - lastEnd < 320 && !e.target.closest?.("input, textarea")) e.preventDefault(); lastEnd = now; }, { passive: false }); }
 
 // ───────── 기본 설정 ─────────
 const POLL_MS = 3000;

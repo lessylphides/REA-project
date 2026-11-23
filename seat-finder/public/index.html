@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
 <meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
 <title>빈자리찾기</title>
 <meta name="description" content="지금 매장에 빈자리가 있는지 3D로 확인하세요." />
 <meta name="theme-color" content="#fdf1e2" />
@@ -21,6 +21,7 @@
     background: linear-gradient(170deg, var(--bg1) 0%, #fbe8d8 45%, var(--bg2) 100%);
     overscroll-behavior: none;
   }
+  html, body { touch-action: manipulation; } /* 두 번 톡 확대 막기 */
   #scene { position: fixed; inset: 0; touch-action: none; }
   #scene canvas { display: block; }
 
