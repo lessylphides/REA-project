@@ -2113,8 +2113,8 @@ const airCons = [];
 function updateAc(dt, time) {
   for (const g of airCons) { const u = g.userData.ac; if (u.t < 0) continue; u.t += dt;
     const a = Math.sin(u.t * 1.4) * 0.45 * Math.min(1, u.t, Math.max(0, 6 - u.t));
-    u.flaps.forEach((f) => (f.rotation.x = a));
-    if (u.t > 6) { u.t = -1; u.flaps.forEach((f) => (f.rotation.x = 0)); } }
+    u.flaps.forEach((f) => (f.rotation.x = -0.35 + a));
+    if (u.t > 6) { u.t = -1; u.flaps.forEach((f) => (f.rotation.x = -0.35)); } }
 }
 function spillMilk(g) {
   const u = g.userData.fr;
@@ -2613,19 +2613,21 @@ function buildInteriorProp(p, g) {
       // 위: 파낸 창 → 벽 뒤 에어컨이 안쪽 깊이 보이게 (어두운 안쪽 + 창 둘레 그림자 띠)
       const wy = H - 0.42, ww = W - 0.16, wh = 0.26;
       mk(new THREE.PlaneGeometry(ww, wh), "#1e1f22", [0, wy, fz + 0.001], g, no);
-      mk(new THREE.PlaneGeometry(ww - 0.06, wh - 0.06), "#e9e9e4", [0, wy, fz + 0.002], g, no); // 안쪽 에어컨 앞면
+      mk(new THREE.PlaneGeometry(ww - 0.06, wh - 0.06), "#3a3c40", [0, wy, fz + 0.002], g, no); // 안쪽 에어컨 앞면 (어두운 바람구멍)
       for (const [x, y, w, h] of [[0, wy + wh / 2 - 0.015, ww, 0.03], [0, wy - wh / 2 + 0.015, ww, 0.03], [-ww / 2 + 0.015, wy, 0.03, wh], [ww / 2 - 0.015, wy, 0.03, wh]])
         mk(new THREE.PlaneGeometry(w, h), "#2a2b2e", [x, y, fz + 0.003], g, no); // 창 안쪽 그림자 (깊이감)
       mk(box(ww + 0.04, wh + 0.04, 0.012), dark, [0, wy, fz + 0.004], g, { outline: 0.004, shadow: false }).scale.set(1, 1, 0.3);
       const flaps = [];
-      for (let i = 0; i < 3; i++) { const f = mk(box(ww - 0.1, 0.01, 0.03), "#c9c9c4", [0, wy - 0.07 + i * 0.07, fz + 0.006], g, { outline: 0.003, shadow: false }); flaps.push(f); }
+      const silver = new THREE.MeshBasicMaterial({ color: "#d9dce0" }); // 실내 어둠에 묻히지 않는 밝은 은색 날개
+      for (let i = 0; i < 3; i++) { const f = mk(box(ww - 0.08, 0.05, 0.02), silver, [0, wy - 0.075 + i * 0.075, fz + 0.008], g, { outline: 0.003, shadow: false }); f.rotation.x = -0.35; flaps.push(f); }
+      mk(box(0.012, wh - 0.06, 0.02), silver, [0, wy, fz + 0.01], g, { outline: 0.002, shadow: false }); // 가운데 세로 살
       for (let i = 0; i < 4; i++) mk(box(W - 0.14, 0.025, 0.015), "#93622f", [0, wy - 0.22 - i * 0.045, fz + 0.008], g, { outline: 0.003, shadow: false }); // 가로 나무 루버
       mk(box(W - 0.12, 0.002, 0.004), dark, [0, H * 0.48, fz + 0.002], g, no);
       for (let i = 0; i < 16; i++) mk(box(W - 0.14, 0.022, 0.012), "#8c5d2e", [0, 0.12 + i * 0.045, fz + 0.007], g, { outline: 0.002, shadow: false }); // 아래 가로 살
       g.userData.ac = { flaps, t: -1 };
       airCons.push(g);
       addObstacle(p.x, p.z, W / 2, D / 2, p.rot);
-      g.userData.hit = [W, H, D, H / 2]; g.userData.sayY = H + 0.15;
+      g.userData.hit = [W, H, D, H / 2]; g.userData.sayY = 1.75; // 눈높이
       return true;
     }
     case "speaker": { // JBL 4312A 우드 (호두나무 통 + 파란 앞판 + 흰 우퍼). 로컬 +z = 앞
