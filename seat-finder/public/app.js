@@ -4602,27 +4602,41 @@ function along(pts, t) { // 선 위 t(0~1) 위치
   let d = t * L;
   for (let i = 0; i < seg.length; i++) { if (d <= seg[i] || i === seg.length - 1) { const k = Math.min(1, d / seg[i]); return [pts[i][0] + (pts[i + 1][0] - pts[i][0]) * k, pts[i][1] + (pts[i + 1][1] - pts[i][1]) * k, Math.atan2(pts[i + 1][1] - pts[i][1], pts[i + 1][0] - pts[i][0])]; } d -= seg[i]; }
 }
+const BOARD_TABLE_SHIFT = { T1: [0, -0.7] }; // 버튼판에서만 테이블 위치 조정
 const BOARD_BAR_SEATS = -0.25; // 바 자리 칸: 바를 따라 이어진 네모 칸 // 바 의자 버튼은 바 선에 바짝 // 버튼판: 바는 창가 쪽으로, 바 의자 버튼은 바 앞으로 고르게
 function seatBoardPos() {
   const out = new Map(), S = 10;
   const tables = LAYOUT.tables || [];
   for (const b of LAYOUT.bars || []) { // 바 의자: 손님 쪽 평행선 위에 고른 간격으로
     const line = offsetPath(b.path, BOARD_BAR_SEATS);
-    let L = 0; for (let i = 0; i < line.length - 1; i++) L += Math.hypot(line[i + 1][0] - line[i][0], line[i + 1][1] - line[i][1]);
-    const span = Math.min(0.92, (b.seats - 1) * 1.45 / L), Qb = (span * L / Math.max(1, b.seats - 1)) * S; // 칸 한 변 = 칸 간격 → 서로 딱 붙음
-    for (let i = 0; i < b.seats; i++) { const [x, z, a] = along(line, (1 - span) / 2 + span * (b.seats === 1 ? 0.5 : i / (b.seats - 1))); out.set(`${b.id}-${i + 1}`, [x * S, z * S, THREE.MathUtils.radToDeg(a), Qb]); }
-    (b.extraSeats || []).forEach(([x, z], k) => out.set(`${b.id}-${b.seats + k + 1}`, [x * S, Math.min(R.d - 0.56, z + 0.7) * S, 0, 11])); // 바 너머 자리는 바 선 아래로
+    // 꺾인 구간마다 칸을 나눠 놓음 (모서리에서 서로 겹치지 않게): 각 구간 칸 수
+    const Qm = 1.12, groups = b.boardGroups || [3, 3, 2], clear = Qm * 0.32;
+    let n = 0;
+    groups.forEach((cnt, gi) => {
+      const A = line[gi], B = line[gi + 1]; if (!B) return;
+      const L = Math.hypot(B[0] - A[0], B[1] - A[1]), ux = (B[0] - A[0]) / L, uz = (B[1] - A[1]) / L, deg = THREE.MathUtils.radToDeg(Math.atan2(uz, ux));
+      const first = gi === 0, last = gi === groups.length - 1;
+      // 첫 구간은 모서리 쪽(끝)에 붙이고, 마지막 구간은 모서리 쪽(시작)에 붙이고, 가운데 구간은 가운데에
+      let s0 = first ? L - clear - cnt * Qm : last ? clear : (L - cnt * Qm) / 2;
+      for (let k = 0; k < cnt && n < b.seats; k++, n++) {
+        const d = s0 + Qm * (k + 0.5);
+        out.set(`${b.id}-${n + 1}`, [(A[0] + ux * d) * S, (A[1] + uz * d) * S, deg, Qm * S]);
+      }
+    });
+    const lastSeg = line[line.length - 1];
+    (b.extraSeats || []).forEach(([x], k) => out.set(`${b.id}-${b.seats + k + 1}`, [x * S, (lastSeg[1] + Qm / 2 + 0.2 + 0.55) * S, 0, 11])); // 바 너머 자리: 7·8번 아래로 띄워서 // 바 너머 자리는 바 선 아래로
   }
   for (const s of seats.values()) {
     const p = s.group?.position;
     if (!p || out.has(s.id)) continue;
     let x = p.x, z = p.z;
     const t = tables.find((t) => s.id.startsWith(t.id + "-"));
+    const sh = (t && BOARD_TABLE_SHIFT[t.id]) || [0, 0];
     if (t) { // 테이블 의자: 테이블 가장자리에 바짝 붙여 둘레에
       const dx = x - t.x, dz = z - t.z, l = Math.hypot(dx, dz) || 1;
       const ex = (t.w / 2) * Math.abs(dx / l), ez = (t.d / 2) * Math.abs(dz / l); // 테이블 가장자리까지 거리(대략)
       const r = Math.hypot(ex, ez) + 0.6 + 0.12; // 칸 반폭(0.6m) + 테이블과 간격 12cm
-      x = t.x + (dx / l) * r; z = t.z + (dz / l) * r;
+      x = t.x + sh[0] + (dx / l) * r; z = t.z + sh[1] + (dz / l) * r;
     }
     out.set(s.id, [x * S, z * S, 0, 12]);
   }
@@ -4647,7 +4661,8 @@ function buildBoard() {
     const t = el("text", { class: "tlabel dark", x: m[0] * S - 2.5, y: m[1] * S - 8 }, svg, b.id);
     t.addEventListener("click", () => groupTap(tableGroups.find((g) => g.id === b.id)?.seatIds || []));
   }
-  for (const t of LAYOUT.tables || []) {
+  for (const t0 of LAYOUT.tables || []) {
+    const sh = BOARD_TABLE_SHIFT[t0.id] || [0, 0], t = { ...t0, x: t0.x + sh[0], z: t0.z + sh[1] };
     if (t.shape === "rect" || t.type === "rect") el("rect", { class: "tbl", x: (t.x - t.w / 2) * S, y: (t.z - t.d / 2) * S, width: t.w * S, height: t.d * S, rx: 1 });
     else el("ellipse", { class: "tbl", cx: t.x * S, cy: t.z * S, rx: (t.w / 2) * S, ry: (t.d / 2) * S });
     const lb = el("text", { class: "tlabel", x: t.x * S, y: t.z * S }, svg, t.id);
