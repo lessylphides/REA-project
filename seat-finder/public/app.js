@@ -4602,7 +4602,7 @@ function along(pts, t) { // 선 위 t(0~1) 위치
   let d = t * L;
   for (let i = 0; i < seg.length; i++) { if (d <= seg[i] || i === seg.length - 1) { const k = Math.min(1, d / seg[i]); return [pts[i][0] + (pts[i + 1][0] - pts[i][0]) * k, pts[i][1] + (pts[i + 1][1] - pts[i][1]) * k]; } d -= seg[i]; }
 }
-const BOARD_BAR_SHIFT = -0.85, BOARD_BAR_SEATS = 0.95; // 버튼판: 바는 창가 쪽으로, 바 의자 버튼은 바 앞으로 고르게
+const BOARD_BAR_SHIFT = -0.85, BOARD_BAR_SEATS = 0.02; // 바 의자 버튼은 바 선에 바짝 // 버튼판: 바는 창가 쪽으로, 바 의자 버튼은 바 앞으로 고르게
 function seatBoardPos() {
   const out = new Map(), S = 10;
   const tables = LAYOUT.tables || [];
@@ -4616,7 +4616,12 @@ function seatBoardPos() {
     if (!p || out.has(s.id)) continue;
     let x = p.x, z = p.z;
     const t = tables.find((t) => s.id.startsWith(t.id + "-"));
-    if (t) { x = t.x + (x - t.x) * 1.6; z = t.z + (z - t.z) * 1.6; } // 테이블 의자는 바깥으로 벌려 누르기 쉽게
+    if (t) { // 테이블 의자: 테이블 가장자리에 바짝 붙여 둘레에
+      const dx = x - t.x, dz = z - t.z, l = Math.hypot(dx, dz) || 1;
+      const ex = (t.w / 2) * Math.abs(dx / l), ez = (t.d / 2) * Math.abs(dz / l); // 테이블 가장자리까지 거리(대략)
+      const r = Math.hypot(ex, ez) + 0.5;
+      x = t.x + (dx / l) * r; z = t.z + (dz / l) * r;
+    }
     out.set(s.id, [x * S, z * S]);
   }
   return out;
