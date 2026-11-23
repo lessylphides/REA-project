@@ -4273,6 +4273,7 @@ function enterStore() {
 function exitWalk() {
   if (!walk.on) return;
   walk.on = false;
+  if (walk.chair) { walk.chair.g.position.x = walk.chair.x; walk.chair.g.position.z = walk.chair.z; walk.chair = null; }
   walk.sit = null; walk.crouch = false; walk.back = null; walk.jumpY = walk.vy = 0; walk.eye = EYE; updateActBtns();
   walk.look = null;
   walk.keys.clear();
@@ -4383,7 +4384,12 @@ function toggleSit() {
     walk.pos.set(best.group.position.x, 0, best.group.position.z);
     walk.yaw = best.group.rotation.y + Math.PI; // 바·테이블 쪽을 바라봄
     walk.pitch = -0.12;
-    if (best.id.startsWith("BAR")) { const back = 0.28; walk.pos.x += Math.sin(walk.yaw) * back; walk.pos.z += Math.cos(walk.yaw) * back; } // 바 자리: 시선을 살짝 뒤로
+    { // 의자를 사람 앉은 만큼 뒤로 빼고 그 위에 앉음 (일어서면 원래 자리로)
+      const back = 0.28, g = best.group;
+      walk.chair = { g, x: g.position.x, z: g.position.z };
+      g.position.x += Math.sin(walk.yaw) * back; g.position.z += Math.cos(walk.yaw) * back;
+      walk.pos.set(g.position.x, 0, g.position.z);
+    }
     if (storeInfo?.hours && !isOpenNow() && !isLockedNow()) serveWater(best); // 휴무일 + 영업시간 외 (문 잠긴 시간 제외)
   } else {
     if (best) popBubble("사용 중이에요", best.group.position.x, 1.5, best.group.position.z, { fg: "#c0533f" });
@@ -4393,6 +4399,7 @@ function toggleSit() {
 }
 function standUp() {
   clearWater();
+  if (walk.chair) { walk.chair.g.position.x = walk.chair.x; walk.chair.g.position.z = walk.chair.z; walk.chair = null; } // 의자 제자리로
   if (walk.sit && walk.back) { walk.pos.copy(walk.back); collide(walk.pos); }
   walk.sit = null; walk.crouch = false; walk.back = null;
   updateActBtns();
