@@ -3547,7 +3547,10 @@ $("loginForm").addEventListener("submit", async (e) => {
     $("loginErr").textContent = err.message;
   }
 });
-$("logoutBtn").addEventListener("click", () => { logout(); location.href = "/"; });
+$("logoutBtn").addEventListener("click", () => {
+  if (walk.on) { exitWalk(); return; } // 매장 안에서는 관리자 전체 화면으로 돌아가기
+  logout(); location.href = "/";
+});
 $("resetBtn").addEventListener("click", async () => {
   if (!confirm("모든 자리를 빈자리로 바꿀까요?")) return;
   localSeq++;
@@ -4048,6 +4051,7 @@ function enterWalk() {
   walk.pitch = -0.12;
   controls.enabled = false;
   document.body.classList.add("walking");
+  if (IS_ADMIN) $("logoutBtn").textContent = "돌아가기";
   flyTo(new THREE.Vector3(walk.pos.x, EYE, walk.pos.z), eulerQuat(walk.pitch, walk.yaw), walkFov(), 1.6,
     () => { walk.on = true; showWalkHint(); },
     (t) => { fpGroup.visible = t > 0.82; });
@@ -4097,6 +4101,7 @@ function exitWalk() {
   setAim(null);
   fpGroup.visible = false;
   document.body.classList.remove("walking");
+  if (IS_ADMIN) $("logoutBtn").textContent = "나가기";
   const { pos, quat } = overviewPose();
   flyTo(pos, quat, OVERVIEW_FOV, 1.3, () => {
     controls.enabled = true;
