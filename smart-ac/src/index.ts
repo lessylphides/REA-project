@@ -1,7 +1,7 @@
 // Cloudflare Worker 엔트리
 //  - scheduled(cron): 주기적으로 센서 읽고 에어컨 자동 제어
 //  - fetch(http):     상태 확인 + on/off + 설정 UI/API
-import { CircState, CIRC_DEFAULT, findCircScene, circDecide } from './circ';
+import { CircState, CIRC_DEFAULT, findCircScene, circExtraScenes, circDecide } from './circ';
 import { VaneState, findUpDownScene, fixVane, vaneReady } from './vane';
 import { HumState, HUM_DEFAULT, humDecide, findHumPowerScene } from './hum';
 import { Config, DEFAULT_CONFIG, Env, DesiredAcState, MODE_CODES, FAN_CODES } from './config';
@@ -519,9 +519,9 @@ export default {
         return json({ ok: true, circ: next });
       }
       const st = (await env.KV.get('circ', 'json') as CircState | null) ?? CIRC_DEFAULT;
-      let scene: { sceneId: string; name: string } | null = null;
-      try { const s = await getSession(env); const fams = await hej.getFamilies(s); scene = findCircScene(await hej.getScenes(s, fams[0].familyId)); } catch {}
-      return json({ ok: true, circ: st, scene });
+      let scene: { sceneId: string; name: string } | null = null, extras: { sceneId: string; name: string }[] = [];
+      try { const s = await getSession(env); const fams = await hej.getFamilies(s); const all = await hej.getScenes(s, fams[0].familyId); scene = findCircScene(all); extras = circExtraScenes(all); } catch {}
+      return json({ ok: true, circ: st, scene, extras });
     }
     if (url.pathname === '/api/scene' && req.method === 'POST') {
       try {
@@ -942,7 +942,8 @@ function renderUI(token: string): string {
     <div class="acseg" id="acDiy"><button data-k="updown">↕️ 상하</button><button data-k="leftright">↔️ 좌우</button><button data-k="fan">🌀 세기</button><button data-k="power">⚡ 파워</button></div>
     <div class="mini" id="acDiyNote" style="margin-top:6px"></div>
     <div class="aclabel" style="margin-top:12px">🌀 서큘레이터 <span id="circState" style="font-weight:400"></span></div>
-    <div class="acseg"><button id="circToggle">켜기/끄기</button><button id="circSetOn">지금 켜져 있어요</button><button id="circSetOff">지금 꺼져 있어요</button></div>
+    <div class="acseg" id="circRow"><button id="circToggle">전원 켜기/끄기</button></div>
+    <div class="acseg" style="margin-top:6px"><button id="circSetOn">지금 켜져 있어요</button><button id="circSetOff">지금 꺼져 있어요</button></div>
     <div class="mini" id="circNote" style="margin-top:6px"></div>
     <div class="mini" id="acMsg" style="margin-top:10px;min-height:16px"></div>
   </div>
@@ -1096,7 +1097,10 @@ function showCirc(st,auto){var e=document.getElementById('circState');e.textCont
 async function loadCirc(){var n=document.getElementById('circNote');let j;try{j=await(await fetch(q('/api/circ'))).json();}catch(e){j={ok:false}}
   if(!j.ok){n.textContent='서큘레이터 상태를 못 읽었어요';return}
   circScene=j.scene;showCirc(j.circ);document.getElementById('circToggle').disabled=!circScene;
-  n.textContent=circScene?('레시피 "'+circScene.name+'" · 영업 중 에어컨이 켜지면 자동으로 켜고, 마감하면 꺼요'):'헤이홈 간편 레시피 이름에 "서큘레이터"를 넣어주세요';}
+  var row=document.getElementById('circRow');row.querySelectorAll('.circx').forEach(function(x){x.remove()});
+  (j.extras||[]).forEach(function(sc){var b=document.createElement('button');b.className='circx';b.textContent=sc.name.replace(/서큘레이터|써큘레이터/,'').trim()||sc.name;
+    b.onclick=async function(){var m=document.getElementById('acMsg');b.disabled=true;m.textContent='전송 중…';let r;try{r=await(await fetch(q('/api/scene'),{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({sceneId:sc.sceneId})})).json();}catch(e){r={ok:false,error:'전송 실패'}}m.textContent=r.ok?('✓ '+sc.name):('✗ '+(r.error||''));b.disabled=false;};row.appendChild(b);});
+  n.textContent=circScene?('전원 레시피 "'+circScene.name+'" · 영업 중 에어컨이 켜지면 자동으로 켜고, 마감하면 꺼요'):'헤이홈 간편 레시피 이름에 "서큘레이터 전원"처럼 "전원"을 넣어주세요';}
 async function setCirc(on){var m=document.getElementById('acMsg');try{var j=await(await fetch(q('/api/circ'),{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({on:on})})).json();showCirc(j.circ);m.textContent='✓ 서큘레이터 상태를 "'+(on?'켜짐':'꺼짐')+'"으로 바로잡았어요';}catch(e){m.textContent='✗ 실패'}}
 document.getElementById('circSetOn').onclick=function(){setCirc(true)};document.getElementById('circSetOff').onclick=function(){setCirc(false)};
 document.getElementById('circToggle').onclick=async function(){if(!circScene)return;var b=this,m=document.getElementById('acMsg');b.disabled=true;m.textContent='전송 중…';let r;
