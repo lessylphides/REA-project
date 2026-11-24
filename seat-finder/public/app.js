@@ -2812,8 +2812,8 @@ function buildInteriorProp(p, g) {
       return true;
     }
     case "winebarrel": { // 나무로 짠 오크통 모양 와인 셀러 (세운 타원 + 받침). 로컬 +z = 방 쪽, 뒤는 벽
-      const W = 0.47, Hh = 0.71, D = 0.34, y0 = 0.17, cy = y0 + Hh / 2, wood = "#9a6436", woodD = "#6e4424", T = 0.055; // 바닥부터 꼭대기까지 88cm
-      mk(box(0.42, 0.04, 0.34), woodD, [0, 0.02, 0], g, { outline: 0.006 }); // 받침 바닥판
+      const W = 0.44, Hh = 0.71, D = 0.34, y0 = 0.17, cy = y0 + Hh / 2, wood = "#9a6436", woodD = "#6e4424", T = 0.055; // 바닥부터 꼭대기까지 88cm
+      mk(box(0.4, 0.04, 0.34), woodD, [0, 0.02, 0], g, { outline: 0.006 }); // 받침 바닥판
       mk(box(0.22, y0, 0.26), wood, [0, y0 / 2 + 0.02, 0], g, { outline: 0.006 }); // 받침 기둥
       const ell = (rx, ry, hole) => { const s = new THREE.Shape(); s.absellipse(0, 0, rx, ry, 0, Math.PI * 2, false, 0); if (hole) { const h = new THREE.Path(); h.absellipse(0, 0, rx - hole, ry - hole, 0, Math.PI * 2, true, 0); s.holes.push(h); } return s; };
       const ring = new THREE.ExtrudeGeometry(ell(W / 2, Hh / 2, T), { depth: D, bevelEnabled: false, curveSegments: 40 });
@@ -2837,7 +2837,7 @@ function buildInteriorProp(p, g) {
         const a = (i / 22) * Math.PI * 2;
         mk(rivG, "#2a2420", [Math.cos(a) * (W / 2 - T / 2), cy + Math.sin(a) * (Hh / 2 - T / 2), D / 2 + 0.006], g, { outline: 0, shadow: false });
       }
-      addObstacle(p.x, p.z, 0.25, 0.2, p.rot);
+      addObstacle(p.x, p.z, 0.23, 0.2, p.rot);
       g.userData.hit = [W, y0 + Hh, D + 0.1, (y0 + Hh) / 2]; g.userData.sayY = y0 + Hh + 0.25;
       return true;
     }
