@@ -3233,8 +3233,7 @@ function buildTables() {
       row(bottom, t.d / 2 + 0.32);
     }
     if (t.chairs) { local.length = 0; local.push(...t.chairs); } // 의자 위치 직접 지정
-    // 컵 / 테이블 램프 (분위기)
-    mk(cyl(0.05, 0.04, 0.1, 12), "#ffffff", [0.08, H + 0.08, 0.02], g, { outline: 0.01 });
+    // 테이블 램프 (분위기)
     if (t.lamp) {
       const lx = t.lamp[0], lz = t.lamp[1];
       mk(cyl(0.05, 0.06, 0.02, 12), "#1f1f22", [lx, H + 0.035, lz], g, { outline: 0.005, shadow: false });

@@ -114,7 +114,7 @@ export default {
     { id: "T1", shape: "dropleaf", x: 5.7, z: 3.0, w: 1.2, d: 0.75, r: 0.6, seats: 3, chair: "rattan", color: "#b8743f", leg: "#7a4a2a" },
     // 벽 테이블: 입구에서 봤을 때 오른쪽 벽에 붙음, 의자 3개 (벽 쪽 빼고)
     { id: "T2", shape: "rect", x: 9.08, z: 4.9, w: 0.8, d: 0.9, seats: 3, chair: "windsor", color: "#4a3328", leg: "#3a281f",
-      chairs: [[-0.66, 0], [0, -0.68], [0, 0.68]], lamp: [0.22, -0.25] },
+      chairs: [[-0.66, 0], [0, -0.68], [0, 0.68]], lamp: [0.22, 0] }, // 램프는 벽 쪽 가운데
   ],
 
   // 가상 스크린 (나중에 광고 자리). wall: "left" | "back" | "right"
