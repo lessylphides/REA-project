@@ -2550,6 +2550,10 @@ function buildInteriorProp(p, g) {
       const k = p.h ?? 1.8;
       if (p.potR) { // 곧은 원통 화분 (지름 = potR × 2) + 검은 화강암 자갈
         const r = p.potR, ph = 0.5;
+        if (p.saucer) { // 하얀 받침 + 안쪽 밧줄 테
+          mk(cyl(r + 0.035, r + 0.04, 0.035, 28), "#efede6", [0, 0.0175, 0], g, { outline: 0.006 });
+          const rope = mk(new THREE.TorusGeometry(r + 0.012, 0.009, 6, 32), "#c9b48a", [0, 0.035, 0], g, { outline: 0, shadow: false }); rope.rotation.x = Math.PI / 2;
+        }
         mk(new THREE.CylinderGeometry(r, r * 0.97, ph, 28, 1, true), toon(p.pot || "#eeeae4", { side: THREE.DoubleSide }), [0, ph / 2, 0], g, { outline: 0.012 }); // 윗면이 뚫린 화분
         const rim = mk(new THREE.RingGeometry(r - 0.018, r, 28), toon(p.pot || "#eeeae4", { side: THREE.DoubleSide }), [0, ph - 0.001, 0], g, { outline: 0, shadow: false }); rim.rotation.x = -Math.PI / 2; // 화분 테두리 두께
         mk(new THREE.CylinderGeometry(r - 0.018, r - 0.018, 0.012, 28, 1, true), toon(p.pot || "#eeeae4", { side: THREE.DoubleSide }), [0, ph - 0.012, 0], g, { outline: 0, shadow: false }); // 안쪽 벽 (자갈 위)
@@ -2661,7 +2665,7 @@ function buildInteriorProp(p, g) {
           mk(new THREE.SphereGeometry(r, 12, 10), leafMat(r > 0.25 ? "#3d7a45" : "#4f9150"), [x, y, z], g, { outline: 0.015 });
         }
       }
-      { const ob = p.r ?? (p.potR ? p.potR + 0.04 : 0.26); addObstacle(p.x, p.z, ob, ob); }
+      { const ob = p.r ?? (p.potR ? p.potR + (p.saucer ? 0.06 : 0.04) : 0.26); addObstacle(p.x, p.z, ob, ob); }
       g.userData.hit = [0.7, k + 0.3, 0.7, (k + 0.3) / 2]; g.userData.sayY = Math.min(k + 0.45, 1.75); // 키 큰 화분은 눈높이 근처에
       if (g.children.length) g.userData.wiggler = g;
       return true;
@@ -2829,8 +2833,13 @@ function buildInteriorProp(p, g) {
     }
     case "winebarrel": { // 나무로 짠 오크통 모양 와인 셀러 (세운 타원 + 받침). 로컬 +z = 방 쪽, 뒤는 벽
       const W = 0.44, Hh = 0.71, D = 0.34, y0 = 0.17, cy = y0 + Hh / 2, wood = "#9a6436", woodD = "#6e4424", T = 0.055; // 바닥부터 꼭대기까지 88cm
-      mk(box(0.4, 0.04, 0.34), woodD, [0, 0.02, 0], g, { outline: 0.006 }); // 받침 바닥판
-      mk(box(0.22, y0, 0.26), wood, [0, y0 / 2 + 0.02, 0], g, { outline: 0.006 }); // 받침 기둥
+      { // 다리: 아래로 벌어진 사다리꼴 판, 바닥 가운데는 아치로 파임, 위는 통 아래에 물림
+        const sh = new THREE.Shape(), bw = 0.2, tw = 0.11, th = y0 + 0.06;
+        sh.moveTo(-bw, 0); sh.lineTo(-0.1, 0); sh.absarc(0, 0, 0.1, Math.PI, 0, true); sh.lineTo(bw, 0); sh.lineTo(tw, th); sh.lineTo(-tw, th); sh.closePath();
+        const leg = new THREE.ExtrudeGeometry(sh, { depth: 0.28, bevelEnabled: false, curveSegments: 16 }); leg.translate(0, 0, -0.14);
+        mk(leg, wood, [0, 0, 0], g, { outline: 0.006 });
+        mk(box(tw * 2 + 0.06, 0.012, 0.29), woodD, [0, y0 - 0.02, 0], g, { outline: 0, shadow: false }); // 다리 위 가로 이음선
+      }
       const ell = (rx, ry, hole) => { const s = new THREE.Shape(); s.absellipse(0, 0, rx, ry, 0, Math.PI * 2, false, 0); if (hole) { const h = new THREE.Path(); h.absellipse(0, 0, rx - hole, ry - hole, 0, Math.PI * 2, true, 0); s.holes.push(h); } return s; };
       const ring = new THREE.ExtrudeGeometry(ell(W / 2, Hh / 2, T), { depth: D, bevelEnabled: false, curveSegments: 40 });
       ring.translate(0, 0, -D / 2);
