@@ -1471,15 +1471,15 @@ function buildStorefront(T, door, dh) {
   mk(box(3.0, 0.08, 0.6), "#55595e", [nx0 + 1.6, 2.65, R.d + T + 0.3], fpGroup, ol);
 
   // ── 화분들 (고무나무 + 측백나무)
-  makeRubberPlant(fpGroup, opL + 0.35, R.d + T + 0.35);
+  makeRubberPlant(fpGroup, opL + 0.35, R.d + T + 0.95); // 앞 화분 줄(0.95)에 맞춤
   const pcx = (opR + R.w + T) / 2; // 문 오른쪽 벽돌 기둥 가운데 (화분 + 사각 등)
-  for (const [dx, dz, k] of [[0.95, 0.4, 0.9], [1.55, 0.95, 1.0], [2.15, 0.95, 0.95], [pcx - opL, 0.3, 0.95]]) makeCypress(fpGroup, opL + dx, R.d + T + dz, k);
+  for (const [dx, dz, k] of [[0.95, 0.95, 0.9], [1.55, 0.95, 1.0], [2.15, 0.95, 0.95], [pcx - opL, 0.3, 0.95]]) makeCypress(fpGroup, opL + dx, R.d + T + dz, k);
 
   // ── 고래꼬리 조명 상자
   const lx = pcx, lz = R.d + T + 0.85;
   addObstacle(lx, lz, 0.2, 0.2);
-  addObstacle(opL + 0.35, R.d + T + 0.35, 0.2, 0.2);
-  for (const [dx, dz] of [[0.95, 0.4], [1.55, 0.95], [2.15, 0.95], [pcx - opL, 0.3]]) addObstacle(opL + dx, R.d + T + dz, 0.2, 0.2);
+  addObstacle(opL + 0.35, R.d + T + 0.95, 0.2, 0.2);
+  for (const [dx, dz] of [[0.95, 0.95], [1.55, 0.95], [2.15, 0.95], [pcx - opL, 0.3]]) addObstacle(opL + dx, R.d + T + dz, 0.2, 0.2);
   addObstacle(opL - 0.2, R.d + T + 1.9, 0.2, 0.2);
   const lantern = new THREE.Group();
   lantern.position.set(lx, 0, lz);
@@ -5034,11 +5034,18 @@ function stretchBoardRoom(svg, roomEl, doorEls, S) {
   const xs = R.outline.map(([x]) => x * S), ys = R.outline.map(([, z]) => z * S);
   const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
   if (!boardEdit) { // 편집 중엔 관리자 바 모양이 바뀌므로 평소 화면에서 잰 크기를 그대로 씀
-    const bar = document.querySelector(".adminbar")?.getBoundingClientRect(), sr = svg.getBoundingClientRect(), ctm = svg.getScreenCTM();
+    const bar = document.querySelector(".adminbar")?.getBoundingClientRect(), board = $("board");
+    if (bar && bar.width && board) { // 바탕 칸만 관리자 바 바로 위까지 늘림. 의자 그림(svg) 크기는 그대로 → 바닥만 아래로 넘쳐 그려짐
+      svg.style.height = ""; board.style.bottom = "";
+      const h0 = svg.getBoundingClientRect().height;
+      board.style.bottom = `${Math.max(0, innerHeight - bar.top + 4)}px`;
+      svg.style.height = `${h0}px`; svg.style.overflow = "visible";
+    }
+    const ctm = svg.getScreenCTM();
     if (!bar || !bar.width || !ctm) return;
     const inv = ctm.inverse(), pt = svg.createSVGPoint();
     const toSvg = (x, y) => { pt.x = x; pt.y = y; const q = pt.matrixTransform(inv); return [q.x, q.y]; };
-    const [a0, b1] = toSvg(bar.left + 6, Math.min(bar.top - 14, sr.bottom - 16)), [a1] = toSvg(bar.right - 6, bar.top); // 아래끝: 바 위, 입구 글자가 보이게
+    const [a0, b1] = toSvg(bar.left + 6, bar.top - 10), [a1] = toSvg(bar.right - 6, bar.top); // 아래끝: 관리자 바에 닿지 않을 만큼
     if (a1 - a0 > 20 && b1 - y0 > 20) boardRoomFit = [a0, a1, b1];
   }
   if (!boardRoomFit) return;
@@ -5050,7 +5057,7 @@ function stretchBoardRoom(svg, roomEl, doorEls, S) {
     const [ln, tx] = doorEls;
     ln.setAttribute("x1", mx((d.x - d.w / 2) * S)); ln.setAttribute("x2", mx((d.x + d.w / 2) * S));
     ln.setAttribute("y1", my(R.d * S)); ln.setAttribute("y2", my(R.d * S));
-    tx.setAttribute("x", mx(d.x * S)); tx.setAttribute("y", my(R.d * S) + 4);
+    tx.setAttribute("x", mx(d.x * S)); tx.setAttribute("y", my(R.d * S) - 2); // 입구 글자는 바닥 안쪽에
   }
 }
 
