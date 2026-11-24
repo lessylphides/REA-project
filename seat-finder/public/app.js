@@ -336,6 +336,7 @@ const EDGES = (() => {
 const FRONT = EDGES.find((e) => e.kind === "front") || { ax: R.w, bx: 0 };
 const FRONT_X0 = Math.min(FRONT.ax, FRONT.bx), FRONT_X1 = Math.max(FRONT.ax, FRONT.bx);
 // 2층 이상은 1층보다 넓음: 유리 3면 쪽으로 OVER(안쪽 벽선 기준) 만큼 나오고, 모서리 기둥이 받침. 뒤로는 화장실 문 밖 공간(BACK_D)까지
+const BACK_PIL_GAP = 0.11; // 왼쪽 통창 끝 흰 테두리가 벽선 뒤로 나온 만큼 (뒤쪽 끝 기둥이 이만큼 뒤에서 시작)
 const OVER = 0.7, SOFFIT_Y = 2.95, BACK_D = 2.15, PIL_W = 0.6, PIL_R_IN = 8.9; // PIL_R_IN: 입구 오른쪽 기둥 안쪽 선 (화장실 문 오른쪽 끝과 일직선)
 const UPPER = (() => {
   const off = (e) => (e.kind === "front" || e.kind === "glass" ? OVER : e.i === 0 ? BACK_D : 0.14);
@@ -1308,7 +1309,7 @@ function buildUpperMass(T, top, brickMat) {
     const open = e.kind === "front" || e.kind === "glass";
     if (!open) { seg(a, b, e, i === 0 ? 0 : SOFFIT_Y, false); continue; }
     if ((i + 1) % n === 0) { // 뒤 공간과 이어지는 면: 처마(띠)는 유리창 구간까지만, 그 뒤는 땅부터 꼭대기까지 한 장의 벽
-      const t = (e.bx - a[0]) * e.dx + (e.bz - a[1]) * e.dz, P = [a[0] + e.dx * t, a[1] + e.dz * t];
+      const t = (e.bx - a[0]) * e.dx + (e.bz - a[1]) * e.dz + BACK_PIL_GAP, P = [a[0] + e.dx * t, a[1] + e.dz * t]; // 유리창 끝 흰 테두리 바로 뒤에서 꺾임
       // 한 장짜리 ㄱ자 벽: 유리창 구간은 처마 위부터, 뒤 공간 구간은 땅부터 (이음새 선이 생기지 않게)
       const L = Math.hypot(b[0] - a[0], b[1] - a[1]) + 0.015, tP = Math.hypot(P[0] - a[0], P[1] - a[1]), yb = SOFFIT_Y + 0.3;
       const sh2 = new THREE.Shape([[0, yb], [tP, yb], [tP, 0], [L, 0], [L, top], [0, top]].map(([u, v]) => new THREE.Vector2(u, v)));
@@ -1359,8 +1360,8 @@ function buildUpperMass(T, top, brickMat) {
   }
   { // 왼쪽 안쪽 끝: 앞면이 통창 끝 선(z=0)에, 몸통은 뒤 공간 쪽 → 통창을 가리지 않음. 뒤 공간 1층 바깥벽과 한 덩어리
     const x0 = UPPER[0][0], z0 = UPPER[0][1];
-    prism([[x0 + 0.01, z0 + 0.01], [-T, z0 + 0.01], [-T, 0], [x0 + 0.01, 0]]); // 바깥면은 위층 벽(땅까지)이 덮음
-    addObstacle((x0 - T) / 2, z0 / 2, (-T - x0) / 2, -z0 / 2);
+    prism([[x0 + 0.01, z0 + 0.01], [-T, z0 + 0.01], [-T, -BACK_PIL_GAP], [x0 + 0.01, -BACK_PIL_GAP]]); // 앞면은 유리창 끝 흰 테두리 바로 뒤 (창을 가리지 않음)
+    addObstacle((x0 - T) / 2, (z0 - BACK_PIL_GAP) / 2, (-T - x0) / 2, (-BACK_PIL_GAP - z0) / 2);
   }
   // 주차금지 표지: 정면↔대각선 모서리 기둥 앞 (모서리에서 바깥으로)
   { const V = UPPER[3], e2 = EDGES[2], e3 = EDGES[3], bx = -(e2.nx + e3.nx), bz = -(e2.nz + e3.nz), bl = Math.hypot(bx, bz);
