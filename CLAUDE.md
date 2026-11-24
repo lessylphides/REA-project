@@ -29,7 +29,7 @@ for i in 1 2 3 4 5 6; do CLOUDFLARE_API_TOKEN=dummy npm run deploy > /tmp/dep.lo
 ```
 - 테스트 URL 옵션: `?debug` (window.__walk/__cam/__seats/__bt/__fx 노출), `?time=HH`, `?locked`
 - 1인칭 이동은 벽을 뚫고 순간이동하면 막힘 → 입구 앞(8.1, 10.6)에서 출발해 경로로 옮겨야 함 (shot.cjs 가 처리)
-- 커밋은 브랜치 `claude/gracious-wozniak-ahligl` 에.
+- 커밋은 브랜치 `claude/jolly-planck-rj3wef` 에.
 
 ## 좌표 (m, 위에서 볼 때 x 오른쪽, z 아래 = 입구 쪽)
 - 매장 안쪽 윤곽 `[[0,0],[9.5,0],[9.5,9.5],[3.9,9.5],[0,5.6]]`, 벽 두께 0.14, 천장 2.9
