@@ -1095,9 +1095,10 @@ function buildInsideShell(T) {
     registerTint(bm);
     bm.userData.forceOutside = true;
     const inner = mk(new THREE.PlaneGeometry(winW, 2.75 - BLIND_BOTTOM), bm, [(wx0 + wx1) / 2, (2.75 + BLIND_BOTTOM) / 2, R.d - 0.005], fpGroup, { outline: 0, shadow: false });
-    mk(new THREE.PlaneGeometry(winW, BLIND_BOTTOM - 0.12), clearGlass(), [(wx0 + wx1) / 2, (BLIND_BOTTOM + 0.12) / 2, R.d + 0.02], fpGroup, { outline: 0, shadow: false });
-    addGlassRefl(fpGroup, winW, 2.75 - 0.12, [(wx0 + wx1) / 2, (2.75 + 0.12) / 2, R.d + 0.04], 0);
-    for (const y of [0.14, 2.73]) mk(box(winW, 0.05, 0.12), "#f4f1ec", [(wx0 + wx1) / 2, y, R.d + 0.02], fpGroup, { outline: 0.008, shadow: false });
+    // 유리·창틀은 벽 두께 가운데 (옆 통창들과 같은 깊이)
+    mk(new THREE.PlaneGeometry(winW, BLIND_BOTTOM - 0.12), clearGlass(), [(wx0 + wx1) / 2, (BLIND_BOTTOM + 0.12) / 2, zF], fpGroup, { outline: 0, shadow: false });
+    addGlassRefl(fpGroup, winW, 2.75 - 0.12, [(wx0 + wx1) / 2, (2.75 + 0.12) / 2, R.d + T + 0.006], 0);
+    for (const y of [0.14, 2.73]) mk(box(winW, 0.05, T * 0.9), "#f4f1ec", [(wx0 + wx1) / 2, y, zF], fpGroup, { outline: 0.01, shadow: false });
     inner.renderOrder = 3;
     { const face = blindFace("front"); face.mats.push(bm); // 입구 쪽 창 조절 줄 (문 쪽 끝)
       const cg = new THREE.Group(); cg.position.set(wx1 - 0.1, 0, R.d); cg.rotation.y = Math.PI; fpGroup.add(cg);
@@ -1220,6 +1221,7 @@ function decorateGlassFacade(e, g, top, brickMat) {
   }
   mk(box(GW + 0.2, 0.1, 0.16), white, [GC, GO + 0.05, zo + 0.06], g, ol8);                // 위 테두리
   for (const x of [G0 - 0.05, G1 + 0.05]) mk(box(0.1, GO, 0.16), white, [x, GO / 2, zo + 0.06], g, ol8); // 양옆 테두리
+  mk(box(GW + 0.2, 0.1, 0.16), white, [GC, 0.12, zo + 0.06], g, ol8); // 아래 테두리 (유리 아래끝을 덮는 액자 밑변)
   mk(box(GW, 0.1, 0.06), white, [GC, 2.8, zo + 0.02], g, { outline: 0, shadow: false });   // 유리 위끝 ~ 테두리 사이
   if (brickMat) mk(box(GW + 0.5, 0.22, 0.22), brickMat(GW + 0.5, 0.22), [GC, GO + 0.21, zo + 0.11], g, { outline: 0.015, shadow: false }); // 벽돌 턱
   // (창 아래 술병·사선 무늬·LED 는 매장 안 장이 유리 너머로 비쳐 보이는 것 — buildBackbar)
@@ -1344,6 +1346,11 @@ function buildStorefront(T, door, dh) {
   mk(box(opR - opL + 0.2, 0.1, 0.16), white, [(opL + opR) / 2, opTop + 0.05, zO + 0.04], fpGroup, ol);
   mk(box(0.1, opTop, 0.16), white, [opL - 0.05, opTop / 2, zO + 0.04], fpGroup, ol);
   mk(box(0.1, opTop, 0.16), white, [opR + 0.05, opTop / 2, zO + 0.04], fpGroup, ol);
+  { // 쇼윈도 아래: 벽돌 밑단 + 흰 아래 테두리 (옆 통창들과 같은 모양)
+    const sx0 = opL, sx1 = door.x - door.w / 2;
+    wallPart(sx0, sx1, 0, 0.12);
+    mk(box(sx1 - sx0 + 0.1, 0.1, 0.16), white, [(sx0 + sx1) / 2, 0.12, zO + 0.04], fpGroup, ol);
+  }
 
   // ── 쇼윈도
   const wx = opL + winW / 2, wz = zO + 0.006; // 벽 바깥면 바로 앞
