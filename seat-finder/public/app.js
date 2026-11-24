@@ -1078,9 +1078,12 @@ function buildInsideShell(T) {
       const fr = "#f4f1ec";
       for (const y of [hy0, hy1]) mk(box(hx1 - hx0 + 0.04, 0.035, T + 0.02), fr, [(hx0 + hx1) / 2, y, zF], fpGroup, { outline: 0.006, shadow: false });
       for (const x of [hx0, hx1]) mk(box(0.035, hy1 - hy0, T + 0.02), fr, [x, (hy0 + hy1) / 2, zF], fpGroup, { outline: 0.006, shadow: false });
-      const fx = door.x + door.w / 4, fy = hy1 + 0.0175 - 0.2; // 환풍기 안쪽 면: 위끝을 작은 창 위 창틀 윗변과 맞춤
-      mk(box(0.4, 0.4, 0.02), "#cfcac2", [fx, fy, zF - T / 2 - 0.012], fpGroup, { outline: 0.006, shadow: false });
-      for (let i = 0; i < 5; i++) mk(box(0.32, 0.02, 0.01), "#8e8a84", [fx, fy - 0.12 + i * 0.06, zF - T / 2 - 0.025], fpGroup, { outline: 0, shadow: false });
+      // 환풍기 안쪽 커버: 작은 창 창틀과 같은 크기(좌우 대칭, 위아래 창틀 바깥선까지)
+      const vx0 = door.x + 0.02 - 0.0175, vx1 = door.x + door.w / 2 - 0.03 + 0.0175, vy0 = hy0 - 0.0175, vy1 = hy1 + 0.0175;
+      const fx = (vx0 + vx1) / 2, fy = (vy0 + vy1) / 2, vw = vx1 - vx0, vh = vy1 - vy0;
+      mk(box(vw, vh, 0.02), "#cfcac2", [fx, fy, zF - T / 2 - 0.012], fpGroup, { outline: 0.006, shadow: false });
+      const n = Math.max(5, Math.round((vh - 0.1) / 0.06));
+      for (let i = 0; i < n; i++) mk(box(vw - 0.08, 0.02, 0.01), "#8e8a84", [fx, vy0 + 0.05 + (i + 0.5) * (vh - 0.1) / n, zF - T / 2 - 0.025], fpGroup, { outline: 0, shadow: false });
     }
     // 안쪽에서 보이는 정면 창 (블라인드)
     const winW = LAYOUT.front?.windowW ?? 2.6;
