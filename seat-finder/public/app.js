@@ -1347,7 +1347,11 @@ function buildUpperMass(T, top, brickMat) {
     const wa = Math.max(PIL_W, armTo(V, ea, frameAt(ea, false), [-ea.dx, -ea.dz]));
     const wb = Math.max(PIL_W, armTo(V, eb, frameAt(eb, true), [eb.dx, eb.dz]));
     const p1 = [V[0] - ea.dx * wa, V[1] - ea.dz * wa], p2 = [V[0] + eb.dx * wb, V[1] + eb.dz * wb];
-    prism([p1, V, p2, [p2[0] + eb.nx * PD, p2[1] + eb.nz * PD], [p1[0] + ea.nx * PD, p1[1] + ea.nz * PD]]);
+    const q1 = [p1[0] + ea.nx * PD, p1[1] + ea.nz * PD], q2 = [p2[0] + eb.nx * PD, p2[1] + eb.nz * PD];
+    // 안쪽 모서리: 두 안쪽 선의 교점 (q1→q2 를 바로 이으면 모서리를 질러 매장 안 벽을 뚫고 나옴)
+    const den = ea.dx * eb.dz - ea.dz * eb.dx, tq = ((q2[0] - q1[0]) * eb.dz - (q2[1] - q1[1]) * eb.dx) / den;
+    const C = [q1[0] + ea.dx * tq, q1[1] + ea.dz * tq];
+    prism([p1, V, p2, q2, C, q1]);
     for (const [P, e, w] of [[p1, ea, wa], [p2, eb, wb]]) { // 부딪힘: 팔 두 개
       const cx = (P[0] + V[0]) / 2 + e.nx * PD / 2, cz = (P[1] + V[1]) / 2 + e.nz * PD / 2;
       addObstacle(cx, cz, w / 2, PD / 2 + 0.02, THREE.MathUtils.radToDeg(Math.atan2(e.dz, e.dx)));
