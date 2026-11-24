@@ -481,13 +481,13 @@ function buildRoom() {
     const low = [e, prev].some((x) => -x.nx * cam.x + -x.nz * cam.y > 0.05);
     const ox = -(e.nx + prev.nx) * T / 2, oz = -(e.nz + prev.nz) * T / 2;
     const post = (grp, h) => mk(box(T + 0.02, h, T + 0.02), R.wall, [e.ax + ox, h / 2, e.az + oz], grp, { outline: 0.02, shadow: false });
-    if (low) { post(roomGroup, 0.35); post(fpGroup, H); } else post(roomGroup, H);
+    if (low) { dollhouseOnly.push(post(roomGroup, 0.35)); post(fpGroup, H); } else post(roomGroup, H);
   });
 
   // 정면 (가게 앞) 낮은 벽 + 입구 표시
   const low = 0.35;
   const door = LAYOUT.door;
-  const fseg = (x0, x1, h, grp) => { if (x1 - x0 > 0.01) mk(box(x1 - x0, h, T), R.wall, [(x0 + x1) / 2, h / 2, R.d + T / 2], grp, { outline: 0.02 }); };
+  const fseg = (x0, x1, h, grp) => { if (x1 - x0 > 0.01) dollhouseOnly.push(mk(box(x1 - x0, h, T), R.wall, [(x0 + x1) / 2, h / 2, R.d + T / 2], grp, { outline: 0.02 })); };
   if (door?.wall === "front") {
     fseg(FRONT_X0 - T / 2, door.x - door.w / 2, low, roomGroup);
     fseg(door.x + door.w / 2, FRONT_X1 + T / 2, low, roomGroup);
@@ -550,6 +550,7 @@ function mullionXs(e) {
 /** 벽 한 면: wall(막힌 벽) / glass(블라인드 통유리) */
 function buildEdge(e, group, h, T) {
   const g = new THREE.Group();
+  if (h < 1) dollhouseOnly.push(g); // 위에서 볼 때만 쓰는 낮은 벽
   g.position.set((e.ax + e.bx) / 2 - e.nx * T / 2, 0, (e.az + e.bz) / 2 - e.nz * T / 2);
   g.rotation.y = -Math.atan2(e.dz, e.dx); // 로컬 x = 벽 방향, 로컬 +z = 방 안쪽
   group.add(g);
@@ -1769,6 +1770,7 @@ let doorOpen = 0;
 const interactives = []; // 손님이 누를 수 있는 것 (소품·스크린)
 const sayProps = []; // 말풍선이 있는 소품
 const labelSprites = []; // 위에서 볼 때만 보이는 이름표
+const dollhouseOnly = []; // 위에서 볼 때만 쓰는 낮은 벽
 const steamSources = []; // 커피 김 나오는 곳 (월드 좌표)
 const SAY_HEIGHT = { counter: 1.9, shelf: 2.25, plant: 1.55, lamp: 1.25, rug: 0.6 };
 const HIT_SIZE = (p) => ({
@@ -4776,6 +4778,7 @@ function updateWorld(dt, time) {
     for (const p of doorPanels) p.g.rotation.y = 1.35 * doorOpen; // 바깥쪽(+z)으로 열림 (경첩 오른쪽)
   }
   for (const l of labelSprites) l.visible = !fpGroup.visible; // 1인칭에선 번호표 숨김
+  for (const w of dollhouseOnly) w.visible = !fpGroup.visible; // 위에서 볼 때만 쓰는 낮은 벽 (1인칭에선 유리 아래를 가려 갈색 띠처럼 보임)
   for (const b of bartenders) updateBartender(b, dt, time);
   updateIce(dt);
   updateWalkers(dt, time);
