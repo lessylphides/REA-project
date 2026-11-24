@@ -25,7 +25,7 @@ node tools/check.cjs                           # 전체 점검: 낮·밤·문 �
 node tools/shot.cjs out.png x z 보는곳x 보는곳z [pitch] [time] [tap=x,y,z] [taps]   # 1인칭 사진 한 장
 node tools/topview.cjs out.png                 # 위에서 내려다본 사진
 # 배포 (속도 제한 code 971 이 나면 30초 쉬고 다시)
-for i in 1 2 3 4 5 6; do CLOUDFLARE_API_TOKEN=dummy npm run deploy > /tmp/dep.log 2>&1 && { grep -iE "Current Version|custom domain" /tmp/dep.log; break; }; tail -2 /tmp/dep.log; sleep 30; done
+for i in 1 2 3 4 5 6; do CLOUDFLARE_ACCOUNT_ID=9ecdd9e050cc043f4c41cbef5f0b9853 CLOUDFLARE_API_TOKEN=dummy npm run deploy > /tmp/dep.log 2>&1 && { grep -iE "Current Version|custom domain" /tmp/dep.log; break; }; tail -2 /tmp/dep.log; sleep 30; done
 ```
 - 테스트 URL 옵션: `?debug` (window.__walk/__cam/__seats/__bt/__fx 노출), `?time=HH`, `?locked`
 - 1인칭 이동은 벽을 뚫고 순간이동하면 막힘 → 입구 앞(8.1, 10.6)에서 출발해 경로로 옮겨야 함 (shot.cjs 가 처리)
