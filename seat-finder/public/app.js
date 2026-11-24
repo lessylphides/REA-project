@@ -2424,6 +2424,59 @@ function woodStool(g) {
   return ty + 0.02;
 }
 
+/** REEL TO REEL CLUB 포스터 (간단한 그림): 제목 + 위 큰 데크 2대 + 아래 4칸씩 2줄, 귀퉁이 테이프 */
+let _reelTex = null;
+function reelPosterTex() {
+  if (_reelTex) return _reelTex;
+  return (_reelTex = canvasTex(256, 356, (c, W, H) => {
+    c.fillStyle = "#f3ecd8"; c.fillRect(0, 0, W, H);
+    c.fillStyle = "#1c1c1c"; c.font = "900 21px sans-serif"; c.textAlign = "left"; c.fillText("REEL TO REEL CLUB", 10, 32, W - 20);
+    c.font = "700 12px sans-serif"; c.fillText("For the love of analog", 10, 50);
+    const deck = (x, y, w, h, reel) => { // 릴 데크: 몸통 + 릴 두 개
+      c.fillStyle = "#2a2a2c"; c.fillRect(x, y + h * 0.35, w, h * 0.65);
+      c.fillStyle = "#9a9a9e"; c.fillRect(x + w * 0.1, y + h * 0.62, w * 0.8, h * 0.1);
+      const r = w * 0.2;
+      for (const cx of [x + w * 0.28, x + w * 0.72]) {
+        c.fillStyle = reel; c.beginPath(); c.arc(cx, y + r + 2, r, 0, Math.PI * 2); c.fill();
+        c.fillStyle = "#f3ecd8"; c.beginPath(); c.arc(cx, y + r + 2, r * 0.25, 0, Math.PI * 2); c.fill();
+      }
+    };
+    deck(14, 62, 84, 82, "#2d3550"); deck(160, 62, 84, 82, "#c9c9cc");
+    c.strokeStyle = "#555"; c.lineWidth = 1; c.strokeRect(104, 74, 52, 26); c.strokeRect(104, 106, 52, 26);
+    c.fillStyle = "#c0392b"; c.font = "800 8px sans-serif"; c.fillText("NEW", 136, 84); c.fillText("NEW", 136, 116);
+    const reels = ["#222", "#b23a32", "#9e2b2b", "#bbb", "#ccc", "#ddd", "#ccc", "#333"];
+    for (let r = 0; r < 2; r++) for (let k = 0; k < 4; k++) {
+      const x = 8 + k * 61, y = 160 + r * 96;
+      deck(x + 4, y, 52, 46, reels[r * 4 + k]);
+      c.strokeStyle = "#777"; c.strokeRect(x + 2, y + 52, 54, 34);
+      c.fillStyle = "#333"; for (let l = 0; l < 4; l++) c.fillRect(x + 6, y + 58 + l * 7, 44 - (l % 2) * 10, 2.5);
+    }
+    c.fillStyle = "rgba(225,225,215,.85)"; // 귀퉁이 테이프
+    for (const [x, y, a] of [[0, 6, -0.6], [W, 6, 0.6], [0, H - 6, 0.6], [W, H - 6, -0.6]]) { c.save(); c.translate(x, y); c.rotate(a); c.fillRect(-18, -6, 36, 12); c.restore(); }
+  }));
+}
+
+/** 사진 크게 보기 (누르거나 X 로 닫기) */
+function showPhoto(src) {
+  let ov = document.getElementById("photoView");
+  if (!ov) {
+    ov = document.createElement("div"); ov.id = "photoView";
+    Object.assign(ov.style, { position: "fixed", inset: "0", zIndex: "60", background: "rgba(0,0,0,.88)", display: "flex", alignItems: "center", justifyContent: "center", padding: "calc(env(safe-area-inset-top) + 44px) 12px calc(env(safe-area-inset-bottom) + 16px)" });
+    const img = document.createElement("img"); img.alt = "포스터 사진";
+    Object.assign(img.style, { maxWidth: "100%", maxHeight: "100%", objectFit: "contain", borderRadius: "6px", boxShadow: "0 6px 30px rgba(0,0,0,.5)" });
+    const x = document.createElement("button"); x.textContent = "✕"; x.setAttribute("aria-label", "닫기");
+    Object.assign(x.style, { position: "absolute", top: "calc(env(safe-area-inset-top) + 8px)", right: "12px", width: "40px", height: "40px", borderRadius: "20px", border: "0", background: "rgba(255,255,255,.9)", color: "#222", fontSize: "18px", fontWeight: "700" });
+    ov.append(img, x);
+    const close = (e) => { e.stopPropagation(); e.preventDefault(); if (performance.now() - (ov._at || 0) < 450) return; ov.style.display = "none"; }; // 여는 손가락의 뒤늦은 click 으로 바로 닫히지 않게
+    ov.addEventListener("click", close);
+    for (const t of ["pointerdown", "touchstart"]) ov.addEventListener(t, (e) => e.stopPropagation());
+    document.body.appendChild(ov);
+  }
+  ov.querySelector("img").src = src;
+  ov._at = performance.now();
+  ov.style.display = "flex";
+}
+
 function buildInteriorProp(p, g) {
   if (p.stool) { // stool: true → 나무 스툴 위에 올려 둠
     const top = woodStool(g);
@@ -2749,14 +2802,19 @@ function buildInteriorProp(p, g) {
       const w = p.w ?? 0.3, h = p.h ?? 1.9, t = 0.018, lean = p.lean ?? 0.06;
       const pv = new THREE.Group(); pv.rotation.x = -lean; g.add(pv);
       mk(box(w, h, t), p.color || "#8a5a36", [0, h / 2, 0], pv, { outline: 0.006 });
+      if (p.poster) { // 판에 테이프로 붙인 포스터 (간단한 그림) — 누르면 실제 사진
+        const P = p.poster;
+        const pm = mk(new THREE.PlaneGeometry(P.w, P.h), new THREE.MeshBasicMaterial({ map: reelPosterTex() }), [0, P.y, t / 2 + 0.002], pv, { outline: 0.003, shadow: false });
+        if (P.photo) { pm.userData = { kind: "photo", src: P.photo }; interactives.push(pm); }
+      }
       addObstacle(p.x, p.z, w / 2, 0.08, p.rot);
       g.userData.hit = [w, h, 0.2, h / 2]; g.userData.sayY = Math.min(h + 0.2, 1.75);
       return true;
     }
     case "winebarrel": { // 나무로 짠 오크통 모양 와인 셀러 (세운 타원 + 받침). 로컬 +z = 방 쪽, 뒤는 벽
-      const W = 0.56, Hh = 0.84, D = 0.34, y0 = 0.2, cy = y0 + Hh / 2, wood = "#9a6436", woodD = "#6e4424", T = 0.065;
-      mk(box(0.5, 0.04, 0.36), woodD, [0, 0.02, 0], g, { outline: 0.006 }); // 받침 바닥판
-      mk(box(0.26, y0, 0.28), wood, [0, y0 / 2 + 0.02, 0], g, { outline: 0.006 }); // 받침 기둥
+      const W = 0.47, Hh = 0.71, D = 0.34, y0 = 0.17, cy = y0 + Hh / 2, wood = "#9a6436", woodD = "#6e4424", T = 0.055; // 바닥부터 꼭대기까지 88cm
+      mk(box(0.42, 0.04, 0.34), woodD, [0, 0.02, 0], g, { outline: 0.006 }); // 받침 바닥판
+      mk(box(0.22, y0, 0.26), wood, [0, y0 / 2 + 0.02, 0], g, { outline: 0.006 }); // 받침 기둥
       const ell = (rx, ry, hole) => { const s = new THREE.Shape(); s.absellipse(0, 0, rx, ry, 0, Math.PI * 2, false, 0); if (hole) { const h = new THREE.Path(); h.absellipse(0, 0, rx - hole, ry - hole, 0, Math.PI * 2, true, 0); s.holes.push(h); } return s; };
       const ring = new THREE.ExtrudeGeometry(ell(W / 2, Hh / 2, T), { depth: D, bevelEnabled: false, curveSegments: 40 });
       ring.translate(0, 0, -D / 2);
@@ -2764,7 +2822,7 @@ function buildInteriorProp(p, g) {
       mk(new THREE.ShapeGeometry(ell(W / 2 - T, Hh / 2 - T), 32), "#24160f", [0, cy, -D / 2 + 0.01], g, { outline: 0, shadow: false }); // 안쪽 뒤판 (어두움)
       const iw = W / 2 - T, ih = Hh / 2 - T;
       const bottleG = cyl(0.034, 0.034, 0.24, 10), capG = cyl(0.015, 0.015, 0.05, 8);
-      for (const dy of [-0.2, -0.06, 0.08, 0.21]) { // 칸마다 눕힌 병 (빨간 마개가 앞으로)
+      for (const dy of [-0.165, -0.05, 0.065, 0.17]) { // 칸마다 눕힌 병 (빨간 마개가 앞으로)
         const hw = iw * Math.sqrt(Math.max(0, 1 - ((dy - 0.045) / ih) ** 2));
         mk(box(hw * 2, 0.018, D - 0.03), wood, [0, cy + dy - 0.045, 0], g, { outline: 0.004, shadow: false });
         const n = Math.max(1, Math.floor((hw * 2 - 0.02) / 0.08));
@@ -2779,7 +2837,7 @@ function buildInteriorProp(p, g) {
         const a = (i / 22) * Math.PI * 2;
         mk(rivG, "#2a2420", [Math.cos(a) * (W / 2 - T / 2), cy + Math.sin(a) * (Hh / 2 - T / 2), D / 2 + 0.006], g, { outline: 0, shadow: false });
       }
-      addObstacle(p.x, p.z, 0.3, 0.2, p.rot);
+      addObstacle(p.x, p.z, 0.25, 0.2, p.rot);
       g.userData.hit = [W, y0 + Hh, D + 0.1, (y0 + Hh) / 2]; g.userData.sayY = y0 + Hh + 0.25;
       return true;
     }
@@ -4096,6 +4154,10 @@ function interact(ev) {
     const reach = u.group?.userData.path ? 2.5 : 1.5; // 바텐더는 바 건너편에서도 닿게
     if (walk.on && Math.hypot(hit.point.x - walk.pos.x, hit.point.z - walk.pos.z) > reach) return;
     tapProp(u);
+  }
+  else if (u.kind === "photo") { // 포스터 등: 사진 크게 보기 (걸을 땐 2m 안에서만)
+    if (walk.on && Math.hypot(hit.point.x - walk.pos.x, hit.point.z - walk.pos.z) > 2) return;
+    showPhoto(u.src);
   }
   else if (u.kind === "water") sipWater(u);
   else if (u.seatId) tapSeat(seats.get(u.seatId));
