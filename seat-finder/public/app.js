@@ -1875,6 +1875,7 @@ function buildProps() {
     g.rotation.y = THREE.MathUtils.degToRad(-(p.rot || 0));
     (p.walkOnly ? fpGroup : roomGroup).add(g); // walkOnly: 낮은 벽에 붙은 것 → 1인칭에서만
     if (buildInteriorProp(p, g)) {
+      if (g.userData.door5) doors5.push(g.userData.door5);
       if (p.say && g.userData.hit) addSayHit(p, g, g.userData.hit, g.userData.sayY);
       continue;
     } else if (p.type === "counter") {
@@ -2284,7 +2285,18 @@ function updateIce(dt) {
 }
 const fridges = [];
 const airCons = [];
+const doors5 = [];
+function updateDoors5(dt) {
+  for (const d of doors5) {
+    if (d.target) { d.t += dt; if (d.t > 7) d.target = 0; } // 7초 뒤 저절로 닫힘
+    d.open += ((d.target ? 1 : 0) - d.open) * Math.min(1, dt * 3);
+    if (Math.abs(d.open - (d.target ? 1 : 0)) < 0.002) d.open = d.target ? 1 : 0;
+    d.hinge.rotation.y = d.ang * d.open;
+    d.inside.visible = d.open > 0.01;
+  }
+}
 function updateAc(dt, time) {
+  updateDoors5(dt);
   for (const g of airCons) {
     const u = g.userData.ac;
     if (u.t < 0 && storeInfo?.acOn && isOpenNow()) u.t = 0; // 실제 에어컨이 켜져 있으면 날개가 계속 천천히 움직임
@@ -2604,18 +2616,24 @@ function buildInteriorProp(p, g) {
     }
     case "walldoor": { // 벽에 난 문 (화장실 가는 문)
       const w = p.w ?? 0.85, h = p.h ?? 2.05, frame = "#f4f1ec";
-      mk(box(w, h, 0.04), p.color || "#7a5638", [0, h / 2, 0.03], g, { outline: 0.012 });
+      const hinge = new THREE.Group(); hinge.position.set(-w / 2, 0, 0.03); g.add(hinge); // 왼쪽 경첩 (5번 누르면 열림)
+      const dg = new THREE.Group(); dg.position.x = w / 2; hinge.add(dg);
+      mk(box(w, h, 0.04), p.color || "#7a5638", [0, h / 2, 0], dg, { outline: 0.012 });
+      const inside = new THREE.Group(); inside.visible = false; g.add(inside); // 열리면 보이는 바깥 복도 (어두운 뒤 공간)
+      mk(new THREE.PlaneGeometry(w, h), "#2a2622", [0, h / 2, 0.006], inside, { outline: 0, shadow: false });
+      mk(new THREE.PlaneGeometry(w * 0.6, 0.5), new THREE.MeshBasicMaterial({ color: "#5a5048" }), [0.05, 1.5, 0.007], inside, { outline: 0, shadow: false }); // 복도 끝 희미한 빛
+      g.userData.door5 = { hinge, inside, open: 0, target: 0, t: 0, ang: -1.6 };
       for (const sx of [-1, 1]) mk(box(0.06, h + 0.04, 0.07), frame, [sx * (w / 2 + 0.03), (h + 0.04) / 2, 0.035], g, { outline: 0.008 });
       mk(box(w + 0.18, 0.06, 0.07), frame, [0, h + 0.05, 0.035], g, { outline: 0.008 });
-      mk(new THREE.SphereGeometry(0.035, 10, 8), "#c9b27a", [w / 2 - 0.1, 1.0, 0.07], g, { outline: 0.005 });
+      mk(new THREE.SphereGeometry(0.035, 10, 8), "#c9b27a", [w / 2 - 0.1, 1.0, 0.04], dg, { outline: 0.005 });
       if (p.text) {
         const t = canvasTex(128, 64, (c, W2, H2) => {
           c.fillStyle = "#f4f1ec"; c.beginPath(); c.roundRect(2, 2, W2 - 4, H2 - 4, 12); c.fill();
           c.fillStyle = "#3b2f2a"; c.font = "800 30px 'Pretendard','Apple SD Gothic Neo',sans-serif"; c.textAlign = "center"; c.fillText(p.text, W2 / 2, 43);
         });
-        mk(new THREE.PlaneGeometry(0.3, 0.15), new THREE.MeshBasicMaterial({ map: t }), [0, 1.6, 0.055], g, { outline: 0.004, shadow: false });
+        mk(new THREE.PlaneGeometry(0.3, 0.15), new THREE.MeshBasicMaterial({ map: t }), [0, 1.6, 0.025], dg, { outline: 0.004, shadow: false });
       }
-      g.userData.hit = [w, h, 0.3, h / 2]; g.userData.sayY = h + 0.2;
+      g.userData.hit = [w, h, 0.3, h / 2]; g.userData.sayY = 1.72; // 말풍선은 눈높이
       return true;
     }
     case "sign": { // WELCOME 팻말
@@ -2813,23 +2831,39 @@ function buildInteriorProp(p, g) {
     case "aircon": { // 벽 뒤 공간의 스탠드 에어컨 + 벽에 붙은 나무 문(앞판)만 살짝 나옴 (로컬 +z = 홀 쪽)
       const W = p.w ?? 0.8, H = p.h ?? 2.0, D = 0.03, wood = "#a8743f", dark = "#5e3b22", no = { outline: 0, shadow: false };
       const fz = D / 2;
-      mk(box(W, H, D), wood, [0, H / 2, 0], g, { outline: 0.01 });
+      // 나무 문(앞판): 왼쪽 경첩으로 열림. 문 뒤(벽 안 칸)에 하얀 업소용 스탠드 에어컨
+      const hinge = new THREE.Group(); hinge.position.x = -W / 2; g.add(hinge);
+      const fg = new THREE.Group(); fg.position.x = W / 2; hinge.add(fg);
+      const inside = new THREE.Group(); inside.visible = false; g.add(inside);
+      { const ai = W - 0.08, ah = H - 0.06, az = -0.012, nb = { outline: 0, shadow: false };
+        mk(new THREE.PlaneGeometry(W, H), "#1b1a1d", [0, H / 2, az - 0.002], inside, nb); // 칸 안쪽 어둠
+        const body = new THREE.MeshBasicMaterial({ color: "#f4f4f2" });
+        mk(new THREE.PlaneGeometry(ai, ah), body, [0, ah / 2 + 0.02, az], inside, nb);   // 하얀 몸통
+        mk(new THREE.PlaneGeometry(ai - 0.06, 0.34), "#151518", [0, ah - 0.25, az + 0.001], inside, nb); // 위 검은 바람구멍
+        for (let r = 0; r < 3; r++) mk(new THREE.PlaneGeometry(ai - 0.08, 0.025), "#d9dbde", [0, ah - 0.36 + r * 0.11, az + 0.002], inside, nb);
+        mk(new THREE.PlaneGeometry(0.008, 0.32), "#d9dbde", [0, ah - 0.25, az + 0.002], inside, nb);
+        mk(new THREE.PlaneGeometry(0.05, 0.02), "#c8392b", [-ai / 2 + 0.08, ah - 0.04, az + 0.002], inside, nb); // LG 로고 자리
+        mk(new THREE.PlaneGeometry(0.16, 0.012), "#c9ccd0", [0, ah - 0.62, az + 0.002], inside, nb); // 표시창
+        for (let r = 0; r < 8; r++) mk(new THREE.PlaneGeometry(ai - 0.08, 0.018), "#2a2b2e", [0, 0.16 + r * 0.115, az + 0.002], inside, nb); // 아래 흡입구 살
+      }
+      mk(box(W, H, D), wood, [0, H / 2, 0], fg, { outline: 0.01 });
       mk(box(W + 0.06, 0.04, D + 0.01), dark, [0, H + 0.02, 0], g, { outline: 0.004, shadow: false }); // 위 문틀
       // 위: 파낸 창 → 벽 뒤 에어컨이 안쪽 깊이 보이게 (어두운 안쪽 + 창 둘레 그림자 띠)
       const wy = H - 0.42, ww = W - 0.16, wh = 0.26;
-      mk(new THREE.PlaneGeometry(ww, wh), "#1e1f22", [0, wy, fz + 0.001], g, no);
-      mk(new THREE.PlaneGeometry(ww - 0.06, wh - 0.06), "#3a3c40", [0, wy, fz + 0.002], g, no); // 안쪽 에어컨 앞면 (어두운 바람구멍)
+      mk(new THREE.PlaneGeometry(ww, wh), "#1e1f22", [0, wy, fz + 0.001], fg, no);
+      mk(new THREE.PlaneGeometry(ww - 0.06, wh - 0.06), "#3a3c40", [0, wy, fz + 0.002], fg, no); // 안쪽 에어컨 앞면 (어두운 바람구멍)
       for (const [x, y, w, h] of [[0, wy + wh / 2 - 0.015, ww, 0.03], [0, wy - wh / 2 + 0.015, ww, 0.03], [-ww / 2 + 0.015, wy, 0.03, wh], [ww / 2 - 0.015, wy, 0.03, wh]])
-        mk(new THREE.PlaneGeometry(w, h), "#2a2b2e", [x, y, fz + 0.003], g, no); // 창 안쪽 그림자 (깊이감)
-      mk(box(ww + 0.04, wh + 0.04, 0.012), dark, [0, wy, fz + 0.004], g, { outline: 0.004, shadow: false }).scale.set(1, 1, 0.3);
+        mk(new THREE.PlaneGeometry(w, h), "#2a2b2e", [x, y, fz + 0.003], fg, no); // 창 안쪽 그림자 (깊이감)
+      mk(box(ww + 0.04, wh + 0.04, 0.012), dark, [0, wy, fz + 0.004], fg, { outline: 0.004, shadow: false }).scale.set(1, 1, 0.3);
       const flaps = [];
       const silver = new THREE.MeshBasicMaterial({ color: "#d9dce0" }); // 실내 어둠에 묻히지 않는 밝은 은색 날개
-      for (let i = 0; i < 3; i++) { const f = mk(box(ww - 0.08, 0.05, 0.02), silver, [0, wy - 0.075 + i * 0.075, fz + 0.008], g, { outline: 0.003, shadow: false }); f.rotation.x = -0.35; flaps.push(f); }
-      mk(box(0.012, wh - 0.06, 0.02), silver, [0, wy, fz + 0.01], g, { outline: 0.002, shadow: false }); // 가운데 세로 살
-      for (let i = 0; i < 4; i++) mk(box(W - 0.14, 0.025, 0.015), "#93622f", [0, wy - 0.22 - i * 0.045, fz + 0.008], g, { outline: 0.003, shadow: false }); // 가로 나무 루버
-      mk(box(W - 0.12, 0.002, 0.004), dark, [0, H * 0.48, fz + 0.002], g, no);
-      for (let i = 0; i < 16; i++) mk(box(W - 0.14, 0.022, 0.012), "#8c5d2e", [0, 0.12 + i * 0.045, fz + 0.007], g, { outline: 0.002, shadow: false }); // 아래 가로 살
+      for (let i = 0; i < 3; i++) { const f = mk(box(ww - 0.08, 0.05, 0.02), silver, [0, wy - 0.075 + i * 0.075, fz + 0.008], fg, { outline: 0.003, shadow: false }); f.rotation.x = -0.35; flaps.push(f); }
+      mk(box(0.012, wh - 0.06, 0.02), silver, [0, wy, fz + 0.01], fg, { outline: 0.002, shadow: false }); // 가운데 세로 살
+      for (let i = 0; i < 4; i++) mk(box(W - 0.14, 0.025, 0.015), "#93622f", [0, wy - 0.22 - i * 0.045, fz + 0.008], fg, { outline: 0.003, shadow: false }); // 가로 나무 루버
+      mk(box(W - 0.12, 0.002, 0.004), dark, [0, H * 0.48, fz + 0.002], fg, no);
+      for (let i = 0; i < 16; i++) mk(box(W - 0.14, 0.022, 0.012), "#8c5d2e", [0, 0.12 + i * 0.045, fz + 0.007], fg, { outline: 0.002, shadow: false }); // 아래 가로 살
       g.userData.ac = { flaps, t: -1 };
+      g.userData.door5 = { hinge, inside, open: 0, target: 0, t: 0, ang: -1.75 };
       airCons.push(g);
       addObstacle(p.x, p.z, W / 2, D / 2, p.rot);
       g.userData.hit = [W, H, D, H / 2]; g.userData.sayY = 1.75; // 눈높이
@@ -3901,6 +3935,12 @@ function tapProp(u) {
   const bu = u.group.userData;
   let line = null;
   if (bu.ac) bu.ac.t = Math.max(0, bu.ac.t); // 에어컨: 날개가 천천히 움직임
+  if (bu.door5) { // 화장실 문 · 에어컨 문: 연달아 5번 누르면 열림 (잠시 뒤 닫힘)
+    const d = bu.door5, now = performance.now() / 1000;
+    if (!d.lastTap || now - d.lastTap > 3) d.n = 0;
+    d.lastTap = now; d.n = (d.n || 0) + 1;
+    if (d.n >= 5) { d.n = 0; d.target = 1; d.t = 0; }
+  }
   if (bu.ice) { // 제빙기: 3번 연달아 누르면 얼음
     const now = performance.now() / 1000;
     if (!bu.lastTap || now - bu.lastTap > 3) bu.tapN = 0;
