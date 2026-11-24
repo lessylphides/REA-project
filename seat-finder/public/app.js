@@ -569,11 +569,16 @@ function buildEdge(e, group, h, T) {
   group.add(g);
   const wallBox = (y0, y1) => mk(box(e.len, y1 - y0, T), R.wall, [0, (y0 + y1) / 2, 0], g, { outline: 0.02, shadow: false });
   if (e.kind === "wall" && h >= 1) { // 화장실 가는 문 자리는 벽을 뚫음 (문을 열면 통로가 보임)
-    const wd = (LAYOUT.props || []).find((p) => p.type === "walldoor" && Math.abs((p.x - e.ax) * e.nx + (p.z - e.az) * e.nz) < 0.3);
-    if (wd) {
-      const dx = (wd.x - e.ax) * e.dx + (wd.z - e.az) * e.dz - e.len / 2, hw = (wd.w ?? 0.85) / 2 + 0.06, dh = (wd.h ?? 2.05) + 0.08;
-      const part = (x0, x1, y0, y1) => mk(box(x1 - x0, y1 - y0, T), R.wall, [(x0 + x1) / 2, (y0 + y1) / 2, 0], g, { outline: 0.02, shadow: false });
-      part(-e.len / 2, dx - hw, 0, h); part(dx + hw, e.len / 2, 0, h); part(dx - hw, dx + hw, dh, h);
+    // 화장실 문 · 에어컨 장 자리는 벽을 뚫음 (문 너머 통로, 벽 안으로 들어간 에어컨이 보이게)
+    const holes = (LAYOUT.props || []).filter((p) => (p.type === "walldoor" || p.type === "aircon") && Math.abs((p.x - e.ax) * e.nx + (p.z - e.az) * e.nz) < 0.3)
+      .map((p) => { const cx = (p.x - e.ax) * e.dx + (p.z - e.az) * e.dz - e.len / 2, door = p.type === "walldoor";
+        const hw = door ? (p.w ?? 0.85) / 2 + 0.06 : (p.w ?? 0.8) / 2, top = door ? (p.h ?? 2.05) + 0.08 : (p.h ?? 2.0);
+        return [cx - hw, cx + hw, top]; }).sort((a, b) => a[0] - b[0]);
+    if (holes.length) {
+      const part = (x0, x1, y0, y1) => { if (x1 - x0 > 0.001) mk(box(x1 - x0, y1 - y0, T), R.wall, [(x0 + x1) / 2, (y0 + y1) / 2, 0], g, { outline: 0, shadow: false }); }; // 조각 사이 이음선이 안 보이게 외곽선 없음
+      let x = -e.len / 2;
+      for (const [a, b, top] of holes) { part(x, a, 0, h); part(a, b, top, h); x = b; }
+      part(x, e.len / 2, 0, h);
       return;
     }
   }
@@ -2861,8 +2866,11 @@ function buildInteriorProp(p, g) {
       const fg = new THREE.Group(); fg.position.x = -W / 2; hinge.add(fg);
       const inside = new THREE.Group(); g.add(inside); // 문 구멍으로 늘 보임
       const acFlaps = [];
-      { const ai = W - 0.08, ah = H - 0.06, az = -0.012, nb = { outline: 0, shadow: false };
+      { const ai = W - 0.08, ah = H - 0.06, az = -0.062, nb = { outline: 0, shadow: false }; // 에어컨 앞면: 벽면보다 5cm 뒤 (입체감)
         mk(new THREE.PlaneGeometry(W, H), "#1b1a1d", [0, H / 2, az - 0.002], inside, nb); // 칸 안쪽 어둠
+        const side = new THREE.MeshBasicMaterial({ color: "#2b2420", side: THREE.DoubleSide }), dz = -0.015 - az; // 벽면 ~ 에어컨 사이 칸 옆면·윗면
+        for (const sx of [-1, 1]) { const m = mk(new THREE.PlaneGeometry(dz, H), side, [sx * W / 2, H / 2, (az - 0.015) / 2], inside, nb); m.rotation.y = Math.PI / 2; }
+        { const m = mk(new THREE.PlaneGeometry(W, dz), side, [0, H, (az - 0.015) / 2], inside, nb); m.rotation.x = Math.PI / 2; }
         const body = new THREE.MeshBasicMaterial({ color: "#f4f4f2" });
         mk(new THREE.PlaneGeometry(ai, ah), body, [0, ah / 2 + 0.02, az], inside, nb);   // 하얀 몸통
         mk(new THREE.PlaneGeometry(ai - 0.06, 0.34), "#151518", [0, ah - 0.25, az + 0.001], inside, nb); // 위 검은 바람구멍
