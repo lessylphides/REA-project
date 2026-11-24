@@ -5269,7 +5269,9 @@ function stretchBoardRoom(svg, roomEl, doorEls, S) {
     if (!bar || !bar.width || !ctm) return;
     const inv = ctm.inverse(), pt = svg.createSVGPoint();
     const toSvg = (x, y) => { pt.x = x; pt.y = y; const q = pt.matrixTransform(inv); return [q.x, q.y]; };
-    const [a0, b1] = toSvg(bar.left + 6, bar.top - 10), [a1] = toSvg(bar.right - 6, bar.top); // 아래끝: 관리자 바에 닿지 않을 만큼
+    const [a0, bBar] = toSvg(bar.left + 6, bar.top - 10), [a1] = toSvg(bar.right - 6, bar.top); // 아래끝: 관리자 바에 닿지 않을 만큼
+    // 화면이 긴 휴대폰(프로 맥스 등)에서 바닥이 아래로 길게 늘어지지 않게: 실제 매장 가로·세로 비율의 1.1배까지만 늘림 (원래 바닥보다 짧아지지는 않게)
+    const b1 = Math.min(bBar, Math.max(y1, y0 + (a1 - a0) * ((y1 - y0) / (x1 - x0)) * 1.1));
     if (a1 - a0 > 20 && b1 - y0 > 20) boardRoomFit = [a0, a1, b1];
   }
   if (!boardRoomFit) return;
