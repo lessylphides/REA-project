@@ -1336,7 +1336,7 @@ function buildUpperMass(T, top, brickMat) {
   // 기둥 팔 길이: 모서리에서 옆 유리창 흰 테두리 바깥선까지 (기둥과 창 사이에 벽이 남지 않게)
   const frameAt = (e, fromA) => { // 이 면 유리창 흰 테두리 바깥 끝 (매장 안 벽선 위의 점)
     let d;
-    if (e.kind === "front") { const dr = LAYOUT.door, winW = LAYOUT.front?.windowW ?? 2.6; const x = dr.x - dr.w / 2 - winW - 0.1; d = fromA ? (x - e.ax) * e.dx : (e.bx - x) * -e.dx; }
+    if (e.kind === "front") { const dr = LAYOUT.door, winW = LAYOUT.front?.windowW ?? 2.6; return [dr.x - dr.w / 2 - winW - 0.1, e.az]; } // 정면: 쇼윈도 흰 테두리 왼쪽 바깥선
     else { const [g0, g1] = glassSpan(e); d = fromA ? g0 + e.len / 2 - 0.1 : e.len / 2 - g1 - 0.1; }
     return fromA ? [e.ax + e.dx * d, e.az + e.dz * d] : [e.bx - e.dx * d, e.bz - e.dz * d];
   };
