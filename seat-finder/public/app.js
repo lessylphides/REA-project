@@ -2745,6 +2745,14 @@ function buildInteriorProp(p, g) {
       g.userData.hit = [w, h, 0.3, h / 2]; g.userData.sayY = 1.72; // 말풍선은 눈높이
       return true;
     }
+    case "board": { // 벽에 기대 세워 둔 나무판 (아래가 벽에서 살짝 떨어지고 위는 벽에 닿음). 로컬 -z = 벽
+      const w = p.w ?? 0.3, h = p.h ?? 1.9, t = 0.018, lean = p.lean ?? 0.06;
+      const pv = new THREE.Group(); pv.rotation.x = -lean; g.add(pv);
+      mk(box(w, h, t), p.color || "#8a5a36", [0, h / 2, 0], pv, { outline: 0.006 });
+      addObstacle(p.x, p.z, w / 2, 0.08, p.rot);
+      g.userData.hit = [w, h, 0.2, h / 2]; g.userData.sayY = Math.min(h + 0.2, 1.75);
+      return true;
+    }
     case "winebarrel": { // 나무로 짠 오크통 모양 와인 셀러 (세운 타원 + 받침). 로컬 +z = 방 쪽, 뒤는 벽
       const W = 0.56, Hh = 0.84, D = 0.34, y0 = 0.2, cy = y0 + Hh / 2, wood = "#9a6436", woodD = "#6e4424", T = 0.065;
       mk(box(0.5, 0.04, 0.36), woodD, [0, 0.02, 0], g, { outline: 0.006 }); // 받침 바닥판
