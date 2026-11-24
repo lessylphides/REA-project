@@ -1078,7 +1078,7 @@ function buildInsideShell(T) {
       const fr = "#f4f1ec";
       for (const y of [hy0, hy1]) mk(box(hx1 - hx0 + 0.04, 0.035, T + 0.02), fr, [(hx0 + hx1) / 2, y, zF], fpGroup, { outline: 0.006, shadow: false });
       for (const x of [hx0, hx1]) mk(box(0.035, hy1 - hy0, T + 0.02), fr, [x, (hy0 + hy1) / 2, zF], fpGroup, { outline: 0.006, shadow: false });
-      const fx = door.x + door.w / 4, fy = (hy0 + hy1) / 2; // 환풍기 안쪽 면
+      const fx = door.x + door.w / 4, fy = hy1 + 0.0175 - 0.2; // 환풍기 안쪽 면: 위끝을 작은 창 위 창틀 윗변과 맞춤
       mk(box(0.4, 0.4, 0.02), "#cfcac2", [fx, fy, zF - T / 2 - 0.012], fpGroup, { outline: 0.006, shadow: false });
       for (let i = 0; i < 5; i++) mk(box(0.32, 0.02, 0.01), "#8e8a84", [fx, fy - 0.12 + i * 0.06, zF - T / 2 - 0.025], fpGroup, { outline: 0, shadow: false });
     }
