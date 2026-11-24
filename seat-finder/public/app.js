@@ -1297,14 +1297,28 @@ function buildUpperMass(T, top, brickMat) {
   const brickAt = (len, h) => brickMat(len, h);
   const band = "#d8cfc6"; // 2층 바닥판 테두리 (처마 앞면)
   // 벽: 위층 외곽선을 따라 (바깥면이 기둥 바깥면과 같은 선)
-  for (let i = 0; i < n; i++) {
-    const a = UPPER[i], b = UPPER[(i + 1) % n], e = EDGES[i];
+  const seg = (a, b, e, y0, withBand) => {
     const len = Math.hypot(b[0] - a[0], b[1] - a[1]) + 0.03, rot = -Math.atan2(b[1] - a[1], b[0] - a[0]);
     const mx = (a[0] + b[0]) / 2 - e.nx * 0.015, mz = (a[1] + b[1]) / 2 - e.nz * 0.015;
-    const open = e.kind === "front" || e.kind === "glass";
-    const y0 = open ? SOFFIT_Y + 0.3 : i === 0 ? 0 : SOFFIT_Y;
     mk(box(len, top - y0, 0.03), brickAt(len, top - y0), [mx, (y0 + top) / 2, mz], fpGroup, ol).rotation.y = rot;
-    if (open) mk(box(len, 0.3, 0.03), band, [mx, SOFFIT_Y + 0.15, mz], fpGroup, ol).rotation.y = rot; // 처마 앞면 띠
+    if (withBand) mk(box(len, 0.3, 0.03), band, [mx, SOFFIT_Y + 0.15, mz], fpGroup, ol).rotation.y = rot; // 처마 앞면 띠
+  };
+  for (let i = 0; i < n; i++) {
+    const a = UPPER[i], b = UPPER[(i + 1) % n], e = EDGES[i];
+    const open = e.kind === "front" || e.kind === "glass";
+    if (!open) { seg(a, b, e, i === 0 ? 0 : SOFFIT_Y, false); continue; }
+    if ((i + 1) % n === 0) { // 뒤 공간과 이어지는 면: 처마(띠)는 유리창 구간까지만, 그 뒤는 땅부터 꼭대기까지 한 장의 벽
+      const t = (e.bx - a[0]) * e.dx + (e.bz - a[1]) * e.dz, P = [a[0] + e.dx * t, a[1] + e.dz * t];
+      // 한 장짜리 ㄱ자 벽: 유리창 구간은 처마 위부터, 뒤 공간 구간은 땅부터 (이음새 선이 생기지 않게)
+      const L = Math.hypot(b[0] - a[0], b[1] - a[1]) + 0.015, tP = Math.hypot(P[0] - a[0], P[1] - a[1]), yb = SOFFIT_Y + 0.3;
+      const sh2 = new THREE.Shape([[0, yb], [tP, yb], [tP, 0], [L, 0], [L, top], [0, top]].map(([u, v]) => new THREE.Vector2(u, v)));
+      const geo = new THREE.ExtrudeGeometry(sh2, { depth: 0.03, bevelEnabled: false });
+      geo.translate(-L / 2, -top / 2, -0.015);
+      const w = mk(geo, brickMat(1.1, 1.1), [(a[0] + b[0]) / 2 + (b[0] - a[0]) / L * 0.0075 - e.nx * 0.015, top / 2, (a[1] + b[1]) / 2 + (b[1] - a[1]) / L * 0.0075 - e.nz * 0.015], fpGroup, ol);
+      w.rotation.y = -Math.atan2(b[1] - a[1], b[0] - a[0]);
+      const tl = (tP) / 2, rot2 = w.rotation.y; // 처마 띠는 유리창 구간만
+      mk(box(tP, 0.3, 0.03), band, [a[0] + (P[0] - a[0]) / 2 - e.nx * 0.015, SOFFIT_Y + 0.15, a[1] + (P[1] - a[1]) / 2 - e.nz * 0.015], fpGroup, ol).rotation.y = rot2; void tl;
+    } else seg(a, b, e, SOFFIT_Y + 0.3, true);
   }
   // 처마 밑면 (아래에서 올려다보는 면)
   const sh = new THREE.Shape(); UPPER.forEach(([x, z], i) => (i ? sh.lineTo(x, z) : sh.moveTo(x, z)));
@@ -1319,12 +1333,24 @@ function buildUpperMass(T, top, brickMat) {
     return mk(g, brickMat(1.1, 1.1), [cx, 0, cz], fpGroup, ol);
   };
   const PD = OVER - T - 0.02; // 기둥 안쪽 깊이: 1층 벽 바깥면까지
+  // 기둥 팔 길이: 모서리에서 옆 유리창 흰 테두리 바깥선까지 (기둥과 창 사이에 벽이 남지 않게)
+  const frameAt = (e, fromA) => { // 이 면 유리창 흰 테두리 바깥 끝 (매장 안 벽선 위의 점)
+    let d;
+    if (e.kind === "front") { const dr = LAYOUT.door, winW = LAYOUT.front?.windowW ?? 2.6; const x = dr.x - dr.w / 2 - winW - 0.1; d = fromA ? (x - e.ax) * e.dx : (e.bx - x) * -e.dx; }
+    else { const [g0, g1] = glassSpan(e); d = fromA ? g0 + e.len / 2 - 0.1 : e.len / 2 - g1 - 0.1; }
+    return fromA ? [e.ax + e.dx * d, e.az + e.dz * d] : [e.bx - e.dx * d, e.bz - e.dz * d];
+  };
+  const armTo = (V, e, Q, dir) => ((Q[0] - e.nx * OVER - V[0]) * dir[0] + (Q[1] - e.nz * OVER - V[1]) * dir[1]);
   for (const k of [3, 4]) { // 정면↔대각선, 대각선↔왼쪽: 꺾인 오각형
     const V = UPPER[k], ea = EDGES[(k - 1 + n) % n], eb = EDGES[k];
-    const p1 = [V[0] - ea.dx * PIL_W, V[1] - ea.dz * PIL_W], p2 = [V[0] + eb.dx * PIL_W, V[1] + eb.dz * PIL_W];
+    const wa = Math.max(PIL_W, armTo(V, ea, frameAt(ea, false), [-ea.dx, -ea.dz]));
+    const wb = Math.max(PIL_W, armTo(V, eb, frameAt(eb, true), [eb.dx, eb.dz]));
+    const p1 = [V[0] - ea.dx * wa, V[1] - ea.dz * wa], p2 = [V[0] + eb.dx * wb, V[1] + eb.dz * wb];
     prism([p1, V, p2, [p2[0] + eb.nx * PD, p2[1] + eb.nz * PD], [p1[0] + ea.nx * PD, p1[1] + ea.nz * PD]]);
-    const cx = (p1[0] + p2[0]) / 2 + (ea.nx + eb.nx) * 0.12, cz = (p1[1] + p2[1]) / 2 + (ea.nz + eb.nz) * 0.12;
-    addObstacle(cx, cz, 0.32, 0.32, THREE.MathUtils.radToDeg(Math.atan2(eb.dz, eb.dx)));
+    for (const [P, e, w] of [[p1, ea, wa], [p2, eb, wb]]) { // 부딪힘: 팔 두 개
+      const cx = (P[0] + V[0]) / 2 + e.nx * PD / 2, cz = (P[1] + V[1]) / 2 + e.nz * PD / 2;
+      addObstacle(cx, cz, w / 2, PD / 2 + 0.02, THREE.MathUtils.radToDeg(Math.atan2(e.dz, e.dx)));
+    }
   }
   { // 입구 오른쪽: 사각 기둥 (안쪽 선 = 화장실 문 오른쪽 끝과 일직선)
     const z0 = R.d + T, z1 = UPPER[2][1], x1 = UPPER[2][0];
@@ -1333,7 +1359,7 @@ function buildUpperMass(T, top, brickMat) {
   }
   { // 왼쪽 안쪽 끝: 앞면이 통창 끝 선(z=0)에, 몸통은 뒤 공간 쪽 → 통창을 가리지 않음. 뒤 공간 1층 바깥벽과 한 덩어리
     const x0 = UPPER[0][0], z0 = UPPER[0][1];
-    prism([[x0, z0], [-T, z0], [-T, 0], [x0, 0]]);
+    prism([[x0 + 0.01, z0 + 0.01], [-T, z0 + 0.01], [-T, 0], [x0 + 0.01, 0]]); // 바깥면은 위층 벽(땅까지)이 덮음
     addObstacle((x0 - T) / 2, z0 / 2, (-T - x0) / 2, -z0 / 2);
   }
   // 주차금지 표지: 정면↔대각선 모서리 기둥 앞 (모서리에서 바깥으로)
