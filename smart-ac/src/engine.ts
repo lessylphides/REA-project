@@ -11,7 +11,7 @@ export interface Reading {
 /** 영업 중 3단계: 가동(boost) → 완만 유지(soft) → 쉬기(rest) */
 export type Stage = 'boost' | 'soft' | 'rest';
 /** 단계 상태(실행 사이에 KV에 저장) */
-export interface Ctl { stage: Stage; since: number; season: 'cooling' | 'heating'; }
+export interface Ctl { stage: Stage; since: number; season: 'cooling' | 'heating'; setback?: boolean; }
 
 export interface Decision {
   action: 'set' | 'off' | 'hold';
@@ -114,14 +114,20 @@ export function decide(reading: Reading, cfg: Config, comfort = true, prevCtl: C
   // over: 목표를 '넘어선' 정도 (난방은 더 따뜻할수록 +, 냉방은 더 시원할수록 +)
   const over = heating ? indoor - target : target - indoor;
 
-  // 비영업(세트백): 최저/최고 기준만 지키고, 닿으면 완전 OFF(절전)
+  // 비영업(세트백): 최저 기준(여름은 상한) '이하'가 되면 바로 켜서, 기준 ± 여유폭까지 한 번에 맞춘 뒤 OFF.
+  // 여유폭을 기준 '바깥'이 아닌 '안쪽'에 둬서 기준 온도 자체는 지키고, 껐다 켰다는 줄인다.
   if (!comfort) {
-    if (over <= -cfg.deadband) return { action: 'set', seasonMode: season, ctl: null,
-      desired: { power: true, mode, temperature: clamp(heating ? target + bias : target - bias), fanSpeed: fanBoost },
-      reason: `비영업 · 실내 ${t1(indoor)}℃ → 기준 ${target}℃ 지키려고 ${label}` };
-    if (over >= 0) return { action: 'off', seasonMode: season, ctl: null,
-      reason: `비영업 · 실내 ${t1(indoor)}℃ 기준 ${target}℃ 도달 → 에어컨 OFF(절전)` };
-    return { action: 'hold', seasonMode: season, ctl: null, reason: `비영업 · 실내 ${t1(indoor)}℃ → 유지` };
+    const band = cfg.setbackBand ?? 3;
+    const stopAt = heating ? target + band : target - band;
+    const running = !!prevCtl?.setback && prevCtl.season === season;   // 지난번부터 세트백 운전 중인지
+    if (over <= 0 || (running && over < band)) {
+      const ctl: Ctl = { stage: 'boost', since: running && prevCtl ? prevCtl.since : now.getTime(), season, setback: true };
+      return { action: 'set', seasonMode: season, ctl,
+        desired: { power: true, mode, temperature: clamp(heating ? target + bias : target - bias), fanSpeed: fanBoost },
+        reason: `비영업 · 실내 ${t1(indoor)}℃ → 기준 ${target}℃ 지키려고 ${label} (${stopAt}℃까지)` };
+    }
+    return { action: 'off', seasonMode: season, ctl: null,
+      reason: running ? `비영업 · 실내 ${t1(indoor)}℃ ${stopAt}℃ 도달 → 에어컨 OFF(절전)` : `비영업 · 실내 ${t1(indoor)}℃ → 에어컨 OFF(절전, ${target}℃ ${heating ? '이하' : '이상'}이면 ${label})` };
   }
 
   // 영업 중: 모드는 그대로 두고 설정온도·바람세기만 바꿔 부드럽게 (풍향 유지)
