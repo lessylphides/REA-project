@@ -5066,6 +5066,9 @@ function buildBoard(force) {
     boardEls.set(id, { g, ico, mins });
   }
   renderBoard();
+  if (first || !boardEdit) { // 평면도를 화면에 꽉 차게: 내용 크기에 맞춰 viewBox 조정 (편집 중엔 고정 → 끌 때 화면이 안 흔들림)
+    try { const bb = svg.getBBox(); if (bb.width > 10) svg.setAttribute("viewBox", `${bb.x - 2} ${bb.y - 2} ${bb.width + 4} ${bb.height + 4}`); } catch {}
+  }
   if (first) setInterval(renderBoard, 30000); // 앉은 시간 갱신
 }
 function selectBoard(id) {
