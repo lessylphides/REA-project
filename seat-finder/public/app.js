@@ -1245,11 +1245,7 @@ function decorateGlassFacade(e, g, top, brickMat) {
       const v = new THREE.Vector3(L / 2 + 0.6, 0, zo + 0.7).applyMatrix4(g.matrixWorld);
       noParkSpot = [v.x, v.z];
     }
-    for (const x of [-L / 2 - 0.6]) {
-      const cone = new THREE.Group(); cone.position.set(x, 0, zo + 0.7); g.add(cone);
-      mk(new THREE.CylinderGeometry(0.06, 0.18, 0.75, 16), "#1f1f22", [0, 0.375, 0], cone, { outline: 0.01 });
-      mk(cyl(0.2, 0.22, 0.05, 16), "#1f1f22", [0, 0.025, 0], cone, { outline: 0.008 });
-    }
+    // (양 모서리 원뿔은 없앰 — 정면 쪽 자리에는 주차금지 표지)
   }
   // 건물 둘레 화분 줄
   let sd = 5 + e.i;
