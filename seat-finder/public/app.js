@@ -335,6 +335,18 @@ const EDGES = (() => {
 // 정면(가게 앞, z = R.d) 구간
 const FRONT = EDGES.find((e) => e.kind === "front") || { ax: R.w, bx: 0 };
 const FRONT_X0 = Math.min(FRONT.ax, FRONT.bx), FRONT_X1 = Math.max(FRONT.ax, FRONT.bx);
+// 2층 이상은 1층보다 넓음: 유리 3면 쪽으로 OVER(안쪽 벽선 기준) 만큼 나오고, 모서리 기둥이 받침. 뒤로는 화장실 문 밖 공간(BACK_D)까지
+const OVER = 0.7, SOFFIT_Y = 2.95, BACK_D = 2.15, PIL_W = 0.6, PIL_R_IN = 8.9; // PIL_R_IN: 입구 오른쪽 기둥 안쪽 선 (화장실 문 오른쪽 끝과 일직선)
+const UPPER = (() => {
+  const off = (e) => (e.kind === "front" || e.kind === "glass" ? OVER : e.i === 0 ? BACK_D : 0.14);
+  const line = (e) => ({ px: e.ax - e.nx * off(e), pz: e.az - e.nz * off(e), dx: e.dx, dz: e.dz });
+  return EDGES.map((e, i) => {
+    const A = line(EDGES[(i - 1 + EDGES.length) % EDGES.length]), B = line(e);
+    const den = A.dx * B.dz - A.dz * B.dx;
+    const t = ((B.px - A.px) * B.dz - (B.pz - A.pz) * B.dx) / den;
+    return [A.px + A.dx * t, A.pz + A.dz * t];
+  });
+})();
 
 /** 바닥 판 (외곽선 모양으로 두께 있게) */
 function slabGeo(points, depth, y0 = 0) {
@@ -960,7 +972,7 @@ function buildStreets3D(T) {
   // 왼쪽 골목: 건너편 주택 줄, 가게 뒤쪽 줄
   const xL = -T - LEFT_W;
   buildHouseRow([xL, -7.5], [xL, zA + 2], [1, 0], 521);
-  buildHouseRow([-T, -7.5], [-T, -T], [-1, 0], 523, { poles: false });
+  buildHouseRow([-T, -7.5], [-T, -BACK_D - T], [-1, 0], 523, { poles: false }); // 뒤 공간(BACK_D) 뒤부터
   buildHouseRow([xL - 6, -7.8], [-T + 6, -7.8], [0, 1], 531, { poles: false }); // 골목 끝: 실제 3D 주택
 }
 
@@ -1003,7 +1015,7 @@ function buildStreetDetails(T, top) {
   mk(new THREE.PlaneGeometry(0.9, 0.22), sm, [0.12, 4.3, 0.2], cg, { outline: 0.004, shadow: false }).rotation.y = Math.PI / 2;
   // 머리 위 전깃줄 (건물 모서리 ↔ CCTV 기둥 ↔ 골목 전봇대 방향)
   const pole = new THREE.Vector3(cx, 4.9, cz);
-  const anchors = [new THREE.Vector3(3.9, top - 2.2, R.d + T + 0.05), new THREE.Vector3(-0.1, top - 2.6, 5.6), new THREE.Vector3(...AL(12, 1.4)).setY(6.4)];
+  const anchors = [new THREE.Vector3(UPPER[3][0], top - 2.2, UPPER[3][1] + 0.05), new THREE.Vector3(UPPER[4][0] - 0.05, top - 2.6, UPPER[4][1]), new THREE.Vector3(...AL(12, 1.4)).setY(6.4)];
   anchors[2] = new THREE.Vector3(AL(12, 1.4)[0], 6.4, AL(12, 1.4)[1]);
   for (const a of anchors) for (let k = 0; k < 2; k++) {
     const pts = [];
@@ -1209,7 +1221,8 @@ function decorateGlassFacade(e, g, top, brickMat) {
     doorX = -(t - L / 2); // 로컬 x 는 변 방향의 반대
   }
   const skip = (x, half = 0) => doorX != null && Math.abs(x - doorX) < 0.55 + half;
-  addUpperWindows(g, -L / 2, L / 2, zo + 0.01, 77 + e.i * 13);
+  const UP_DZ = OVER - (0.14 + 0.015); // 이 면에서 위층 벽까지 바깥으로 나온 만큼
+  addUpperWindows(g, -L / 2, L / 2, UP_DZ + 0.04, 77 + e.i * 13);
   // 흰 창틀 (유리 구간만): 양 끝, 위 채광창 가로대, 중간 가로대 — 바깥 그룹은 로컬 x 가 반대
   const white = "#f2efe8";
   const [ga, gb] = glassSpan(e), G0 = -gb, G1 = -ga, GW = G1 - G0, GC = (G0 + G1) / 2;
@@ -1226,7 +1239,7 @@ function decorateGlassFacade(e, g, top, brickMat) {
   for (const x of [G0 - 0.05, G1 + 0.05]) mk(box(0.1, GO, 0.16), white, [x, GO / 2, FZ], g, ol8); // 양옆 테두리
   mk(box(GW + 0.2, 0.1, 0.16), white, [GC, 0.12, FZ], g, ol8); // 아래 테두리 (유리 아래끝을 덮는 액자 밑변)
   mk(box(GW, 0.1, 0.06), white, [GC, 2.8, zo + 0.02], g, { outline: 0, shadow: false });   // 유리 위끝 ~ 테두리 사이
-  if (brickMat) mk(box(GW + 0.5, 0.22, 0.22), brickMat(GW + 0.5, 0.22), [GC, GO + 0.21, zo + 0.087], g, { outline: 0.015, shadow: false }); // 벽돌 턱
+  void brickMat; // (창 위 벽돌 턱은 없앰: 위층이 처마처럼 덮음)
   // (창 아래 술병·사선 무늬·LED 는 매장 안 장이 유리 너머로 비쳐 보이는 것 — buildBackbar)
   if (doorX != null) mk(box(1.25, 0.14, 0.5), "#b9b4ac", [doorX, 0.07 - 0.12, zo + 0.27], g, { outline: 0.01, shadow: false }); // 문 앞 돌계단
   // 대각선 면: 양옆 기둥 케이지 벽등, 흰 A형 입간판, 주차금지 원뿔
@@ -1234,16 +1247,11 @@ function decorateGlassFacade(e, g, top, brickMat) {
     const pls = (R.pillars || []).filter((q) => q.edge === e.i);
     const pa = pls.find((q) => q.end === "a"), pb = pls.find((q) => q.end === "b");
     const lampXs = [pa ? L / 2 - pa.w / 2 + 0.05 : L / 2 + 0.25, pb ? -L / 2 + pb.w / 2 - 0.05 : -L / 2 - 0.25];
-    for (const x of lampXs) cageLamp(g, x, 2.45, zo + 0.04);
+    for (const x of lampXs) cageLamp(g, x, 2.45, UP_DZ + 0.025); // 모서리 기둥 앞면
     if (doorX != null) { // A형 입간판 (흰색)
       const ab = new THREE.Group(); ab.position.set(doorX + 0.15, 0, zo + 0.95); g.add(ab);
       for (const s of [-1, 1]) { const pnl = mk(box(0.48, 0.7, 0.03), "#f4f1ea", [0, 0.36, s * 0.1], ab, { outline: 0.008 }); pnl.rotation.x = s * -0.15; }
       mk(box(0.34, 0.2, 0.005), "#d9d3c6", [0, 0.45, 0.13], ab, no);
-    }
-    { // 정면 쪽 모서리 원뿔 자리 → 주차금지 표지를 여기로 (buildStorefront 에서 세움)
-      g.updateMatrixWorld(true);
-      const v = new THREE.Vector3(L / 2 + 0.6, 0, zo + 0.7).applyMatrix4(g.matrixWorld);
-      noParkSpot = [v.x, v.z];
     }
     // (양 모서리 원뿔은 없앰 — 정면 쪽 자리에는 주차금지 표지)
   }
@@ -1270,8 +1278,7 @@ function buildSideFacades(T, top, brickMat) {
     const H = R.wallH;
     const part = (y0, y1) => mk(box(e.len + 0.3, y1 - y0, 0.03), brickMat(e.len + 0.3, y1 - y0), [0, (y0 + y1) / 2, 0], g, { outline: 0.015, shadow: false });
     const GO = 2.85; // 바깥 창 개구부 위끝 (입구 쪽과 같게)
-    part(GO + 0.1, top);
-    part(0, 0.12);
+    part(0, 0.12); // (위층 벽은 buildUpperMass 에서: 1층보다 OVER 만큼 바깥)
     // 모서리 기둥 바깥면: 안쪽 기둥 폭 + 벽 두께(모서리에서 바깥으로 늘어나는 만큼)
     for (const pl of R.pillars || []) {
       if (pl.edge !== e.i) continue;
@@ -1282,6 +1289,56 @@ function buildSideFacades(T, top, brickMat) {
     // (길은 주변 아스팔트 한 가지 색)
     decorateGlassFacade(e, g, top, brickMat);
   }
+}
+
+/** 2층 이상 덩어리 (1층보다 넓음) + 모서리 기둥 4개 + 화장실 문 밖 뒤 공간(겉모습) */
+function buildUpperMass(T, top, brickMat) {
+  const ol = { outline: 0.015, shadow: false }, n = UPPER.length;
+  const brickAt = (len, h) => brickMat(len, h);
+  const band = "#d8cfc6"; // 2층 바닥판 테두리 (처마 앞면)
+  // 벽: 위층 외곽선을 따라 (바깥면이 기둥 바깥면과 같은 선)
+  for (let i = 0; i < n; i++) {
+    const a = UPPER[i], b = UPPER[(i + 1) % n], e = EDGES[i];
+    const len = Math.hypot(b[0] - a[0], b[1] - a[1]) + 0.03, rot = -Math.atan2(b[1] - a[1], b[0] - a[0]);
+    const mx = (a[0] + b[0]) / 2 - e.nx * 0.015, mz = (a[1] + b[1]) / 2 - e.nz * 0.015;
+    const open = e.kind === "front" || e.kind === "glass";
+    const y0 = open ? SOFFIT_Y + 0.3 : i === 0 ? 0 : SOFFIT_Y;
+    mk(box(len, top - y0, 0.03), brickAt(len, top - y0), [mx, (y0 + top) / 2, mz], fpGroup, ol).rotation.y = rot;
+    if (open) mk(box(len, 0.3, 0.03), band, [mx, SOFFIT_Y + 0.15, mz], fpGroup, ol).rotation.y = rot; // 처마 앞면 띠
+  }
+  // 처마 밑면 (아래에서 올려다보는 면)
+  const sh = new THREE.Shape(); UPPER.forEach(([x, z], i) => (i ? sh.lineTo(x, z) : sh.moveTo(x, z)));
+  const soffit = mk(new THREE.ShapeGeometry(sh), toon("#cfc6bc", { side: THREE.DoubleSide }), [0, SOFFIT_Y, 0], fpGroup, { outline: 0, shadow: false });
+  soffit.rotation.x = Math.PI / 2;
+  // 모서리 기둥: 2층 모서리를 그대로 땅까지 (바깥 두 면이 위층 벽과 같은 면)
+  const prism = (pts) => {
+    const s2 = new THREE.Shape(); pts.forEach(([x, z], i) => (i ? s2.lineTo(x, -z) : s2.moveTo(x, -z)));
+    const g = new THREE.ExtrudeGeometry(s2, { depth: SOFFIT_Y, bevelEnabled: false }); g.rotateX(-Math.PI / 2);
+    const cx = pts.reduce((t, q) => t + q[0], 0) / pts.length, cz = pts.reduce((t, q) => t + q[1], 0) / pts.length;
+    g.translate(-cx, 0, -cz); // 가운데 기준 (외곽선이 기둥 둘레에만 생기게)
+    return mk(g, brickMat(1.1, 1.1), [cx, 0, cz], fpGroup, ol);
+  };
+  const PD = OVER - T - 0.02; // 기둥 안쪽 깊이: 1층 벽 바깥면까지
+  for (const k of [3, 4]) { // 정면↔대각선, 대각선↔왼쪽: 꺾인 오각형
+    const V = UPPER[k], ea = EDGES[(k - 1 + n) % n], eb = EDGES[k];
+    const p1 = [V[0] - ea.dx * PIL_W, V[1] - ea.dz * PIL_W], p2 = [V[0] + eb.dx * PIL_W, V[1] + eb.dz * PIL_W];
+    prism([p1, V, p2, [p2[0] + eb.nx * PD, p2[1] + eb.nz * PD], [p1[0] + ea.nx * PD, p1[1] + ea.nz * PD]]);
+    const cx = (p1[0] + p2[0]) / 2 + (ea.nx + eb.nx) * 0.12, cz = (p1[1] + p2[1]) / 2 + (ea.nz + eb.nz) * 0.12;
+    addObstacle(cx, cz, 0.32, 0.32, THREE.MathUtils.radToDeg(Math.atan2(eb.dz, eb.dx)));
+  }
+  { // 입구 오른쪽: 사각 기둥 (안쪽 선 = 화장실 문 오른쪽 끝과 일직선)
+    const z0 = R.d + T, z1 = UPPER[2][1], x1 = UPPER[2][0];
+    prism([[PIL_R_IN, z0], [x1, z0], [x1, z1], [PIL_R_IN, z1]]);
+    addObstacle((PIL_R_IN + x1) / 2, (z0 + z1) / 2, (x1 - PIL_R_IN) / 2, (z1 - z0) / 2);
+  }
+  { // 왼쪽 안쪽 끝: 앞면이 통창 끝 선(z=0)에, 몸통은 뒤 공간 쪽 → 통창을 가리지 않음. 뒤 공간 1층 바깥벽과 한 덩어리
+    const x0 = UPPER[0][0], z0 = UPPER[0][1];
+    prism([[x0, z0], [-T, z0], [-T, 0], [x0, 0]]);
+    addObstacle((x0 - T) / 2, z0 / 2, (-T - x0) / 2, -z0 / 2);
+  }
+  // 주차금지 표지: 정면↔대각선 모서리 기둥 앞 (모서리에서 바깥으로)
+  { const V = UPPER[3], e2 = EDGES[2], e3 = EDGES[3], bx = -(e2.nx + e3.nx), bz = -(e2.nz + e3.nz), bl = Math.hypot(bx, bz);
+    noParkSpot = [V[0] + bx / bl * 0.55, V[1] + bz / bl * 0.55]; }
 }
 
 /** 캔버스로 그린 텍스처 */
@@ -1340,12 +1397,10 @@ function buildStorefront(T, door, dh) {
   // 쇼윈도(문 왼쪽) + 문 = 흰 테두리 안쪽으로 들어간 입구
   const winW = F.windowW ?? 2.6;
   const opL = door.x - door.w / 2 - winW, opR = door.x + door.w / 2 + 0.05, opTop = 2.85;
-  wallPart(FRONT_X0 - T, opL - 0.1, 0, top);
-  wallPart(opR + 0.1, FRONT_X1 + T, 0, top);
+  wallPart(FRONT_X0 - T, opL - 0.1, 0, SOFFIT_Y);
+  wallPart(opR + 0.1, FRONT_X1 + T, 0, SOFFIT_Y);
   buildSideFacades(T, top, brickMat);
-  wallPart(opL - 0.1, opR + 0.1, opTop + 0.1, top);
-  // 입구 위 벽돌 처마 (살짝 튀어나옴)
-  wallPart(opL - 0.25, opR + 0.25, opTop + 0.1, opTop + 0.32, 0.22);
+  buildUpperMass(T, top, brickMat); // 2층 이상 + 모서리 기둥 + 뒤 공간
   // 흰 테두리
   const white = "#f4f1ec";
   mk(box(opR - opL + 0.2, 0.1, 0.16), white, [(opL + opR) / 2, opTop + 0.05, zO + 0.04], fpGroup, ol);
@@ -1430,7 +1485,7 @@ function buildStorefront(T, door, dh) {
   doorSign = mk(new THREE.PlaneGeometry(0.34, 0.21), flat(openSign), [-door.w * 0.45, 1.45, 0.035], doorPanels[0]?.g || fpGroup, no);
 
   // ── 오른쪽 기둥: 번지판 + 나무 명판
-  const px = opR + 0.55;
+  const px = (PIL_R_IN + R.w + T) / 2, pzF = R.d + OVER; // 입구 오른쪽 기둥 앞면
   if (F.number) {
     const plate = canvasTex(256, 200, (g, w, h) => {
       g.fillStyle = "#1f4fa3"; g.beginPath(); g.roundRect(4, 4, w - 8, h - 8, 26); g.fill();
@@ -1441,7 +1496,7 @@ function buildStorefront(T, door, dh) {
         g.font = "800 70px sans-serif"; g.fillText(F.number, w / 2, 160);
       } else { g.font = "800 96px sans-serif"; g.fillText(F.number, w / 2, 160); }
     });
-    mk(new THREE.PlaneGeometry(0.44, 0.34), flat(plate), [px, 2.25, zO + 0.04], fpGroup, no);
+    mk(new THREE.PlaneGeometry(0.44, 0.34), flat(plate), [px, 2.25, pzF + 0.04], fpGroup, no);
   }
   const wood = canvasTex(128, 128, (g, w, h) => {
     g.fillStyle = "#c9a57c"; g.fillRect(0, 0, w, h);
@@ -1457,7 +1512,7 @@ function buildStorefront(T, door, dh) {
     }
     lines.forEach((l, i) => g.fillText(l, w / 2, h / 2 + 8 + (i - (lines.length - 1) / 2) * 26));
   });
-  mk(box(0.48, 0.42, 0.03), toonMap(wood), [px, 1.72, zO + 0.03], fpGroup, ol);
+  mk(box(0.48, 0.42, 0.03), toonMap(wood), [px, 1.72, pzF + 0.03], fpGroup, ol);
 
   // ── 바닥: 한 칸 올라간 입구 턱, 보도, 도로(노란 선)
   const ground = mk(new THREE.CircleGeometry(45, 48), LINE ? "#6f6c78" : "#3b3b3d", [R.w / 2, -0.125, R.d / 2], fpGroup, no);
@@ -1485,13 +1540,13 @@ function buildStorefront(T, door, dh) {
   // ── 화분들 (고무나무 + 측백나무)
   makeRubberPlant(fpGroup, opL + 0.35, R.d + T + 0.95); // 앞 화분 줄(0.95)에 맞춤
   const pcx = (opR + R.w + T) / 2; // 문 오른쪽 벽돌 기둥 가운데 (화분 + 사각 등)
-  for (const [dx, dz, k] of [[0.95, 0.95, 0.9], [1.55, 0.95, 1.0], [2.15, 0.95, 0.95], [pcx - opL, 0.3, 0.95]]) makeCypress(fpGroup, opL + dx, R.d + T + dz, k);
+  for (const [dx, dz, k] of [[0.95, 0.95, 0.9], [1.55, 0.95, 1.0], [2.15, 0.95, 0.95], [pcx - opL, OVER - T + 0.3, 0.95]]) makeCypress(fpGroup, opL + dx, R.d + T + dz, k);
 
   // ── 고래꼬리 조명 상자
-  const lx = pcx, lz = R.d + T + 0.85;
+  const lx = pcx, lz = R.d + OVER + 0.85; // 기둥·화분 앞
   addObstacle(lx, lz, 0.2, 0.2);
   addObstacle(opL + 0.35, R.d + T + 0.95, 0.2, 0.2);
-  for (const [dx, dz] of [[0.95, 0.95], [1.55, 0.95], [2.15, 0.95], [pcx - opL, 0.3]]) addObstacle(opL + dx, R.d + T + dz, 0.2, 0.2);
+  for (const [dx, dz] of [[0.95, 0.95], [1.55, 0.95], [2.15, 0.95], [pcx - opL, OVER - T + 0.3]]) addObstacle(opL + dx, R.d + T + dz, 0.2, 0.2);
   addObstacle(...(noParkSpot || [opL - 0.2, R.d + T + 1.9]), 0.2, 0.2); // 주차금지 표지
   const lantern = new THREE.Group();
   lantern.position.set(lx, 0, lz);
@@ -1552,7 +1607,7 @@ function buildStorefront(T, door, dh) {
   mk(new THREE.PlaneGeometry(0.26, 0.26), flat(noPark), [0, 1.0, 0.025], cone, no);
   if (LINE) { buildSkyDoodles(top); buildNightSky(top); }
   // 정면 위층 창 + 길바닥 노면 표시 + 전깃줄·CCTV
-  { const fg = new THREE.Group(); fg.position.set(0, 0, zO); fpGroup.add(fg); addUpperWindows(fg, FRONT_X0, FRONT_X1, 0.03, 31); }
+  { const fg = new THREE.Group(); fg.position.set(0, 0, R.d + OVER + 0.03); fpGroup.add(fg); addUpperWindows(fg, FRONT_X0, FRONT_X1, 0.01, 31); }
   buildStreetDetails(T, top);
   buildStreets3D(T);
 }

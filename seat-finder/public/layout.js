@@ -74,7 +74,7 @@ export default {
     { type: "floorlamp", x: 0.45, z: 5.45, h: 1.75 }, // 왼쪽 장 ↔ 대각선 장 사이 틈
     { type: "floorlamp", x: 4.38, z: 9.15, h: 1.75 }, // 모서리 기둥 옆, 정면 장 시작 쪽
     { type: "floorlamp", x: 9.15, z: 9.1, h: 1.75 },
-    { type: "aircon", x: 3.9, z: 0.015, w: 0.8, h: 2.0, say: "에어컨이에요\n시원한 바람 나와요" }, // 안쪽 벽, 나무 장 안 스탠드 에어컨
+    { type: "aircon", x: 3.3, z: 0.015, w: 0.8, h: 2.0, say: "에어컨이에요\n시원한 바람 나와요" }, // 안쪽 벽, 나무 장 안 스탠드 에어컨
     { type: "icemaker", x: 1.91, z: 1.24, w: 0.64, rot: 90, say: "제빙기예요\n얼음이 쉬지 않고 나와요" }, // 그라인더 아래, 바 몸통 안 (바텐더 쪽)
     { type: "fridge", x: 1.91, z: 2.82, w: 1.5, rot: 90 }, // 에스프레소 머신 아래는 비우고 그 옆, 바 몸통 안 (냉동 | 냉장)
     { type: "coffee", x: 1.7, z: 1.765, rot: 90, y0: 1.04, shelf: true, say: "커피도 내려 드려요\n원두 향이 솔솔" },
@@ -94,15 +94,14 @@ export default {
     { type: "bigplant", kind: "palm", front: true, x: 4.85, z: 2.35, h: 1.45, stool: true, say: "야자 화분이에요\n잎 사이로 영상이 살짝" },
     { type: "bigplant", kind: "palm", front: true, x: 5.7, z: 2.35, h: 1.6, stool: true },
     { type: "bigplant", kind: "palm", front: true, x: 6.55, z: 2.35, h: 1.35, stool: true },
-    { type: "bigplant", kind: "norfolk", x: 8.95, z: 1.1, h: 1.7, say: "노퍽 소나무예요\n겨울엔 트리가 돼요" },
     // 바 안쪽 모퉁이 키 큰 홍콩야자
     { type: "bigplant", kind: "umbrella", r: 0.12, x: 1.72, z: 4.55, h: 2.75, pot: "#eeeae4", say: "키 큰 홍콩야자\n바 안쪽을 지켜 줘요" },
     { type: "bigplant", kind: "tree", x: 8.95, z: 7.3, h: 2.0, say: "홍콩야자 나무\n매장의 터줏대감이에요" },
     // 오른쪽 벽
     // 오른쪽 벽: 노퍽 소나무 옆 원목 행거
-    { type: "coatrack", x: 9.25, z: 2.35, rot: 90, say: "외투는 여기에\n걸어 주세요" },
-    // 안쪽 벽: 화장실 가는 문 (TV 장식장과 노퍽 소나무 사이)
-    { type: "walldoor", x: 7.9, z: 0.0, w: 0.85, text: "WC", say: "화장실은\n이 문으로 나가요" },
+    { type: "coatrack", x: 9.25, z: 2.57, rot: 90, say: "외투는 여기에\n걸어 주세요" },
+    // 안쪽 벽: 화장실 가는 문 (오른쪽 끝이 입구 오른쪽 기둥 안쪽 선과 일직선)
+    { type: "walldoor", x: 8.475, z: 0.0, w: 0.85, text: "WC", say: "화장실은\n이 문으로 나가요" },
     { type: "sign", walkOnly: true, x: 9.46, z: 7.3, rot: 90, y: 2.1, text: "WELCOME", say: "WELCOME!\n오늘도 와 주셔서 고마워요" },
   ],
 
