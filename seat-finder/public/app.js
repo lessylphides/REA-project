@@ -1335,6 +1335,11 @@ function buildUpperMass(T, top, brickMat) {
       mk(box(tP, 0.3, 0.03), band, [a[0] + (P[0] - a[0]) / 2 - e.nx * 0.015, SOFFIT_Y + 0.15, a[1] + (P[1] - a[1]) / 2 - e.nz * 0.015], fpGroup, ol).rotation.y = rot2; void tl;
     } else seg(a, b, e, SOFFIT_Y + 0.3, true);
   }
+  { // 뒤 공간 오른쪽 1층 벽 (매장 오른쪽 벽과 같은 선, 위층 벽 아래 비어 있던 곳)
+    const z0 = -BACK_D, z1 = 0, x = R.w + T / 2;
+    mk(box(T, SOFFIT_Y, z1 - z0), brickMat(z1 - z0, SOFFIT_Y), [x, SOFFIT_Y / 2, (z0 + z1) / 2], fpGroup, ol);
+  }
+  buildBackRooms(T);
   // 처마 밑면 (아래에서 올려다보는 면)
   const sh = new THREE.Shape(); UPPER.forEach(([x, z], i) => (i ? sh.lineTo(x, z) : sh.moveTo(x, z)));
   const soffit = mk(new THREE.ShapeGeometry(sh), toon("#cfc6bc", { side: THREE.DoubleSide }), [0, SOFFIT_Y, 0], fpGroup, { outline: 0, shadow: false });
@@ -1384,6 +1389,44 @@ function buildUpperMass(T, top, brickMat) {
   // 주차금지 표지: 정면↔대각선 모서리 기둥 앞 (모서리에서 바깥으로)
   { const V = UPPER[3], e2 = EDGES[2], e3 = EDGES[3], bx = -(e2.nx + e3.nx), bz = -(e2.nz + e3.nz), bl = Math.hypot(bx, bz);
     noParkSpot = [V[0] + bx / bl * 0.55, V[1] + bz / bl * 0.55]; }
+}
+
+/** 매장 뒤 공간 (안쪽 벽 너머, 깊이 BACK_D): 에어컨 뒤 공간 · 뒤 공간(나중에 제작) · 화장실 통로 공간. 바닥·벽·천장이 있는 실제 공간 */
+const BACK_PART_X = 4.1, WC_ROOM_X0 = 7.55; // 칸막이 벽 중심선 (에어컨 장 오른쪽 40cm) · 화장실 통로 공간 왼쪽 벽 중심선 (화장실 문 왼쪽 50cm)
+function buildBackRooms(T) {
+  const H = R.wallH, zi0 = -T, zi1 = -BACK_D + T, nb = { outline: 0, shadow: false }; // 안쪽 면: 매장 벽 뒷면 ~ 뒷벽 안쪽 면
+  const bm = (c) => new THREE.MeshBasicMaterial({ color: c, side: THREE.DoubleSide });
+  const plane = (w, h, mat, pos, rx = 0, ry = 0) => { const m = mk(new THREE.PlaneGeometry(w, h), mat, pos, fpGroup, nb); m.rotation.set(rx, ry, 0); return m; };
+  const wallBox = (x0, x1, z0, z1, c, y1 = H) => mk(box(x1 - x0, y1, z1 - z0), bm(c), [(x0 + x1) / 2, y1 / 2, (z0 + z1) / 2], fpGroup, { outline: 0.01, shadow: false });
+  const rooms = [[-T, BACK_PART_X - T / 2, "#3a332e", "#2a2522"], [BACK_PART_X + T / 2, WC_ROOM_X0 - T / 2, "#3a332e", "#2a2522"], [WC_ROOM_X0 + T / 2, R.w, "#4a413a", "#3a3230"]];
+  for (const [x0, x1, floor, ceil] of rooms) {
+    plane(x1 - x0, zi0 - zi1, bm(floor), [(x0 + x1) / 2, 0.002, (zi0 + zi1) / 2], -Math.PI / 2);
+    plane(x1 - x0, zi0 - zi1, bm(ceil), [(x0 + x1) / 2, H, (zi0 + zi1) / 2], Math.PI / 2);
+  }
+  // 뒷벽 (안쪽 면) — 화장실 통로 공간 쪽은 바깥으로 나가는 문 자리를 비움
+  const od = { x0: 8.475 - 0.425, x1: 8.475 + 0.425, h: 2.05 };
+  wallBox(-T, od.x0, zi1 - T, zi1, "#4a403a"); wallBox(od.x1, R.w + T, zi1 - T, zi1, "#4a403a");
+  mk(box(od.x1 - od.x0, H - od.h - 0.06, T), bm("#4a403a"), [(od.x0 + od.x1) / 2, (H + od.h + 0.06) / 2, zi1 - T / 2], fpGroup, { outline: 0.01, shadow: false });
+  // 칸막이 벽 2개 (매장 벽 뒷면 ~ 뒷벽)
+  wallBox(BACK_PART_X - T / 2, BACK_PART_X + T / 2, zi1, zi0, "#3f3631");
+  wallBox(WC_ROOM_X0 - T / 2, WC_ROOM_X0 + T / 2, zi1, zi0, "#4a403a");
+  // 오른쪽 벽 안쪽 면 (매장 오른쪽 벽과 같은 선)
+  plane(zi0 - zi1, H, bm("#4a403a"), [R.w - 0.002, H / 2, (zi0 + zi1) / 2], 0, -Math.PI / 2);
+  // 바깥으로 나가는 문 (화장실 문과 같은 모양, 보는 쪽에서 왼쪽 경첩, 바깥으로 열림 — 아직은 열리지 않음)
+  { const w = od.x1 - od.x0, h = od.h, fz = zi1 - T / 2, cx = (od.x0 + od.x1) / 2;
+    mk(box(w, h, 0.04), bm("#5e4230"), [cx, h / 2, fz], fpGroup, { outline: 0.008, shadow: false });
+    for (const sx of [-1, 1]) mk(box(0.06, h + 0.04, T + 0.02), bm("#8c8379"), [cx + sx * (w / 2 + 0.03), (h + 0.04) / 2, fz], fpGroup, { outline: 0.006, shadow: false });
+    mk(box(w + 0.18, 0.06, T + 0.02), bm("#8c8379"), [cx, h + 0.05, fz], fpGroup, { outline: 0.006, shadow: false });
+    mk(new THREE.SphereGeometry(0.035, 10, 8), bm("#b39a64"), [cx + w / 2 - 0.1, 1.0, fz + 0.04], fpGroup, nb); // 손잡이: 경첩(왼쪽) 반대편
+    for (const hy of [0.25, h - 0.25]) mk(box(0.02, 0.1, 0.02), bm("#8a7a5a"), [cx - w / 2 + 0.012, hy, fz + 0.03], fpGroup, nb); }
+  // 화장실 통로 공간 천장의 약한 조명
+  { const cx = (WC_ROOM_X0 + R.w) / 2, cz = (zi0 + zi1) / 2;
+    plane(0.18, 0.18, new THREE.MeshBasicMaterial({ color: "#ffe3b8", side: THREE.DoubleSide }), [cx, H - 0.005, cz], Math.PI / 2);
+    const glow = canvasTex(64, 128, (c, W2, H2) => { const gr = c.createLinearGradient(0, 0, 0, H2); gr.addColorStop(0, "rgba(255,214,160,.35)"); gr.addColorStop(1, "rgba(255,214,160,0)"); c.fillStyle = gr; c.fillRect(0, 0, W2, H2); });
+    const gm = new THREE.MeshBasicMaterial({ map: glow, transparent: true, depthWrite: false });
+    plane(R.w - WC_ROOM_X0 - T, H * 0.8, gm, [cx, H * 0.6, zi1 + 0.01]);
+    plane(zi0 - zi1, H * 0.8, gm, [R.w - 0.01, H * 0.6, cz], 0, -Math.PI / 2);
+    plane(zi0 - zi1, H * 0.8, gm, [WC_ROOM_X0 + T / 2 + 0.01, H * 0.6, cz], 0, Math.PI / 2); }
 }
 
 /** 캔버스로 그린 텍스처 */
@@ -2634,24 +2677,7 @@ function buildInteriorProp(p, g) {
       const dg = new THREE.Group(); dg.position.x = -w / 2; hinge.add(dg);
       mk(box(w, h, 0.04), p.color || "#7a5638", [0, h / 2, 0], dg, { outline: 0.012 });
       const inside = new THREE.Group(); inside.visible = false; g.add(inside); // 열리면 보이는 바깥 복도 (어두운 뒤 공간)
-      { // 통로 (벽 너머 약 1.45m): 바닥·벽·천장 + 끝에 바깥으로 열리는 문
-        const L = 1.45, z1 = -L, nb = { outline: 0, shadow: false }, bm = (c) => new THREE.MeshBasicMaterial({ color: c, side: THREE.DoubleSide });
-        const fl = mk(new THREE.PlaneGeometry(w + 0.12, L), bm("#3a332e"), [0, 0.002, z1 / 2], inside, nb); fl.rotation.x = -Math.PI / 2;
-        const ce = mk(new THREE.PlaneGeometry(w + 0.12, L), bm("#2c2724"), [0, h + 0.08, z1 / 2], inside, nb); ce.rotation.x = Math.PI / 2;
-        for (const sx of [-1, 1]) { const sw = mk(new THREE.PlaneGeometry(L, h + 0.08), bm(sx < 0 ? "#4a403a" : "#3f3631"), [sx * (w / 2 + 0.06), (h + 0.08) / 2, z1 / 2], inside, nb); sw.rotation.y = Math.PI / 2; }
-        mk(new THREE.PlaneGeometry(w + 0.12, h + 0.08), bm("#3f3631"), [0, (h + 0.08) / 2, z1], inside, nb);
-        // 끝 문: 화장실 문과 같은 모양, 보는 쪽에서 왼쪽 경첩, 바깥으로 열림 (아직은 열리지 않음)
-        const fz = z1 + 0.03;
-        mk(box(w, h, 0.04), bm("#5e4230"), [0, h / 2, fz], inside, { outline: 0.008 });
-        for (const sx of [-1, 1]) mk(box(0.06, h + 0.04, 0.05), bm("#8c8379"), [sx * (w / 2 + 0.03), (h + 0.04) / 2, fz], inside, { outline: 0.006 });
-        mk(box(w + 0.18, 0.06, 0.05), bm("#8c8379"), [0, h + 0.05, fz], inside, { outline: 0.006 });
-        mk(new THREE.SphereGeometry(0.035, 10, 8), bm("#b39a64"), [w / 2 - 0.1, 1.0, fz + 0.035], inside, { outline: 0.005 }); // 손잡이: 경첩 반대편(오른쪽)
-        for (const hy of [0.25, h - 0.25]) mk(box(0.02, 0.1, 0.02), "#8a7a5a", [-w / 2 + 0.012, hy, fz + 0.028], inside, nb); // 왼쪽 경첩
-        // 천장의 약한 조명
-        const glow = canvasTex(64, 128, (c, W2, H2) => { const gr = c.createLinearGradient(0, 0, 0, H2); gr.addColorStop(0, "rgba(255,214,160,.4)"); gr.addColorStop(1, "rgba(255,214,160,0)"); c.fillStyle = gr; c.fillRect(0, 0, W2, H2); });
-        mk(new THREE.PlaneGeometry(w * 0.9, h * 0.8), new THREE.MeshBasicMaterial({ map: glow, transparent: true, depthWrite: false }), [0, h * 0.6, fz + 0.04], inside, nb);
-        const lamp = mk(new THREE.CircleGeometry(0.09, 16), new THREE.MeshBasicMaterial({ color: "#ffe3b8", side: THREE.DoubleSide }), [0, h + 0.075, z1 / 2], inside, nb); lamp.rotation.x = Math.PI / 2;
-      }
+      // (문 너머는 buildBackRooms 의 화장실 통로 공간이 실제로 있음)
       g.userData.door5 = { hinge, inside, open: 0, target: 0, t: 0, ang: 1.6 };
       for (const sx of [-1, 1]) mk(box(0.06, h + 0.04, 0.07), frame, [sx * (w / 2 + 0.03), (h + 0.04) / 2, 0.035], g, { outline: 0.008 });
       mk(box(w + 0.18, 0.06, 0.07), frame, [0, h + 0.05, 0.035], g, { outline: 0.008 });
@@ -2867,10 +2893,16 @@ function buildInteriorProp(p, g) {
       const inside = new THREE.Group(); g.add(inside); // 문 구멍으로 늘 보임
       const acFlaps = [];
       { const ai = W - 0.08, ah = H - 0.06, az = -0.062, nb = { outline: 0, shadow: false }; // 에어컨 앞면: 벽면보다 5cm 뒤 (입체감)
-        mk(new THREE.PlaneGeometry(W, H), "#1b1a1d", [0, H / 2, az - 0.002], inside, nb); // 칸 안쪽 어둠
-        const side = new THREE.MeshBasicMaterial({ color: "#2b2420", side: THREE.DoubleSide }), dz = -0.015 - az; // 벽면 ~ 에어컨 사이 칸 옆면·윗면
-        for (const sx of [-1, 1]) { const m = mk(new THREE.PlaneGeometry(dz, H), side, [sx * W / 2, H / 2, (az - 0.015) / 2], inside, nb); m.rotation.y = Math.PI / 2; }
-        { const m = mk(new THREE.PlaneGeometry(W, dz), side, [0, H, (az - 0.015) / 2], inside, nb); m.rotation.x = Math.PI / 2; }
+        // 장 (벽 안쪽 면부터 깊이 75cm, 나무): 옆면·윗면·뒷면·바닥
+        const CD = 0.75, zb = -0.015 - CD, wood2 = new THREE.MeshBasicMaterial({ color: "#5a3d27", side: THREE.DoubleSide }), wood3 = new THREE.MeshBasicMaterial({ color: "#47301f", side: THREE.DoubleSide });
+        for (const sx of [-1, 1]) { const m = mk(new THREE.PlaneGeometry(CD, H), wood2, [sx * W / 2, H / 2, -0.015 - CD / 2], inside, nb); m.rotation.y = Math.PI / 2; }
+        { const m = mk(new THREE.PlaneGeometry(W, CD), wood3, [0, H, -0.015 - CD / 2], inside, nb); m.rotation.x = Math.PI / 2; }
+        { const m = mk(new THREE.PlaneGeometry(W, CD), wood3, [0, 0.003, -0.015 - CD / 2], inside, nb); m.rotation.x = Math.PI / 2; }
+        mk(new THREE.PlaneGeometry(W, H), wood3, [0, H / 2, zb], inside, nb);
+        // 에어컨 본체: 앞면(아래 판들) 뒤로 깊이 40cm 하얀 상자
+        const AD = 0.4, bodySide = new THREE.MeshBasicMaterial({ color: "#dcdcd8", side: THREE.DoubleSide });
+        for (const sx of [-1, 1]) { const m = mk(new THREE.PlaneGeometry(AD, ah), bodySide, [sx * ai / 2, ah / 2 + 0.02, az - AD / 2], inside, nb); m.rotation.y = Math.PI / 2; }
+        { const m = mk(new THREE.PlaneGeometry(ai, AD), bodySide, [0, ah + 0.02, az - AD / 2], inside, nb); m.rotation.x = Math.PI / 2; }
         const body = new THREE.MeshBasicMaterial({ color: "#f4f4f2" });
         mk(new THREE.PlaneGeometry(ai, ah), body, [0, ah / 2 + 0.02, az], inside, nb);   // 하얀 몸통
         mk(new THREE.PlaneGeometry(ai - 0.06, 0.34), "#151518", [0, ah - 0.25, az + 0.001], inside, nb); // 위 검은 바람구멍
