@@ -100,7 +100,7 @@ export default {
     // 바 안쪽 모퉁이 키 큰 홍콩야자
     { type: "bigplant", kind: "umbrella", r: 0.12, x: 1.72, z: 4.55, h: 2.75, pot: "#eeeae4", say: "키 큰 홍콩야자\n바 안쪽을 지켜 줘요" },
     // 오른쪽 벽 입구 쪽 구석: 청산호 화분 → 와인 셀러 → 기대 둔 액자들 → 스탠드(9.15, 9.1)
-    { type: "bigplant", kind: "pencil", away: 0, x: 9.12, z: 7.2, h: 2.35, pot: "#f2f0ea", say: "청산호 나무\n매장의 터줏대감이에요" },
+    { type: "bigplant", kind: "pencil", away: 0, x: 9.12, z: 7.2, h: 2.35, pot: "#f2f0ea", potR: 0.165, say: "청산호 나무\n매장의 터줏대감이에요" },
     { type: "board", x: 9.38, z: 7.24, rot: 90, w: 0.24, h: 1.76, lean: 0.06, color: "#7d5233" }, // 나무 뒤 가늘고 긴 나무판 (24 × 176cm)
     { type: "board", x: 9.38, z: 7.605, rot: 90, w: 0.49, h: 1.5, lean: 0.075, color: "#a87d55",
       poster: { w: 0.36, h: 0.5, y: 1.18, photo: "/poster-reel.jpg" } }, // 포스터를 누르면 실제 사진 // 와인 셀러 뒤 넓은 나무판 (49 × 150cm) + 포스터

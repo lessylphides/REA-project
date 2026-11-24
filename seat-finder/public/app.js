@@ -2548,7 +2548,23 @@ function buildInteriorProp(p, g) {
     }
     case "bigplant": {
       const k = p.h ?? 1.8;
-      mk(cyl(0.24, 0.2, 0.5, 18), p.pot || "#eeeae4", [0, 0.25, 0], g, { outline: 0.015 });
+      if (p.potR) { // 곧은 원통 화분 (지름 = potR × 2) + 검은 화강암 자갈
+        const r = p.potR, ph = 0.5;
+        mk(new THREE.CylinderGeometry(r, r * 0.97, ph, 28, 1, true), toon(p.pot || "#eeeae4", { side: THREE.DoubleSide }), [0, ph / 2, 0], g, { outline: 0.012 }); // 윗면이 뚫린 화분
+        const rim = mk(new THREE.RingGeometry(r - 0.018, r, 28), toon(p.pot || "#eeeae4", { side: THREE.DoubleSide }), [0, ph - 0.001, 0], g, { outline: 0, shadow: false }); rim.rotation.x = -Math.PI / 2; // 화분 테두리 두께
+        mk(new THREE.CylinderGeometry(r - 0.018, r - 0.018, 0.012, 28, 1, true), toon(p.pot || "#eeeae4", { side: THREE.DoubleSide }), [0, ph - 0.012, 0], g, { outline: 0, shadow: false }); // 안쪽 벽 (자갈 위)
+        mk(cyl(r - 0.017, r - 0.017, 0.01, 28), "#1b1b1d", [0, ph - 0.03, 0], g, { outline: 0, shadow: false }); // 자갈 바닥
+        let sd = 7; const rr = () => ((sd = (sd * 16807) % 2147483647) / 2147483647);
+        const pebbles = [], pm = new THREE.Matrix4(), pq = new THREE.Quaternion(), pe = new THREE.Euler();
+        for (let i = 0; i < 110; i++) { // 울퉁불퉁한 자갈 알갱이 (한 덩어리로)
+          const a = rr() * Math.PI * 2, d = Math.sqrt(rr()) * (r - 0.03), k = 0.011 + rr() * 0.009;
+          const geo = new THREE.IcosahedronGeometry(1, 0);
+          geo.applyMatrix4(pm.compose(new THREE.Vector3(Math.cos(a) * d, ph - 0.026 + rr() * 0.006, Math.sin(a) * d), pq.setFromEuler(pe.set(rr() * 3, rr() * 3, 0)), new THREE.Vector3(k * (1 + rr() * 0.4), k * 0.7, k)));
+          pebbles.push(geo);
+        }
+        mk(mergeGeometries(pebbles), p.gravel || "#2a2a2d", null, g, { outline: 0, shadow: false });
+        for (const geo of pebbles) geo.dispose();
+      } else mk(cyl(0.24, 0.2, 0.5, 18), p.pot || "#eeeae4", [0, 0.25, 0], g, { outline: 0.015 });
       if (p.kind === "palm") {
         for (let s = 0; s < 3; s++) {
           const sx = (s - 1) * 0.07, h = k * (0.75 + s * 0.12);
@@ -2645,7 +2661,7 @@ function buildInteriorProp(p, g) {
           mk(new THREE.SphereGeometry(r, 12, 10), leafMat(r > 0.25 ? "#3d7a45" : "#4f9150"), [x, y, z], g, { outline: 0.015 });
         }
       }
-      addObstacle(p.x, p.z, p.r ?? 0.26, p.r ?? 0.26);
+      { const ob = p.r ?? (p.potR ? p.potR + 0.04 : 0.26); addObstacle(p.x, p.z, ob, ob); }
       g.userData.hit = [0.7, k + 0.3, 0.7, (k + 0.3) / 2]; g.userData.sayY = Math.min(k + 0.45, 1.75); // 키 큰 화분은 눈높이 근처에
       if (g.children.length) g.userData.wiggler = g;
       return true;
