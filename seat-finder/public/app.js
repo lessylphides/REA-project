@@ -2616,16 +2616,20 @@ function buildInteriorProp(p, g) {
     }
     case "walldoor": { // 벽에 난 문 (화장실 가는 문)
       const w = p.w ?? 0.85, h = p.h ?? 2.05, frame = "#f4f1ec";
-      const hinge = new THREE.Group(); hinge.position.set(-w / 2, 0, 0.03); g.add(hinge); // 왼쪽 경첩 (5번 누르면 열림)
-      const dg = new THREE.Group(); dg.position.x = w / 2; hinge.add(dg);
+      const hinge = new THREE.Group(); hinge.position.set(w / 2, 0, 0.03); g.add(hinge); // 오른쪽 경첩 (5번 누르면 열림)
+      const dg = new THREE.Group(); dg.position.x = -w / 2; hinge.add(dg);
       mk(box(w, h, 0.04), p.color || "#7a5638", [0, h / 2, 0], dg, { outline: 0.012 });
       const inside = new THREE.Group(); inside.visible = false; g.add(inside); // 열리면 보이는 바깥 복도 (어두운 뒤 공간)
       mk(new THREE.PlaneGeometry(w, h), "#2a2622", [0, h / 2, 0.006], inside, { outline: 0, shadow: false });
-      mk(new THREE.PlaneGeometry(w * 0.6, 0.5), new THREE.MeshBasicMaterial({ color: "#5a5048" }), [0.05, 1.5, 0.007], inside, { outline: 0, shadow: false }); // 복도 끝 희미한 빛
-      g.userData.door5 = { hinge, inside, open: 0, target: 0, t: 0, ang: -1.6 };
+      { // 통로 천장의 약한 조명: 작은 등 + 아래로 은은하게 번지는 빛
+        const glow = canvasTex(64, 128, (c, W2, H2) => { const gr = c.createLinearGradient(0, 0, 0, H2); gr.addColorStop(0, "rgba(255,214,160,.55)"); gr.addColorStop(1, "rgba(255,214,160,0)"); c.fillStyle = gr; c.fillRect(0, 0, W2, H2); });
+        mk(new THREE.PlaneGeometry(w * 0.9, h * 0.75), new THREE.MeshBasicMaterial({ map: glow, transparent: true, depthWrite: false }), [0, h - h * 0.375 - 0.05, 0.007], inside, { outline: 0, shadow: false });
+        mk(new THREE.PlaneGeometry(0.22, 0.05), new THREE.MeshBasicMaterial({ color: "#ffe3b8" }), [0, h - 0.1, 0.008], inside, { outline: 0, shadow: false });
+      }
+      g.userData.door5 = { hinge, inside, open: 0, target: 0, t: 0, ang: 1.6 };
       for (const sx of [-1, 1]) mk(box(0.06, h + 0.04, 0.07), frame, [sx * (w / 2 + 0.03), (h + 0.04) / 2, 0.035], g, { outline: 0.008 });
       mk(box(w + 0.18, 0.06, 0.07), frame, [0, h + 0.05, 0.035], g, { outline: 0.008 });
-      mk(new THREE.SphereGeometry(0.035, 10, 8), "#c9b27a", [w / 2 - 0.1, 1.0, 0.04], dg, { outline: 0.005 });
+      mk(new THREE.SphereGeometry(0.035, 10, 8), "#c9b27a", [-w / 2 + 0.1, 1.0, 0.04], dg, { outline: 0.005 }); // 손잡이는 경첩 반대쪽
       if (p.text) {
         const t = canvasTex(128, 64, (c, W2, H2) => {
           c.fillStyle = "#f4f1ec"; c.beginPath(); c.roundRect(2, 2, W2 - 4, H2 - 4, 12); c.fill();
@@ -2831,9 +2835,9 @@ function buildInteriorProp(p, g) {
     case "aircon": { // 벽 뒤 공간의 스탠드 에어컨 + 벽에 붙은 나무 문(앞판)만 살짝 나옴 (로컬 +z = 홀 쪽)
       const W = p.w ?? 0.8, H = p.h ?? 2.0, D = 0.03, wood = "#a8743f", dark = "#5e3b22", no = { outline: 0, shadow: false };
       const fz = D / 2;
-      // 나무 문(앞판): 왼쪽 경첩으로 열림. 문 뒤(벽 안 칸)에 하얀 업소용 스탠드 에어컨
-      const hinge = new THREE.Group(); hinge.position.x = -W / 2; g.add(hinge);
-      const fg = new THREE.Group(); fg.position.x = W / 2; hinge.add(fg);
+      // 나무 문(앞판): 오른쪽 경첩으로 열림. 문 뒤(벽 안 칸)에 하얀 업소용 스탠드 에어컨
+      const hinge = new THREE.Group(); hinge.position.x = W / 2; g.add(hinge); // 오른쪽 경첩
+      const fg = new THREE.Group(); fg.position.x = -W / 2; hinge.add(fg);
       const inside = new THREE.Group(); inside.visible = false; g.add(inside);
       { const ai = W - 0.08, ah = H - 0.06, az = -0.012, nb = { outline: 0, shadow: false };
         mk(new THREE.PlaneGeometry(W, H), "#1b1a1d", [0, H / 2, az - 0.002], inside, nb); // 칸 안쪽 어둠
@@ -2863,7 +2867,7 @@ function buildInteriorProp(p, g) {
       mk(box(W - 0.12, 0.002, 0.004), dark, [0, H * 0.48, fz + 0.002], fg, no);
       for (let i = 0; i < 16; i++) mk(box(W - 0.14, 0.022, 0.012), "#8c5d2e", [0, 0.12 + i * 0.045, fz + 0.007], fg, { outline: 0.002, shadow: false }); // 아래 가로 살
       g.userData.ac = { flaps, t: -1 };
-      g.userData.door5 = { hinge, inside, open: 0, target: 0, t: 0, ang: -1.75 };
+      g.userData.door5 = { hinge, inside, open: 0, target: 0, t: 0, ang: 1.75 };
       airCons.push(g);
       addObstacle(p.x, p.z, W / 2, D / 2, p.rot);
       g.userData.hit = [W, H, D, H / 2]; g.userData.sayY = 1.75; // 눈높이
