@@ -577,7 +577,7 @@ function buildEdge(e, group, h, T) {
     const xs = mullionXs(e);
     for (let i = 0; i < xs.length - 1; i++) {
       const a = xs[i] + 0.03, b = xs[i + 1] - 0.03;
-      if (b - a > 0.1) addGlassRefl(g, b - a, top - sill - 0.05, [(a + b) / 2, (top + sill) / 2, -T / 2 - 0.006], Math.PI);
+      if (b - a > 0.1) addGlassRefl(g, b - a, top - sill - 0.05, [(a + b) / 2, (top + sill) / 2, -0.006], Math.PI); // 비침은 유리 면 바로 앞 (벽 바깥면에 두면 유리가 두 겹처럼 보임)
     }
   }
   // 흰 창틀
@@ -1097,7 +1097,7 @@ function buildInsideShell(T) {
     const inner = mk(new THREE.PlaneGeometry(winW, 2.75 - BLIND_BOTTOM), bm, [(wx0 + wx1) / 2, (2.75 + BLIND_BOTTOM) / 2, R.d - 0.005], fpGroup, { outline: 0, shadow: false });
     // 유리·창틀은 벽 두께 가운데 (옆 통창들과 같은 깊이)
     mk(new THREE.PlaneGeometry(winW, BLIND_BOTTOM - 0.12), clearGlass(), [(wx0 + wx1) / 2, (BLIND_BOTTOM + 0.12) / 2, zF], fpGroup, { outline: 0, shadow: false });
-    addGlassRefl(fpGroup, winW, 2.75 - 0.12, [(wx0 + wx1) / 2, (2.75 + 0.12) / 2, R.d + T + 0.006], 0);
+    addGlassRefl(fpGroup, winW, 2.75 - 0.12, [(wx0 + wx1) / 2, (2.75 + 0.12) / 2, zF + 0.006], 0); // 유리 면 바로 앞
     for (const y of [0.14, 2.73]) mk(box(winW, 0.05, T * 0.9), "#f4f1ec", [(wx0 + wx1) / 2, y, zF], fpGroup, { outline: 0.01, shadow: false });
     inner.renderOrder = 3;
     { const face = blindFace("front"); face.mats.push(bm); // 입구 쪽 창 조절 줄 (문 쪽 끝)
@@ -2763,10 +2763,11 @@ function buildInteriorProp(p, g) {
       return true;
     }
     case "door": { // 안 쓰는 출입문: 입구 문과 같은 크기·모양 (짙은 문틀 + 유리 + 긴 세로 나무 손잡이), 유리 바깥쪽(블라인드 뒤)
-      const w = p.w ?? 1.1, h = p.h ?? 2.2, fr = "#4a3a32", oz = 0.12;
+      // 문틀은 창 유리와 같은 면(벽 두께 가운데)에, 아래틀은 창 아래틀 높이에 → 밖에서 봐도 유리·틀이 한 겹
+      const w = p.w ?? 1.1, h = p.h ?? 2.2, fr = "#4a3a32", oz = 0.07, fd = 0.126, y0 = 0.12;
       // (문짝 유리는 따로 두지 않음: 창 유리 한 겹만 → 다른 칸과 같게 보임)
-      for (const fx of [-w / 2 + 0.025, w / 2 - 0.025]) mk(box(0.05, h, 0.06), fr, [fx, h / 2, oz], g, { outline: 0.006, shadow: false });
-      for (const fy of [0.025, h - 0.025]) mk(box(w, 0.05, 0.06), fr, [0, fy, oz], g, { outline: 0.006, shadow: false });
+      for (const fx of [-w / 2 + 0.025, w / 2 - 0.025]) mk(box(0.05, h - y0, fd), fr, [fx, (h + y0) / 2, oz], g, { outline: 0.006, shadow: false });
+      for (const fy of [y0 + 0.025, h - 0.025]) mk(box(w, 0.05, fd), fr, [0, fy, oz], g, { outline: 0.006, shadow: false });
       mk(box(0.04, 0.8, 0.04), "#a8743f", [w / 2 - 0.12, 1.1, oz + 0.08], g, { outline: 0.006, shadow: false }); // 긴 나무 손잡이
       for (const hy of [0.75, 1.45]) mk(box(0.02, 0.02, 0.06), "#a8743f", [w / 2 - 0.12, hy, oz + 0.05], g, { outline: 0, shadow: false });
       g.userData.hit = [w, h, 0.3, h / 2]; g.userData.sayY = h + 0.15;
