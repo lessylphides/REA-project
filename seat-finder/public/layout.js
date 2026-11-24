@@ -132,7 +132,7 @@ export default {
     },
     // 프로젝터가 오른쪽 벽(벽 테이블 위)에 비추는 화면 — 여기에도 광고
     {
-      wall: "right", projected: true, from: [6.07, 2.63, 4.9], z: 4.9, y: 1.95, w: 2.21, h: 1.25, interval: 8,
+      wall: "right", projected: true, from: [6.07, 2.63, 4.9], z: 4.9, y: 1.95, w: 2.43, h: 1.375, // 10% 키움 interval: 8,
       slides: [
         { title: "DIVE HIDE AWAY", sub: "오늘 밤도 천천히 쉬어 가세요", bg: "#2b2448", fg: "#f4e7d6" },
         { title: "이 벽에 광고하세요", sub: "동네 가게 소식을 비춰 드려요", bg: "#5b3a2e", fg: "#ffffff" },

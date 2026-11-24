@@ -5028,6 +5028,32 @@ function makeDraggable(handle, id, moveEl) {
     addEventListener("pointermove", mv); addEventListener("pointerup", up); addEventListener("pointercancel", up);
   });
 }
+let boardRoomFit = null;
+// 평면도 바닥(방 윤곽)만 넓혀 아래 관리자 바와 좌우를 맞춤. 의자·테이블은 크기·위치 그대로
+function stretchBoardRoom(svg, roomEl, doorEls, S) {
+  const xs = R.outline.map(([x]) => x * S), ys = R.outline.map(([, z]) => z * S);
+  const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
+  if (!boardEdit) { // 편집 중엔 관리자 바 모양이 바뀌므로 평소 화면에서 잰 크기를 그대로 씀
+    const bar = document.querySelector(".adminbar")?.getBoundingClientRect(), sr = svg.getBoundingClientRect(), ctm = svg.getScreenCTM();
+    if (!bar || !bar.width || !ctm) return;
+    const inv = ctm.inverse(), pt = svg.createSVGPoint();
+    const toSvg = (x, y) => { pt.x = x; pt.y = y; const q = pt.matrixTransform(inv); return [q.x, q.y]; };
+    const [a0, b1] = toSvg(bar.left + 6, Math.min(bar.top - 14, sr.bottom - 16)), [a1] = toSvg(bar.right - 6, bar.top); // 아래끝: 바 위, 입구 글자가 보이게
+    if (a1 - a0 > 20 && b1 - y0 > 20) boardRoomFit = [a0, a1, b1];
+  }
+  if (!boardRoomFit) return;
+  const [tx0, tx1, ty1] = boardRoomFit, ty0 = y0; // 위끝은 그대로
+  const mx = (x) => tx0 + ((x - x0) / (x1 - x0)) * (tx1 - tx0), my = (y) => ty0 + ((y - y0) / (y1 - y0)) * (ty1 - ty0);
+  roomEl.setAttribute("points", R.outline.map(([x, z]) => `${mx(x * S)},${my(z * S)}`).join(" "));
+  const d = LAYOUT.door;
+  if (d && doorEls.length) {
+    const [ln, tx] = doorEls;
+    ln.setAttribute("x1", mx((d.x - d.w / 2) * S)); ln.setAttribute("x2", mx((d.x + d.w / 2) * S));
+    ln.setAttribute("y1", my(R.d * S)); ln.setAttribute("y2", my(R.d * S));
+    tx.setAttribute("x", mx(d.x * S)); tx.setAttribute("y", my(R.d * S) + 4);
+  }
+}
+
 function buildBoard(force) {
   const svg = $("boardSvg");
   if (!svg || (svg.dataset.built && !force)) return;
@@ -5037,8 +5063,9 @@ function buildBoard(force) {
   boardEls.clear();
   const S = 10, NS = "http://www.w3.org/2000/svg";
   const el = (tag, attrs, parent = svg, text) => { const e = document.createElementNS(NS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); if (text != null) e.textContent = text; parent.appendChild(e); return e; };
-  el("polygon", { class: "room", points: R.outline.map(([x, z]) => `${x * S},${z * S}`).join(" ") });
-  const d = LAYOUT.door; if (d) { el("line", { class: "door", x1: (d.x - d.w / 2) * S, y1: R.d * S, x2: (d.x + d.w / 2) * S, y2: R.d * S }); el("text", { class: "doorlabel", x: d.x * S, y: R.d * S + 4 }, svg, "입구"); }
+  const roomEl = el("polygon", { class: "room", points: R.outline.map(([x, z]) => `${x * S},${z * S}`).join(" ") });
+  const d = LAYOUT.door;
+  const doorEls = d ? [el("line", { class: "door", x1: (d.x - d.w / 2) * S, y1: R.d * S, x2: (d.x + d.w / 2) * S, y2: R.d * S }), el("text", { class: "doorlabel", x: d.x * S, y: R.d * S + 4 }, svg, "입구")] : [];
   const groupTap = (ids) => {
     if (boardEdit) return;
     const eff = (id) => (pending.has(id) ? pending.get(id).target : seats.get(id).occupied);
@@ -5082,6 +5109,7 @@ function buildBoard(force) {
   if (first || !boardEdit) { // 평면도를 화면에 꽉 차게: 내용 크기에 맞춰 viewBox 조정 (편집 중엔 고정 → 끌 때 화면이 안 흔들림)
     try { const bb = svg.getBBox(); if (bb.width > 10) svg.setAttribute("viewBox", `${bb.x - 2} ${bb.y - 2} ${bb.width + 4} ${bb.height + 4}`); } catch {}
   }
+  stretchBoardRoom(svg, roomEl, doorEls, S); // 편집 중에도 바닥은 넓힌 채로
   if (first) setInterval(renderBoard, 30000); // 앉은 시간 갱신
 }
 function selectBoard(id) {
