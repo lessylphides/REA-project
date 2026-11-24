@@ -94,13 +94,13 @@
   .board .door { fill: none; stroke: #2fa877; stroke-width: 1.2; }
   .board .doorlabel { font: 700 3px sans-serif; fill: #2fa877; text-anchor: middle; }
   .board .bs { cursor: pointer; }
-  .bdtools { display: none; position: absolute; left: 8px; right: 8px; top: 2px; z-index: 2; gap: 6px; align-items: center; flex-wrap: wrap;
+  .bdtools { display: none; position: absolute; left: 8px; right: 8px; bottom: calc(100% + 6px); z-index: 2; /* 평면도 위(상단 빈자리 표시 자리)에 띄워 평면도를 안 가림 */ gap: 6px; align-items: center; flex-wrap: wrap;
     background: #3b2f2a; color: #fff; border-radius: 14px; padding: 6px 8px; font-size: 12px; font-weight: 700; }
   body.boardedit .bdtools { display: flex; }
+  body.boardedit .board { z-index: 30; } /* 안내창이 위쪽 빈자리 표시보다 앞에 */
   .bdtools span { flex: 1 1 100%; }
   .bdtools button { border: 0; border-radius: 10px; padding: 7px 12px; font: inherit; font-size: 14px; background: rgba(255,255,255,.18); color: #fff; }
   .bdtools button.ok { background: var(--empty); }
-  body.boardedit .board svg { padding-top: 70px; box-sizing: border-box; }
   body.boardedit .board .tg { cursor: grab; }
   body.boardedit .board .tg .tbl { stroke: #e8a37a; stroke-width: .9; stroke-dasharray: 1.5 1; }
   .board .tg.sel .tbl, .board .tg.sel .ring, .board .bs.sel .ring { stroke: #3b2f2a; stroke-width: 1.4; }
