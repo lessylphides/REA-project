@@ -541,7 +541,7 @@ function mullionXs(e) {
   cuts.sort((a, b) => a - b);
   const xs = [];
   for (let i = 0; i < cuts.length - 1; i++) {
-    const a = cuts[i], b = cuts[i + 1], n = Math.max(1, Math.round((b - a) / 1.6));
+    const a = cuts[i], b = cuts[i + 1], n = Math.max(1, Math.round((b - a) / 1.6)); if (b - a < 0.01) continue; // 문이 기둥에 바로 붙으면 그 사이 칸 없음
     for (let k = 0; k < n; k++) xs.push(a + ((b - a) * k) / n);
   }
   xs.push(cuts[cuts.length - 1]);
