@@ -958,6 +958,9 @@ function inOutdoor(x, z, m = 0) {
   }
   return false;
 }
+/** 화장실 통로 공간 안인지 (매장 윤곽 밖이지만 실내) */
+let wcDoor5 = null; // 화장실 문 (열렸는지)
+function inWcRoom(x, z) { return z < -0.05 && z > -BACK_D && x > WC_ROOM_X0 && x < R.w + 0.05; }
 /** 매장 안쪽까지의 거리 (양수 = 안) */
 function storeSD(x, z) {
   let m = Infinity;
@@ -1419,10 +1422,10 @@ function buildBackRooms(T) {
   // 오른쪽 벽 안쪽 면 (매장 오른쪽 벽과 같은 선)
   plane(zi0 - zi1, H, bm("#4a403a"), [R.w - 0.002, H / 2, (zi0 + zi1) / 2], 0, -Math.PI / 2);
   // 바깥으로 나가는 문 (화장실 문과 같은 모양, 보는 쪽에서 왼쪽 경첩, 바깥으로 열림 — 아직은 열리지 않음)
-  { const w = od.x1 - od.x0, h = od.h, fz = zi1 - T / 2, cx = (od.x0 + od.x1) / 2;
+  { const w = od.x1 - od.x0, h = od.h, fz = zi1 - T / 2 + 0.03, cx = (od.x0 + od.x1) / 2; // 벽 두께 안에서 통로 쪽으로 살짝 (벽 면과 겹쳐 지글거리지 않게)
     mk(box(w, h, 0.04), bm("#5e4230"), [cx, h / 2, fz], fpGroup, { outline: 0.008, shadow: false });
-    for (const sx of [-1, 1]) mk(box(0.06, h + 0.04, T + 0.02), bm("#8c8379"), [cx + sx * (w / 2 + 0.03), (h + 0.04) / 2, fz], fpGroup, { outline: 0.006, shadow: false });
-    mk(box(w + 0.18, 0.06, T + 0.02), bm("#8c8379"), [cx, h + 0.05, fz], fpGroup, { outline: 0.006, shadow: false });
+    for (const sx of [-1, 1]) mk(box(0.06, h + 0.04, 0.06), bm("#8c8379"), [cx + sx * (w / 2 + 0.03), (h + 0.04) / 2, zi1 + 0.02], fpGroup, { outline: 0.006, shadow: false });
+    mk(box(w + 0.18, 0.06, 0.06), bm("#8c8379"), [cx, h + 0.05, zi1 + 0.02], fpGroup, { outline: 0.006, shadow: false });
     mk(new THREE.SphereGeometry(0.035, 10, 8), bm("#b39a64"), [cx + w / 2 - 0.1, 1.0, fz + 0.04], fpGroup, nb); // 손잡이: 경첩(왼쪽) 반대편
     for (const hy of [0.25, h - 0.25]) mk(box(0.02, 0.1, 0.02), bm("#8a7a5a"), [cx - w / 2 + 0.012, hy, fz + 0.03], fpGroup, nb); }
   // 화장실 통로 공간 천장의 약한 조명
@@ -2351,7 +2354,7 @@ const airCons = [];
 const doors5 = [];
 function updateDoors5(dt) {
   for (const d of doors5) {
-    if (d.target) { d.t += dt; if (d.t > 7) d.target = 0; } // 7초 뒤 저절로 닫힘
+    if (d.target) { d.t += dt; if (d.t > 7 && !(d.keepOpen && d.keepOpen())) d.target = 0; } // 7초 뒤 저절로 닫힘 (드나드는 중엔 열어 둠)
     d.open += ((d.target ? 1 : 0) - d.open) * Math.min(1, dt * 3);
     if (Math.abs(d.open - (d.target ? 1 : 0)) < 0.002) d.open = d.target ? 1 : 0;
     d.hinge.rotation.y = d.ang * d.open;
@@ -2684,7 +2687,8 @@ function buildInteriorProp(p, g) {
       mk(box(w, h, 0.04), p.color || "#7a5638", [0, h / 2, 0], dg, { outline: 0.012 });
       const inside = new THREE.Group(); inside.visible = false; g.add(inside); // 열리면 보이는 바깥 복도 (어두운 뒤 공간)
       // (문 너머는 buildBackRooms 의 화장실 통로 공간이 실제로 있음)
-      g.userData.door5 = { hinge, inside, open: 0, target: 0, t: 0, ang: 1.6 };
+      g.userData.door5 = { hinge, inside, open: 0, target: 0, t: 0, ang: 1.6, keepOpen: () => walk.on && walk.pos.z < 1.0 && Math.abs(walk.pos.x - p.x) < 1.4 };
+      wcDoor5 = g.userData.door5;
       for (const sx of [-1, 1]) mk(box(0.06, h + 0.04, 0.07), frame, [sx * (w / 2 + 0.03), (h + 0.04) / 2, 0.035], g, { outline: 0.008 });
       mk(box(w + 0.18, 0.06, 0.07), frame, [0, h + 0.05, 0.035], g, { outline: 0.008 });
       mk(new THREE.SphereGeometry(0.035, 10, 8), "#c9b27a", [-w / 2 + 0.1, 1.0, 0.04], dg, { outline: 0.005 }); // 손잡이는 경첩 반대쪽
@@ -2901,9 +2905,9 @@ function buildInteriorProp(p, g) {
       { const ai = W - 0.08, ah = H - 0.06, az = -0.062, nb = { outline: 0, shadow: false }; // 에어컨 앞면: 벽면보다 5cm 뒤 (입체감)
         // 장 (벽 안쪽 면부터 깊이 75cm, 나무): 옆면·윗면·뒷면·바닥
         const CD = 0.75, zb = -0.015 - CD, wood2 = new THREE.MeshBasicMaterial({ color: "#5a3d27", side: THREE.DoubleSide }), wood3 = new THREE.MeshBasicMaterial({ color: "#47301f", side: THREE.DoubleSide });
-        for (const sx of [-1, 1]) { const m = mk(new THREE.PlaneGeometry(CD, H), wood2, [sx * W / 2, H / 2, -0.015 - CD / 2], inside, nb); m.rotation.y = Math.PI / 2; }
-        { const m = mk(new THREE.PlaneGeometry(W, CD), wood3, [0, H, -0.015 - CD / 2], inside, nb); m.rotation.x = Math.PI / 2; }
-        { const m = mk(new THREE.PlaneGeometry(W, CD), wood3, [0, 0.003, -0.015 - CD / 2], inside, nb); m.rotation.x = Math.PI / 2; }
+        for (const sx of [-1, 1]) { const m = mk(new THREE.PlaneGeometry(CD, H - 0.01), wood2, [sx * (W / 2 - 0.006), H / 2, -0.015 - CD / 2], inside, nb); m.rotation.y = Math.PI / 2; } // 벽 구멍 옆면과 겹치지 않게 살짝 안쪽 (겹치면 지글거림)
+        { const m = mk(new THREE.PlaneGeometry(W - 0.012, CD), wood3, [0, H - 0.006, -0.015 - CD / 2], inside, nb); m.rotation.x = Math.PI / 2; }
+        { const m = mk(new THREE.PlaneGeometry(W - 0.012, CD), wood3, [0, 0.012, -0.015 - CD / 2], inside, nb); m.rotation.x = Math.PI / 2; }
         mk(new THREE.PlaneGeometry(W, H), wood3, [0, H / 2, zb], inside, nb);
         // 에어컨 본체: 앞면(아래 판들) 뒤로 깊이 40cm 하얀 상자
         const AD = 0.4, bodySide = new THREE.MeshBasicMaterial({ color: "#dcdcd8", side: THREE.DoubleSide });
@@ -3964,7 +3968,7 @@ try { found = new Set(JSON.parse(store.get("seat-found") || "[]")); } catch { fo
 
 function interact(ev) {
   // 가게 밖(첫 화면·골목)에서는 유리 너머 매장 안 소품·자리가 눌리지 않게
-  if (fpGroup.visible && storeSD(camera.position.x, camera.position.z) < 0) return;
+  if (fpGroup.visible && storeSD(camera.position.x, camera.position.z) < 0 && !inWcRoom(camera.position.x, camera.position.z)) return;
   let hit = pick(ev, [...interactives, ...hitboxes]);
   if (!hit) return;
   // 바텐더가 바 의자 뒤에 가려져 있어도, 손가락 방향에 바텐더가 있으면 바텐더를 누른 것으로
@@ -4484,6 +4488,19 @@ function collideInner(p) {
     wasOutdoor = false;
     return;
   }
+  // 화장실 문 → 화장실 통로 공간 (문이 열려 있을 때만 드나듦, 뒤 바깥문은 아직 막힘)
+  if (wcDoor5) {
+    const dx0 = 8.475 - 0.425 + 0.12, dx1 = 8.475 + 0.425 - 0.12, inGap = p.x > dx0 && p.x < dx1, open = wcDoor5.open > 0.7;
+    const rx0 = WC_ROOM_X0 + T / 2 + PR, rx1 = R.w - PR, rz0 = -BACK_D + T + PR, rz1 = -T - PR;
+    if (p.z < PR && (inWcRoom(p.x, p.z) || (open && inGap && p.z < PR))) {
+      if (p.z > rz1) { // 문턱 (벽 두께 안): 문 폭 안에서만
+        if (!open) { p.z = PR; }
+        else p.x = THREE.MathUtils.clamp(p.x, dx0, dx1);
+      } else { p.x = THREE.MathUtils.clamp(p.x, rx0, rx1); p.z = Math.max(p.z, rz0); }
+      wasOutdoor = false;
+      return;
+    }
+  }
   // 바깥 골목
   if (storeSD(p.x, p.z) < -T) {
     pushObstacles(p);
@@ -4951,7 +4968,7 @@ const DAY = { sky: new THREE.Color("#fff6ea"), ground: new THREE.Color("#c9a88a"
 const NIGHT = { sky: new THREE.Color("#7f8db5"), ground: new THREE.Color("#3a3140") };
 function updateWorld(dt, time) {
   // 밖(가게 앞)은 밤, 안으로 들어가면 밝게
-  const night = fpGroup.visible ? THREE.MathUtils.clamp((-storeSD(camera.position.x, camera.position.z) - 0.3) / 1.6, 0, 1) : 0;
+  const night = fpGroup.visible && !inWcRoom(camera.position.x, camera.position.z) ? THREE.MathUtils.clamp((-storeSD(camera.position.x, camera.position.z) - 0.3) / 1.6, 0, 1) : 0;
   hemi.intensity = THREE.MathUtils.lerp(1.4, 0.55, night);
   hemi.color.copy(DAY.sky).lerp(NIGHT.sky, night);
   hemi.groundColor.copy(DAY.ground).lerp(NIGHT.ground, night);
