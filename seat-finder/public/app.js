@@ -1257,8 +1257,9 @@ function decorateGlassFacade(e, g, top, brickMat) {
   for (let x = -L / 2 + 0.4; x < L / 2 - 0.3; x += 0.55 + rr() * 0.35) {
     if (skip(x, 0.2)) continue;
     const big = rr() < 0.35;
-    if (rr() < 0.5) makeCypress(g, x, zo + 0.35, big ? 1.1 : 0.8);
-    else makePlant(g, x, zo + 0.35, big ? 0.9 : 0.6);
+    const pz = zo + 0.95; // 입구 쪽 화분 줄과 같은 거리 (벽에서 한 줄 앞)
+    if (rr() < 0.5) makeCypress(g, x, pz, big ? 1.1 : 0.8);
+    else makePlant(g, x, pz, big ? 0.9 : 0.6);
   }
 }
 
