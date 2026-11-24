@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import LAYOUT from "./layout.js";
 // 휴대폰에서 화면이 확대되어 버리지 않게 (손가락 두 개 벌리기·두 번 톡 확대 막기, Safari)
 for (const ev of ["gesturestart", "gesturechange", "gestureend"]) document.addEventListener(ev, (e) => e.preventDefault(), { passive: false });
@@ -2543,6 +2544,48 @@ function buildInteriorProp(p, g) {
             m.scale.set(2.6, 0.18, 0.9);
           }
         }
+      } else if (p.kind === "pencil") { // 청산호(연필선인장): 가는 초록 줄기가 둘씩 갈라지며 위로, 꼭대기는 옆으로 펼쳐짐
+        let sd = 29;
+        const rr = () => ((sd = (sd * 16807) % 2147483647) / 2147483647);
+        const stemMat = leafMat("#7a9a58"), up = new THREE.Vector3(0, 1, 0);
+        const parts = [], q = new THREE.Quaternion(), mtx = new THREE.Matrix4(), one = new THREE.Vector3(1, 1, 1);
+        const seg = (a, b, r) => { // a→b 가는 줄기 한 마디 (모아서 한 덩어리로 그림 → 휴대폰에서도 가벼움)
+          const d = b.clone().sub(a), L = d.length();
+          const geo = cyl(r * 0.8, r, L, 5);
+          q.setFromUnitVectors(up, d.clone().normalize());
+          geo.applyMatrix4(mtx.compose(a.clone().addScaledVector(d, 0.5), q, one));
+          parts.push(geo);
+        };
+        const away = p.away ?? 0; // 벽 쪽(이 각도)으로는 가지를 덜 뻗음
+        const dirAt = (yaw, rise) => { const c = Math.cos(rise); return new THREE.Vector3(Math.cos(yaw) * c, Math.sin(rise), Math.sin(yaw) * c); };
+        const grow = (a, dir, len, r, depth) => { // 끝에서 둘(가끔 셋)로 갈라짐
+          const b = a.clone().addScaledVector(dir, len);
+          if (b.y > H - 0.15) b.y = H - 0.15;
+          seg(a, b, r);
+          if (depth <= 0) return;
+          const n = rr() < 0.3 ? 3 : 2;
+          for (let i = 0; i < n; i++) {
+            const nd = dir.clone().add(new THREE.Vector3(rr() - 0.5, rr() * 0.5 - 0.1, rr() - 0.5).multiplyScalar(0.9)).normalize();
+            if (Math.cos(Math.atan2(nd.z, nd.x) - away) > 0.6) nd.x *= -0.5, nd.z *= -0.5; // 벽으로 가는 가지는 돌려 세움
+            grow(b, nd.normalize(), len * (0.72 + rr() * 0.15), r * 0.8, depth - 1);
+          }
+        };
+        const top = k, base = 0.5;
+        seg(new THREE.Vector3(0, base, 0), new THREE.Vector3(0.02, top, 0), 0.022); // 곧은 가운데 줄기
+        for (let y = 0.8; y < top - 0.2; y += 0.06 + rr() * 0.05) { // 줄기를 따라 옆가지 (가운데는 수북, 위로 갈수록 성김)
+          if (y > top * 0.72 && rr() < 0.5) continue;
+          let yaw = rr() * Math.PI * 2;
+          if (Math.cos(yaw - away) > 0.5) yaw += Math.PI;
+          const lower = y < top * 0.6;
+          grow(new THREE.Vector3(0.01, y, 0), dirAt(yaw, lower ? 0.2 + rr() * 0.6 : 0.5 + rr() * 0.5), 0.13 + rr() * 0.1, 0.011, lower ? 3 : 2);
+        }
+        for (let i = 0; i < 6; i++) { // 꼭대기: 옆으로 넓게 펼쳐진 가지
+          let yaw = (i / 6) * Math.PI * 2 + rr() * 0.4;
+          if (Math.cos(yaw - away) > 0.6) continue;
+          grow(new THREE.Vector3(0.02, top - 0.05 - rr() * 0.25, 0), dirAt(yaw, 0.15 + rr() * 0.35), 0.2 + rr() * 0.1, 0.011, 2);
+        }
+        mk(mergeGeometries(parts), stemMat, null, g, { outline: 0, shadow: false });
+        for (const geo of parts) geo.dispose();
       } else { // 홍콩야자 (나무 모양)
         mk(cyl(0.03, 0.045, k - 0.5, 6), "#7a5a3a", [0, 0.5 + (k - 0.5) / 2, 0], g, { outline: 0.006 });
         for (const [x, y, z, r] of [[0, k, 0, 0.32], [0.25, k - 0.25, 0.05, 0.26], [-0.22, k - 0.35, -0.05, 0.27], [0.05, k - 0.55, 0.2, 0.22], [-0.05, k + 0.25, 0.05, 0.22]]) {
@@ -2700,6 +2743,69 @@ function buildInteriorProp(p, g) {
         mk(new THREE.PlaneGeometry(0.3, 0.15), new THREE.MeshBasicMaterial({ map: t }), [0, 1.6, 0.025], dg, { outline: 0.004, shadow: false });
       }
       g.userData.hit = [w, h, 0.3, h / 2]; g.userData.sayY = 1.72; // 말풍선은 눈높이
+      return true;
+    }
+    case "winebarrel": { // 나무로 짠 오크통 모양 와인 셀러 (세운 타원 + 받침). 로컬 +z = 방 쪽, 뒤는 벽
+      const W = 0.56, Hh = 0.84, D = 0.34, y0 = 0.2, cy = y0 + Hh / 2, wood = "#9a6436", woodD = "#6e4424", T = 0.065;
+      mk(box(0.5, 0.04, 0.36), woodD, [0, 0.02, 0], g, { outline: 0.006 }); // 받침 바닥판
+      mk(box(0.26, y0, 0.28), wood, [0, y0 / 2 + 0.02, 0], g, { outline: 0.006 }); // 받침 기둥
+      const ell = (rx, ry, hole) => { const s = new THREE.Shape(); s.absellipse(0, 0, rx, ry, 0, Math.PI * 2, false, 0); if (hole) { const h = new THREE.Path(); h.absellipse(0, 0, rx - hole, ry - hole, 0, Math.PI * 2, true, 0); s.holes.push(h); } return s; };
+      const ring = new THREE.ExtrudeGeometry(ell(W / 2, Hh / 2, T), { depth: D, bevelEnabled: false, curveSegments: 40 });
+      ring.translate(0, 0, -D / 2);
+      mk(ring, wood, [0, cy, 0], g, { outline: 0.008 });
+      mk(new THREE.ShapeGeometry(ell(W / 2 - T, Hh / 2 - T), 32), "#24160f", [0, cy, -D / 2 + 0.01], g, { outline: 0, shadow: false }); // 안쪽 뒤판 (어두움)
+      const iw = W / 2 - T, ih = Hh / 2 - T;
+      const bottleG = cyl(0.034, 0.034, 0.24, 10), capG = cyl(0.015, 0.015, 0.05, 8);
+      for (const dy of [-0.2, -0.06, 0.08, 0.21]) { // 칸마다 눕힌 병 (빨간 마개가 앞으로)
+        const hw = iw * Math.sqrt(Math.max(0, 1 - ((dy - 0.045) / ih) ** 2));
+        mk(box(hw * 2, 0.018, D - 0.03), wood, [0, cy + dy - 0.045, 0], g, { outline: 0.004, shadow: false });
+        const n = Math.max(1, Math.floor((hw * 2 - 0.02) / 0.08));
+        for (let i = 0; i < n; i++) {
+          const bx = (i - (n - 1) / 2) * 0.08;
+          mk(bottleG, "#1d2b22", [bx, cy + dy, -0.02], g, { outline: 0.004, shadow: false }).rotation.x = Math.PI / 2;
+          mk(capG, "#8e2024", [bx, cy + dy, 0.125], g, { outline: 0.003, shadow: false }).rotation.x = Math.PI / 2;
+        }
+      }
+      const rivG = new THREE.SphereGeometry(0.011, 6, 4);
+      for (let i = 0; i < 22; i++) { // 앞 테두리 징
+        const a = (i / 22) * Math.PI * 2;
+        mk(rivG, "#2a2420", [Math.cos(a) * (W / 2 - T / 2), cy + Math.sin(a) * (Hh / 2 - T / 2), D / 2 + 0.006], g, { outline: 0, shadow: false });
+      }
+      addObstacle(p.x, p.z, 0.3, 0.2, p.rot);
+      g.userData.hit = [W, y0 + Hh, D + 0.1, (y0 + Hh) / 2]; g.userData.sayY = y0 + Hh + 0.25;
+      return true;
+    }
+    case "frames": { // 벽에 기대 둔 액자 여러 장 + 위에 걸친 달력 + 유리병. 로컬 +x = 오른쪽(스탠드 쪽)
+      const lean = 0.12, oak = "#c9a46e";
+      const frame = (w, h, x, z, face) => { // 뒤로 살짝 기울어진 액자 하나
+        const fg = new THREE.Group(); fg.position.set(x, 0, z); fg.rotation.x = -lean; g.add(fg);
+        mk(box(w, h, 0.025), oak, [0, h / 2, 0], fg, { outline: 0.006 });
+        mk(new THREE.PlaneGeometry(w - 0.05, h - 0.05), face, [0, h / 2, 0.0135], fg, { outline: 0, shadow: false });
+        return fg;
+      };
+      const matTex = canvasTex(64, 64, (c, w, h) => { c.fillStyle = "#efeae2"; c.fillRect(0, 0, w, h); });
+      const artTex = canvasTex(128, 192, (c, w, h) => { // 보라 바탕 + 어두운 반쪽 + 피라미드 모양
+        c.fillStyle = "#6a4fc0"; c.fillRect(0, 0, w, h);
+        c.fillStyle = "#2b2a3a"; c.fillRect(0, 0, w * 0.48, h);
+        c.fillStyle = "#3a2f6e";
+        for (const y of [0.3, 0.52, 0.74]) { c.beginPath(); c.moveTo(w * 0.48, h * (y - 0.12)); c.lineTo(w * 0.72, h * y); c.lineTo(w * 0.48, h * (y + 0.1)); c.fill(); }
+      });
+      const calTex = canvasTex(192, 96, (c, w, h) => { // 달력: 왼쪽 날짜 칸, 오른쪽 사진
+        c.fillStyle = "#f6f4ef"; c.fillRect(0, 0, w, h);
+        c.fillStyle = "#555"; for (let r = 0; r < 5; r++) for (let k = 0; k < 7; k++) c.fillRect(8 + k * 12, 14 + r * 15, 6, 6);
+        c.fillStyle = "#d9dce6"; c.fillRect(w * 0.55, 4, w * 0.43, h - 8);
+        c.fillStyle = "#6c7fa8"; c.fillRect(w * 0.64, 22, 14, 60); c.fillStyle = "#c9a66a"; c.fillRect(w * 0.8, 40, 12, 42);
+      });
+      const mat = (t) => new THREE.MeshBasicMaterial({ map: t });
+      frame(0.82, 1.0, 0.04, -0.07, mat(matTex)); // 맨 뒤 큰 액자
+      frame(0.78, 0.92, 0.02, -0.02, mat(matTex));
+      frame(0.56, 0.86, -0.06, 0.04, mat(artTex)); // 맨 앞 보라 그림
+      const cal = new THREE.Group(); cal.position.set(-0.04, 0.98, -0.12); cal.rotation.x = -lean; g.add(cal);
+      mk(new THREE.PlaneGeometry(0.62, 0.32), mat(calTex), [0, 0.16, 0], cal, { outline: 0.004, shadow: false });
+      const jar = mk(cyl(0.07, 0.07, 0.2, 14), new THREE.MeshBasicMaterial({ color: "#dfe7e6", transparent: true, opacity: 0.35, depthWrite: false }), [0.32, 0.1, 0.12], g, { outline: 0.004, shadow: false });
+      mk(cyl(0.06, 0.06, 0.025, 14), "#b89a4a", [0, 0.11, 0], jar, { outline: 0.003, shadow: false });
+      addObstacle(p.x, p.z, 0.42, 0.18, p.rot);
+      g.userData.hit = [0.85, 1.3, 0.3, 0.65]; g.userData.sayY = 1.5;
       return true;
     }
     case "sign": { // WELCOME 팻말

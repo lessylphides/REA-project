@@ -96,13 +96,16 @@ export default {
     { type: "bigplant", kind: "palm", front: true, x: 6.55, z: 2.35, h: 1.35, stool: true },
     // 바 안쪽 모퉁이 키 큰 홍콩야자
     { type: "bigplant", kind: "umbrella", r: 0.12, x: 1.72, z: 4.55, h: 2.75, pot: "#eeeae4", say: "키 큰 홍콩야자\n바 안쪽을 지켜 줘요" },
-    { type: "bigplant", kind: "tree", x: 8.95, z: 7.3, h: 2.0, say: "홍콩야자 나무\n매장의 터줏대감이에요" },
+    // 오른쪽 벽 입구 쪽 구석: 청산호 화분 → 와인 셀러 → 기대 둔 액자들 → 스탠드(9.15, 9.1)
+    { type: "bigplant", kind: "pencil", away: 0, x: 9.12, z: 7.2, h: 2.35, pot: "#f2f0ea", say: "청산호 나무\n매장의 터줏대감이에요" },
+    { type: "winebarrel", x: 9.3, z: 7.78, rot: 90, say: "오크통 와인 셀러\n와인도 준비돼 있어요" },
+    { type: "frames", x: 9.3, z: 8.47, rot: 90, say: "아직 걸지 못한 액자들\n곧 벽에 걸릴 거예요" },
     // 오른쪽 벽
     // 오른쪽 벽: 노퍽 소나무 옆 원목 행거
     { type: "coatrack", x: 9.25, z: 2.57, rot: 90, say: "외투는 여기에\n걸어 주세요" },
     // 안쪽 벽: 화장실 가는 문 (오른쪽 끝이 입구 오른쪽 기둥 안쪽 선과 일직선)
     { type: "walldoor", x: 8.475, z: 0.0, w: 0.85, text: "WC", say: "화장실은\n이 문으로 나가요" },
-    { type: "sign", walkOnly: true, x: 9.46, z: 7.3, rot: 90, y: 2.1, text: "WELCOME", say: "WELCOME!\n오늘도 와 주셔서 고마워요" },
+    { type: "sign", walkOnly: true, x: 9.46, z: 7.8, rot: 90, y: 2.1, text: "WELCOME", say: "WELCOME!\n오늘도 와 주셔서 고마워요" },
   ],
 
   // 테이블: shape = "oval" | "round" | "rect", chair = "rattan" | "windsor" | "chair"
