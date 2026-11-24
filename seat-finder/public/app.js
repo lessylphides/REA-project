@@ -10,6 +10,8 @@ document.addEventListener("dblclick", (e) => e.preventDefault(), { passive: fals
 // ───────── 기본 설정 ─────────
 const POLL_MS = 5000; // 영업시간 중 빈자리 확인 간격
 const IS_ADMIN = location.pathname === "/admin" || decodeURIComponent(location.pathname) === "/관리자";
+// 관리자로 한 번이라도 로그인한 기기(사장님 휴대폰)는 손님 화면도 방문 통계에서 뺌
+const IS_STAFF = (() => { try { return localStorage.getItem("seat-staff") === "1" || !!localStorage.getItem("seat-admin-token"); } catch { return false; } })();
 const COLOR = { empty: "#2fa877", busy: "#ee7a62", outline: "#4a3a31", wood: "#b98a63", woodDark: "#8f6447" };
 const $ = (id) => document.getElementById(id);
 
@@ -3638,6 +3640,7 @@ $("loginForm").addEventListener("submit", async (e) => {
   try {
     await api("/api/login");
     store.set("seat-admin-token", token);
+    store.set("seat-staff", "1"); // 이 휴대폰은 앞으로 손님 화면으로 들어와도 방문 수에서 뺌
     if (!IS_ADMIN) { location.href = "/admin"; return; } // 환풍기로 들어온 경우: 관리자 화면으로
     $("login").classList.remove("show");
     document.body.classList.add("admin");
@@ -3840,7 +3843,7 @@ function tapScreen(scr) {
 // ───────── 방문 기록 (체류시간 → 관리자 화면) ─────────
 const visit = { sid: (Math.random().toString(36).slice(2, 10) + Date.now().toString(36)).slice(0, 20), ms: 0, ad: 0, sent: "" };
 function sendVisit(force) {
-  if (IS_ADMIN || (visit.ms < 3000 && !force)) return;
+  if (IS_ADMIN || IS_STAFF || (visit.ms < 3000 && !force)) return; // 관리자 화면·사장님 휴대폰은 방문 수에 안 셈
   const body = JSON.stringify({ sid: visit.sid, ms: visit.ms, ad: visit.ad });
   if (body === visit.sent) return;
   visit.sent = body;
