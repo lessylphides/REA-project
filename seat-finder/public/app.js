@@ -1219,11 +1219,13 @@ function decorateGlassFacade(e, g, top, brickMat) {
     if (x <= G0 + 0.06 || x >= G1 - 0.06) continue; // 양 끝은 굵은 테두리가 대신함
     mk(box(0.07, GO - 0.12, 0.06), white, [x, (GO + 0.12) / 2, zo + 0.03], g, ol8);
   }
-  mk(box(GW + 0.2, 0.1, 0.16), white, [GC, GO + 0.05, zo + 0.06], g, ol8);                // 위 테두리
-  for (const x of [G0 - 0.05, G1 + 0.05]) mk(box(0.1, GO, 0.16), white, [x, GO / 2, zo + 0.06], g, ol8); // 양옆 테두리
-  mk(box(GW + 0.2, 0.1, 0.16), white, [GC, 0.12, zo + 0.06], g, ol8); // 아래 테두리 (유리 아래끝을 덮는 액자 밑변)
+  // 테두리 깊이: 입구 쪽 쇼윈도와 같게 (테두리 앞면 ~ 유리 20cm)
+  const FZ = zo + 0.015;
+  mk(box(GW + 0.2, 0.1, 0.16), white, [GC, GO + 0.05, FZ], g, ol8);                // 위 테두리
+  for (const x of [G0 - 0.05, G1 + 0.05]) mk(box(0.1, GO, 0.16), white, [x, GO / 2, FZ], g, ol8); // 양옆 테두리
+  mk(box(GW + 0.2, 0.1, 0.16), white, [GC, 0.12, FZ], g, ol8); // 아래 테두리 (유리 아래끝을 덮는 액자 밑변)
   mk(box(GW, 0.1, 0.06), white, [GC, 2.8, zo + 0.02], g, { outline: 0, shadow: false });   // 유리 위끝 ~ 테두리 사이
-  if (brickMat) mk(box(GW + 0.5, 0.22, 0.22), brickMat(GW + 0.5, 0.22), [GC, GO + 0.21, zo + 0.11], g, { outline: 0.015, shadow: false }); // 벽돌 턱
+  if (brickMat) mk(box(GW + 0.5, 0.22, 0.22), brickMat(GW + 0.5, 0.22), [GC, GO + 0.21, zo + 0.087], g, { outline: 0.015, shadow: false }); // 벽돌 턱
   // (창 아래 술병·사선 무늬·LED 는 매장 안 장이 유리 너머로 비쳐 보이는 것 — buildBackbar)
   if (doorX != null) mk(box(1.25, 0.14, 0.5), "#b9b4ac", [doorX, 0.07 - 0.12, zo + 0.27], g, { outline: 0.01, shadow: false }); // 문 앞 돌계단
   // 대각선 면: 양옆 기둥 케이지 벽등, 흰 A형 입간판, 주차금지 원뿔
