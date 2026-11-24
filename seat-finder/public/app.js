@@ -3328,7 +3328,20 @@ function buildScreens() {
     parent.add(g);
     let face;
     if (cfg.projected) { // 프로젝터가 벽에 비춘 화면: 테두리 없이 빛으로 (가장자리 살짝 흐림)
-      face = mk(new THREE.PlaneGeometry(cfg.w, cfg.h), new THREE.MeshBasicMaterial({ map: tex, transparent: true, opacity: 0.86, depthWrite: false }), [0, 0, 0.005], g, { outline: 0, shadow: false });
+      // 벽에 쏜 빛처럼: 반투명 + 가장자리가 부드럽게 사라짐 + 검은 부분이 물빠진 색 (대비 낮춤)
+      const feather = canvasTex(128, 128, (c, w, h) => {
+        const img = c.createImageData(w, h), e = 0.07;
+        for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+          const u = Math.min(x / w, 1 - x / w) / e, v = Math.min(y / h, 1 - y / h) / e;
+          const a = Math.max(0, Math.min(1, u)) * Math.max(0, Math.min(1, v)), k = (y * w + x) * 4;
+          img.data[k] = img.data[k + 1] = img.data[k + 2] = Math.round(255 * a * a * (3 - 2 * a)); img.data[k + 3] = 255;
+        }
+        c.putImageData(img, 0, 0);
+      });
+      feather.colorSpace = THREE.NoColorSpace;
+      face = mk(new THREE.PlaneGeometry(cfg.w, cfg.h), new THREE.MeshBasicMaterial({ map: tex, alphaMap: feather, transparent: true, opacity: 0.55, depthWrite: false }), [0, 0, 0.005], g, { outline: 0, shadow: false });
+      const lift = new THREE.Mesh(new THREE.PlaneGeometry(cfg.w, cfg.h), new THREE.MeshBasicMaterial({ color: "#9a8fa8", alphaMap: feather, transparent: true, opacity: 0.14, depthWrite: false, blending: THREE.AdditiveBlending }));
+      lift.position.z = 0.007; lift.renderOrder = 3; lift.raycast = () => {}; g.add(lift);
       // 벽에 비친 빛이 화면 둘레로 은은하게 번짐
       const spill = new THREE.Mesh(new THREE.PlaneGeometry(cfg.w * 1.5, cfg.h * 1.7), new THREE.MeshBasicMaterial({ map: poolTex, color: "#d9d4ff", transparent: true, opacity: 0.16, depthWrite: false, blending: THREE.AdditiveBlending }));
       spill.position.z = 0.003; spill.renderOrder = 1; g.add(spill);
