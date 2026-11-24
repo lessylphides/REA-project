@@ -1242,7 +1242,7 @@ function decorateGlassFacade(e, g, top, brickMat) {
   mk(box(GW, 0.1, 0.06), white, [GC, 2.8, zo + 0.02], g, { outline: 0, shadow: false });   // 유리 위끝 ~ 테두리 사이
   void brickMat; // (창 위 벽돌 턱은 없앰: 위층이 처마처럼 덮음)
   // (창 아래 술병·사선 무늬·LED 는 매장 안 장이 유리 너머로 비쳐 보이는 것 — buildBackbar)
-  if (doorX != null) mk(box(1.25, 0.14, 0.5), "#b9b4ac", [doorX, 0.07 - 0.12, zo + 0.27], g, { outline: 0.01, shadow: false }); // 문 앞 돌계단
+  if (doorX != null) mk(box(1.1, 0.14, 0.5), "#b9b4ac", [doorX, 0.07 - 0.12, zo + 0.27], g, { outline: 0.01, shadow: false }); // 문 앞 돌계단 (문 폭에 맞춤: 옆 모서리 기둥 밑으로 들어가지 않게)
   // 대각선 면: 양옆 기둥 케이지 벽등, 흰 A형 입간판, 주차금지 원뿔
   if (diag) {
     const pls = (R.pillars || []).filter((q) => q.edge === e.i);
