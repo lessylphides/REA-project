@@ -2306,14 +2306,14 @@ function updateDoors5(dt) {
 }
 function updateAc(dt, time) {
   updateDoors5(dt);
+  const on = !!(storeInfo?.acOn && isOpenNow()); // 실제 에어컨이 켜져 있을 때만
   for (const g of airCons) {
     const u = g.userData.ac;
-    if (u.t < 0 && storeInfo?.acOn && isOpenNow()) u.t = 0; // 실제 에어컨이 켜져 있으면 날개가 계속 천천히 움직임
-    if (u.t < 0) continue; u.t += dt;
-    const on = storeInfo?.acOn && isOpenNow();
-    const a = Math.sin(u.t * 1.4) * 0.45 * (on ? Math.min(1, u.t) : Math.min(1, u.t, Math.max(0, 6 - (u.t % 1e6))));
-    u.flaps.forEach((f) => (f.rotation.x = -0.35 + a));
-    if (!on && u.t > 6) { u.t = -1; u.flaps.forEach((f) => (f.rotation.x = -0.35)); } }
+    u.open = (u.open ?? 0) + ((on ? 1 : 0) - (u.open ?? 0)) * Math.min(1, dt * 1.5); // 천천히 열리고 닫힘
+    u.t = (u.t < 0 ? 0 : u.t) + dt;
+    const a = -0.95 * u.open + Math.sin(u.t * 1.4) * 0.3 * u.open; // 꺼짐: 0 (세워져 닫힘)
+    u.flaps.forEach((f) => (f.rotation.x = a));
+  }
 }
 function spillMilk(g) {
   const u = g.userData.fr;
@@ -2866,7 +2866,7 @@ function buildInteriorProp(p, g) {
         const body = new THREE.MeshBasicMaterial({ color: "#f4f4f2" });
         mk(new THREE.PlaneGeometry(ai, ah), body, [0, ah / 2 + 0.02, az], inside, nb);   // 하얀 몸통
         mk(new THREE.PlaneGeometry(ai - 0.06, 0.34), "#151518", [0, ah - 0.25, az + 0.001], inside, nb); // 위 검은 바람구멍
-        for (let r = 0; r < 3; r++) { const f = mk(box(ai - 0.08, 0.045, 0.012), new THREE.MeshBasicMaterial({ color: "#d9dce0" }), [0, ah - 0.36 + 0.02 + r * 0.11, az + 0.01], inside, { outline: 0.002, shadow: false }); f.rotation.x = -0.35; acFlaps.push(f); } // 움직이는 날개
+        for (let r = 0; r < 3; r++) { const f = mk(box(ai - 0.07, 0.112, 0.01), new THREE.MeshBasicMaterial({ color: "#e4e6e8" }), [0, ah - 0.25 + (r - 1) * 0.11, az + 0.012], inside, { outline: 0.002, shadow: false }); acFlaps.push(f); } // 날개: 꺼지면 세워져 구멍을 다 덮고, 켜지면 열려서 흔들림
         mk(new THREE.PlaneGeometry(0.008, 0.32), "#d9dbde", [0, ah - 0.25, az + 0.002], inside, nb);
         mk(new THREE.PlaneGeometry(0.05, 0.02), "#c8392b", [-ai / 2 + 0.08, ah - 0.04, az + 0.002], inside, nb); // LG 로고 자리
         mk(new THREE.PlaneGeometry(0.16, 0.012), "#c9ccd0", [0, ah - 0.62, az + 0.002], inside, nb); // 표시창
