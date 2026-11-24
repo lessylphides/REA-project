@@ -1069,7 +1069,19 @@ function buildInsideShell(T) {
     front(ox0, ox1, oy1, H);
     front(ox1, door.x - door.w / 2, 0, H);
     front(door.x + door.w / 2, FRONT_X1 + T / 2, 0, H);
-    front(door.x - door.w / 2, door.x + door.w / 2, dh, H);
+    { // 문 위: 작은 창 자리는 뚫어 둠(안팎이 보임), 환풍기 자리는 벽 + 안쪽 환풍구
+      const hx0 = door.x - door.w * 0.475, hx1 = door.x + door.w * 0.075, hy0 = dh + 0.05, hy1 = Math.min(2.82, H - 0.04);
+      front(door.x - door.w / 2, hx0, dh, H);
+      front(hx1, door.x + door.w / 2, dh, H);
+      front(hx0, hx1, dh, hy0);
+      front(hx0, hx1, hy1, H);
+      const fr = "#f4f1ec";
+      for (const y of [hy0, hy1]) mk(box(hx1 - hx0 + 0.04, 0.035, T + 0.02), fr, [(hx0 + hx1) / 2, y, zF], fpGroup, { outline: 0.006, shadow: false });
+      for (const x of [hx0, hx1]) mk(box(0.035, hy1 - hy0, T + 0.02), fr, [x, (hy0 + hy1) / 2, zF], fpGroup, { outline: 0.006, shadow: false });
+      const fx = door.x + door.w * 0.3, fy = (hy0 + hy1) / 2; // 환풍기 안쪽 면
+      mk(box(0.4, 0.4, 0.02), "#cfcac2", [fx, fy, zF - T / 2 - 0.012], fpGroup, { outline: 0.006, shadow: false });
+      for (let i = 0; i < 5; i++) mk(box(0.32, 0.02, 0.01), "#8e8a84", [fx, fy - 0.12 + i * 0.06, zF - T / 2 - 0.025], fpGroup, { outline: 0, shadow: false });
+    }
     // 안쪽에서 보이는 정면 창 (블라인드)
     const winW = LAYOUT.front?.windowW ?? 2.6;
     const wx0 = door.x - door.w / 2 - 0.05 - winW, wx1 = door.x - door.w / 2 - 0.05;
@@ -1352,9 +1364,8 @@ function buildStorefront(T, door, dh) {
   mk(box(door.w + 0.1, 0.06, 0.06), white, [door.x, dh + 0.02, zO + 0.03], fpGroup, ol);
   { // 환풍기 옆 작은 창: 블라인드 없는 맑은 유리 (환풍기 때문에 블라인드를 달 수 없음)
     const gw = door.w * 0.55, gh = opTop - dh - 0.08, gy = dh + 0.05 + gh / 2, gx = door.x - door.w * 0.2;
-    mk(new THREE.PlaneGeometry(gw, gh), toon("#3e4652"), [gx, gy, wz], fpGroup, no); // 유리 너머 어두운 안쪽
-    const glint = new THREE.MeshBasicMaterial({ color: "#ffffff", transparent: true, opacity: 0.16, depthWrite: false });
-    for (const [dx, w] of [[-0.12, 0.06], [0.02, 0.025]]) mk(box(w, gh * 1.1, 0.002), glint, [gx + dx, gy, wz + 0.003], fpGroup, no).rotation.z = 0.6;
+    mk(new THREE.PlaneGeometry(gw, gh), clearGlass(), [gx, gy, wz], fpGroup, no); // 맑은 유리: 아래 문처럼 안이 비쳐 보임
+    addGlassRefl(fpGroup, gw, gh, [gx, gy, wz + 0.004], 0); // 낮엔 하늘빛 비침, 밤엔 거의 없음
     mk(box(0.04, gh, 0.05), white, [door.x + door.w * 0.075, gy, zO + 0.03], fpGroup, ol); // 창과 환풍기 사이 세로틀
   }
   const fan = canvasTex(128, 128, (g) => {
