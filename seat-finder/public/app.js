@@ -1381,7 +1381,7 @@ function buildStorefront(T, door, dh) {
   mk(new THREE.PlaneGeometry(cx1 - cx0, cy1 - cy0), toon("#e9e6e1"), [fcx, fcy, wz], fpGroup, no);
   void fan;
   const fanG = new THREE.Group(); fanG.position.set(fcx, fcy, zO + 0.1); fpGroup.add(fanG); // 흰 테두리 앞면과 같은 깊이 (보는 각도에 따라 한쪽으로 쏠려 보이지 않게)
-  const R0 = fs * 0.44;
+  const R0 = fs * 0.352; // 둥근 환풍기 (칸의 약 70%)
   mk(new THREE.TorusGeometry(R0, 0.012, 6, 32), "#555", [0, 0, 0], fanG, { outline: 0, shadow: false });
   mk(new THREE.CircleGeometry(R0 * 0.98, 32), "#2f3134", [0, 0, -0.004], fanG, { outline: 0, shadow: false }); // 안쪽 어두운 구멍
   const rotor = new THREE.Group(); fanG.add(rotor);
