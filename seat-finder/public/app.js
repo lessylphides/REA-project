@@ -118,6 +118,7 @@ function splitInteriorTints() {
   for (const [o, inside] of meshes) {
     const m = o.material, set = cls.get(m);
     if (m.userData.forceOutside) { m.userData.inside = false; continue; }
+    if (m.userData.forceInside) { m.userData.inside = true; continue; } // 매장 뒤 공간처럼 윤곽 밖이지만 실내인 것
     if (set.size === 1) { m.userData.inside = inside; continue; }
     if (!inside) { m.userData.inside = false; continue; }
     let c = clones.get(m);
@@ -1400,6 +1401,11 @@ function buildBackRooms(T) {
   const wallBox = (x0, x1, z0, z1, c, y1 = H) => mk(box(x1 - x0, y1, z1 - z0), bm(c), [(x0 + x1) / 2, y1 / 2, (z0 + z1) / 2], fpGroup, { outline: 0.01, shadow: false });
   const rooms = [[-T, BACK_PART_X - T / 2, "#3a332e", "#2a2522"], [BACK_PART_X + T / 2, WC_ROOM_X0 - T / 2, "#3a332e", "#2a2522"], [WC_ROOM_X0 + T / 2, R.w, "#4a413a", "#3a3230"]];
   for (const [x0, x1, floor, ceil] of rooms) {
+    if (x0 > WC_ROOM_X0) { // 화장실 통로 공간: 홀 바닥과 같은 바닥 (무늬 크기도 같게)
+      const t = floorTexture(); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set((x1 - x0) * 0.25, (zi0 - zi1) * 0.25);
+      const fm = toon("#ffffff", { unique: true, map: t }); fm.userData.forceInside = true; // 실내 색 (바깥 밤하늘 색을 받지 않게)
+      plane(x1 - x0, zi0 - zi1, fm, [(x0 + x1) / 2, 0.002, (zi0 + zi1) / 2], -Math.PI / 2);
+    } else
     plane(x1 - x0, zi0 - zi1, bm(floor), [(x0 + x1) / 2, 0.002, (zi0 + zi1) / 2], -Math.PI / 2);
     plane(x1 - x0, zi0 - zi1, bm(ceil), [(x0 + x1) / 2, H, (zi0 + zi1) / 2], Math.PI / 2);
   }
