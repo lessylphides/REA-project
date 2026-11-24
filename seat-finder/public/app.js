@@ -1375,12 +1375,27 @@ function buildStorefront(T, door, dh) {
     g.strokeStyle = "#555"; g.lineWidth = 6; g.beginPath(); g.arc(64, 64, 48, 0, Math.PI * 2); g.stroke();
     g.lineWidth = 4; for (let a = 0; a < 6; a++) { g.beginPath(); g.moveTo(64, 64); g.lineTo(64 + Math.cos(a) * 44, 64 + Math.sin(a) * 44); g.stroke(); }
   });
-  mk(new THREE.PlaneGeometry(fanAt.s, fanAt.s), toon("#e9e6e1"), [door.x + door.w / 4, fanAt.y, wz], fpGroup, no); // 문 위 오른쪽 절반 가운데
-  const fanMesh = mk(new THREE.PlaneGeometry(fanAt.s * 0.95, fanAt.s * 0.95), new THREE.MeshBasicMaterial({ map: fan, transparent: true }), [door.x + door.w / 4, fanAt.y, wz + 0.01], fpGroup, no);
-  steamFan = fanMesh;
+  // 환풍기: 오른쪽 칸(가운데 창살 ~ 오른쪽 테두리, 가로틀 ~ 위 테두리)을 꽉 채워 정가운데
+  const cx0 = door.x + 0.0225, cx1 = opR, cy0 = dh + 0.05, cy1 = opTop;
+  const fcx = (cx0 + cx1) / 2, fcy = (cy0 + cy1) / 2, fs = Math.min(cx1 - cx0, cy1 - cy0) - 0.015;
+  mk(new THREE.PlaneGeometry(cx1 - cx0, cy1 - cy0), toon("#e9e6e1"), [fcx, fcy, wz], fpGroup, no);
+  void fan;
+  const fanG = new THREE.Group(); fanG.position.set(fcx, fcy, wz + 0.012); fpGroup.add(fanG);
+  const R0 = fs * 0.44;
+  mk(new THREE.TorusGeometry(R0, 0.012, 6, 32), "#555", [0, 0, 0], fanG, { outline: 0, shadow: false });
+  mk(new THREE.CircleGeometry(R0 * 0.98, 32), "#2f3134", [0, 0, -0.004], fanG, { outline: 0, shadow: false }); // 안쪽 어두운 구멍
+  const rotor = new THREE.Group(); fanG.add(rotor);
+  mk(cyl(0.03, 0.03, 0.02, 12), "#8a8a8a", [0, 0, 0.004], rotor, { outline: 0.003, shadow: false }).rotation.x = Math.PI / 2;
+  const blades = [];
+  for (let i = 0; i < 6; i++) { // 날개: 멈추면 납작, 돌 때는 살짝 비틀려 열림
+    const arm = new THREE.Group(); arm.rotation.z = (i / 6) * Math.PI * 2; rotor.add(arm);
+    const bl = mk(box(R0 * 0.82, 0.07, 0.008), "#d4d1cb", [R0 * 0.48, 0, 0.002], arm, { outline: 0.004, shadow: false });
+    blades.push(bl);
+  }
+  steamFan = { rotor, blades, open: 0 };
   { // 숨은 관리자 입구: 문 위 환풍기를 누르면 관리자 로그인
     const hb = new THREE.Mesh(new THREE.PlaneGeometry(0.7, 0.7), hitMat);
-    hb.position.set(door.x + door.w / 4, fanAt.y, wz + 0.03);
+    hb.position.set(fcx, fcy, wz + 0.03);
     fpGroup.add(hb); adminFanHit = hb;
   }
 
@@ -4707,7 +4722,12 @@ function updateWorld(dt, time) {
   sun.intensity = THREE.MathUtils.lerp(2.2, 0.12, night);
   document.body.classList.toggle("night", night > 0.5);
   if (LINE) applyTime(night, time);
-  if (steamFan) steamFan.rotation.z -= dt * 5;
+  if (steamFan) { // 영업 중(문 잠긴 시간 제외)에만 돎 — 돌 때는 날개가 살짝 열림
+    const run = isOpenNow() && !isLockedNow();
+    steamFan.open += ((run ? 1 : 0) - steamFan.open) * Math.min(1, dt * 2);
+    steamFan.rotor.rotation.z -= dt * 5 * steamFan.open;
+    for (const bl of steamFan.blades) bl.rotation.x = 0.55 * steamFan.open;
+  }
   // 자동문
   if (doorPanels.length) {
     const d = frontDoor();
