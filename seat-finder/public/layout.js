@@ -90,10 +90,10 @@ export default {
     // 안쪽 벽 TV 장식장 (TV 는 아래 screens)
     { type: "tvshelf", standOnly: true, x: 5.7, z: 1.75, w: 3.8, h: 2.6, tvW: 2.35, tvY: 1.55, tvH: 1.32, say: "전자칠판 영상\n화분 사이로 숲을 보며 쉬어 가세요" },
     // 식물
-    // 반원 테이블 바로 뒤 화분 3개 → 전자칠판 영상을 은은히 가림
-    { type: "bigplant", kind: "palm", front: true, x: 4.85, z: 2.38, h: 1.95, say: "야자 화분이에요\n잎 사이로 영상이 살짝" },
-    { type: "bigplant", kind: "palm", front: true, x: 5.7, z: 2.28, h: 2.1 },
-    { type: "bigplant", kind: "palm", front: true, x: 6.55, z: 2.38, h: 1.85 },
+    // 반원 테이블 바로 뒤 화분 3개 → 전자칠판 영상을 은은히 가림 (나무 스툴 위, stool: true)
+    { type: "bigplant", kind: "palm", front: true, x: 4.85, z: 2.38, h: 1.45, stool: true, say: "야자 화분이에요\n잎 사이로 영상이 살짝" },
+    { type: "bigplant", kind: "palm", front: true, x: 5.7, z: 2.28, h: 1.6, stool: true },
+    { type: "bigplant", kind: "palm", front: true, x: 6.55, z: 2.38, h: 1.35, stool: true },
     { type: "bigplant", kind: "norfolk", x: 8.95, z: 1.1, h: 1.7, say: "노퍽 소나무예요\n겨울엔 트리가 돼요" },
     // 바 안쪽 모퉁이 키 큰 홍콩야자
     { type: "bigplant", kind: "umbrella", r: 0.12, x: 1.72, z: 4.55, h: 2.75, pot: "#eeeae4", say: "키 큰 홍콩야자\n바 안쪽을 지켜 줘요" },

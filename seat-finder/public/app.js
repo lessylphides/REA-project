@@ -2235,7 +2235,24 @@ function updateFridge(g, dt) {
   }
 }
 /** 실내 소품 만들기 (layout.props 의 새 종류들) */
+// 나무 보조 스툴 (가습기·반죽기·화분 받침). 윗면 높이를 돌려줌
+function woodStool(g) {
+  const wood = "#a8784a", ty = 0.5;
+  mk(box(0.42, 0.04, 0.4), wood, [0, ty, 0], g, { outline: 0.01 });
+  for (const [lx, lz] of [[-0.17, -0.16], [0.17, -0.16], [-0.17, 0.16], [0.17, 0.16]]) mk(box(0.035, ty, 0.035), wood, [lx, ty / 2, lz], g, { outline: 0.006 });
+  mk(box(0.36, 0.025, 0.025), wood, [0, 0.16, 0.16], g, { outline: 0.004 });
+  return ty + 0.02;
+}
+
 function buildInteriorProp(p, g) {
+  if (p.stool) { // stool: true → 나무 스툴 위에 올려 둠
+    const top = woodStool(g);
+    const ig = new THREE.Group(); ig.position.y = top; g.add(ig);
+    const ok = buildInteriorProp({ ...p, stool: false }, ig);
+    if (ig.userData.hit) { const h = ig.userData.hit; g.userData.hit = [h[0], h[1] + top, h[2], h[3] + top / 2]; }
+    if (ig.userData.sayY != null) g.userData.sayY = Math.min(ig.userData.sayY + top, 1.75); // 말풍선은 눈높이 근처
+    return ok;
+  }
   const H = R.wallH;
   const dark = "#2a2522";
   switch (p.type) {
@@ -2747,11 +2764,7 @@ function buildInteriorProp(p, g) {
       return true;
     }
     case "sidetable": { // 나무 스툴 위 소품 (반죽기 / 가습기)
-      const wood = "#a8784a", ty = 0.5;
-      mk(box(0.42, 0.04, 0.4), wood, [0, ty, 0], g, { outline: 0.01 });
-      for (const [lx, lz] of [[-0.17, -0.16], [0.17, -0.16], [-0.17, 0.16], [0.17, 0.16]]) mk(box(0.035, ty, 0.035), wood, [lx, ty / 2, lz], g, { outline: 0.006 });
-      mk(box(0.36, 0.025, 0.025), wood, [0, 0.16, 0.16], g, { outline: 0.004 });
-      const top = ty + 0.02, white = "#f1eeea";
+      const top = woodStool(g), white = "#f1eeea";
       if (p.item === "mixer") { // 반죽기 (itemRot: 스툴 위에서 반죽기만 돌림, + = 위에서 봐서 시계 방향)
         const ig = new THREE.Group(); ig.rotation.y = THREE.MathUtils.degToRad(-(p.itemRot || 0)); g.add(ig);
         // 받침 → 뒤쪽 기둥 → 앞으로 나온 둥근 머리 → 그 아래 은색 그릇
