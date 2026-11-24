@@ -1389,7 +1389,9 @@ function buildStorefront(T, door, dh) {
   const blades = [];
   for (let i = 0; i < 6; i++) { // 날개: 멈추면 납작, 돌 때는 살짝 비틀려 열림
     const arm = new THREE.Group(); arm.rotation.z = (i / 6) * Math.PI * 2; rotor.add(arm);
-    const bl = mk(box(R0 * 0.82, 0.07, 0.008), "#d4d1cb", [R0 * 0.48, 0, 0.002], arm, { outline: 0.004, shadow: false });
+    // 부채꼴 날개 6장: 닫히면 서로 겹쳐 구멍을 다 덮고, 돌 때는 비틀려 틈이 생김
+    const bl = mk(new THREE.CircleGeometry(R0 * 0.97, 10, -Math.PI / 6 - 0.04, Math.PI / 3 + 0.08), toon("#d4d1cb", { side: THREE.DoubleSide }), [0, 0, 0.004], arm, { outline: 0, shadow: false });
+    bl.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0, 0.002), new THREE.Vector3(R0 * 0.97 * Math.cos(Math.PI / 6), R0 * 0.97 * Math.sin(Math.PI / 6), 0.002)]), new THREE.LineBasicMaterial({ color: "#6f6b66" }))); // 날개 경계선
     blades.push(bl);
   }
   steamFan = { rotor, blades, open: 0 };
@@ -4726,7 +4728,7 @@ function updateWorld(dt, time) {
     const run = isOpenNow() && !isLockedNow();
     steamFan.open += ((run ? 1 : 0) - steamFan.open) * Math.min(1, dt * 2);
     steamFan.rotor.rotation.z -= dt * 5 * steamFan.open;
-    for (const bl of steamFan.blades) bl.rotation.x = 0.55 * steamFan.open;
+    for (const bl of steamFan.blades) bl.rotation.x = 1.0 * steamFan.open; // 0 = 닫힘(구멍을 다 덮음)
   }
   // 자동문
   if (doorPanels.length) {
