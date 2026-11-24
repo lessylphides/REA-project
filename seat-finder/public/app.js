@@ -1240,7 +1240,12 @@ function decorateGlassFacade(e, g, top, brickMat) {
       for (const s of [-1, 1]) { const pnl = mk(box(0.48, 0.7, 0.03), "#f4f1ea", [0, 0.36, s * 0.1], ab, { outline: 0.008 }); pnl.rotation.x = s * -0.15; }
       mk(box(0.34, 0.2, 0.005), "#d9d3c6", [0, 0.45, 0.13], ab, no);
     }
-    for (const x of [-L / 2 - 0.6, L / 2 + 0.6]) {
+    { // 정면 쪽 모서리 원뿔 자리 → 주차금지 표지를 여기로 (buildStorefront 에서 세움)
+      g.updateMatrixWorld(true);
+      const v = new THREE.Vector3(L / 2 + 0.6, 0, zo + 0.7).applyMatrix4(g.matrixWorld);
+      noParkSpot = [v.x, v.z];
+    }
+    for (const x of [-L / 2 - 0.6]) {
       const cone = new THREE.Group(); cone.position.set(x, 0, zo + 0.7); g.add(cone);
       mk(new THREE.CylinderGeometry(0.06, 0.18, 0.75, 16), "#1f1f22", [0, 0.375, 0], cone, { outline: 0.01 });
       mk(cyl(0.2, 0.22, 0.05, 16), "#1f1f22", [0, 0.025, 0], cone, { outline: 0.008 });
@@ -1490,7 +1495,7 @@ function buildStorefront(T, door, dh) {
   addObstacle(lx, lz, 0.2, 0.2);
   addObstacle(opL + 0.35, R.d + T + 0.95, 0.2, 0.2);
   for (const [dx, dz] of [[0.95, 0.95], [1.55, 0.95], [2.15, 0.95], [pcx - opL, 0.3]]) addObstacle(opL + dx, R.d + T + dz, 0.2, 0.2);
-  addObstacle(opL - 0.2, R.d + T + 1.9, 0.2, 0.2);
+  addObstacle(...(noParkSpot || [opL - 0.2, R.d + T + 1.9]), 0.2, 0.2); // 주차금지 표지
   const lantern = new THREE.Group();
   lantern.position.set(lx, 0, lz);
   fpGroup.add(lantern);
@@ -1536,7 +1541,8 @@ function buildStorefront(T, door, dh) {
 
   // ── 주차금지 표지 (검은 받침)
   const cone = new THREE.Group();
-  cone.position.set(opL - 0.2, 0, R.d + T + 1.9);
+  const [npx, npz] = noParkSpot || [opL - 0.2, R.d + T + 1.9];
+  cone.position.set(npx, 0, npz);
   fpGroup.add(cone);
   mk(new THREE.CylinderGeometry(0.08, 0.2, 0.75, 20), "#232325", [0, 0.375, 0], cone, ol);
   mk(new THREE.CylinderGeometry(0.22, 0.24, 0.06, 20), "#232325", [0, 0.03, 0], cone, ol);
@@ -1770,6 +1776,7 @@ let doorOpen = 0;
 const interactives = []; // 손님이 누를 수 있는 것 (소품·스크린)
 const sayProps = []; // 말풍선이 있는 소품
 const labelSprites = []; // 위에서 볼 때만 보이는 이름표
+let noParkSpot = null; // 주차금지 표지 자리 (대각선 면 정면 쪽 모서리)
 const dollhouseOnly = []; // 위에서 볼 때만 쓰는 낮은 벽
 const steamSources = []; // 커피 김 나오는 곳 (월드 좌표)
 const SAY_HEIGHT = { counter: 1.9, shelf: 2.25, plant: 1.55, lamp: 1.25, rug: 0.6 };
