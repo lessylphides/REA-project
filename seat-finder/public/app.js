@@ -1070,7 +1070,7 @@ function buildInsideShell(T) {
     front(ox1, door.x - door.w / 2, 0, H);
     front(door.x + door.w / 2, FRONT_X1 + T / 2, 0, H);
     { // 문 위: 작은 창 자리는 뚫어 둠(안팎이 보임), 환풍기 자리는 벽 + 안쪽 환풍구
-      const hx0 = door.x - door.w / 2 + 0.03, hx1 = door.x - 0.02, hy0 = dh + 0.05, hy1 = Math.min(2.82, H - 0.04);
+      const hx0 = door.x - door.w / 2 + 0.03, hx1 = door.x - 0.02, hy0 = dh + 0.05, hy1 = 2.75; // 위끝을 옆 통창(2.75)과 맞춤
       front(door.x - door.w / 2, hx0, dh, H);
       front(hx1, door.x + door.w / 2, dh, H);
       front(hx0, hx1, dh, hy0);
