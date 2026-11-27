@@ -5087,7 +5087,7 @@ function initWalk() {
   // 가상 조이스틱 (휴대폰)
   const joy = $("joy"), knob = joy.querySelector("i");
   let jid = null, jc = null;
-  const R0 = 36; // 조이스틱 손잡이가 움직이는 거리 (원 지름 100px 기준)
+  const R0 = 30; // 조이스틱 손잡이가 움직이는 거리 (원 지름 64px — 앉기 버튼과 같은 크기)
   const move = (e) => {
     let dx = e.clientX - jc.x, dy = e.clientY - jc.y;
     const m = Math.hypot(dx, dy);

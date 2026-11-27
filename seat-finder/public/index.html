@@ -219,17 +219,16 @@
   .mapbtn { display: none !important; } /* 전체 지도 숨김 */
   .mapbtn span { display: block; font-size: 11px; font-weight: 800; color: var(--ink); padding: 2px 0 3px; }
   .joy {
-    position: fixed; z-index: 6; left: 22px; bottom: calc(env(safe-area-inset-bottom) + 22px); width: 100px; height: 100px;
+    position: fixed; z-index: 6; left: 22px; bottom: calc(env(safe-area-inset-bottom) + 30px); width: 64px; height: 64px;
     border-radius: 50%; background: rgba(255,255,255,.35); border: 2px solid rgba(255,255,255,.8);
     box-shadow: 0 4px 16px rgba(0,0,0,.12); touch-action: none; backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);
   }
   .joy i {
-    position: absolute; left: 50%; top: 50%; width: 44px; height: 44px; margin: -22px 0 0 -22px; border-radius: 50%;
+    position: absolute; left: 50%; top: 50%; width: 30px; height: 30px; margin: -15px 0 0 -15px; border-radius: 50%;
     background: rgba(255,255,255,.95); box-shadow: 0 3px 10px rgba(0,0,0,.2); pointer-events: none;
   }
   @media (pointer: fine) { .joy { display: none !important; } }
-  .joy::before { content: ""; position: absolute; inset: -18px; border-radius: 50%; } /* 보이는 원보다 넓게 눌림 */
-  @media (max-height: 700px) { .joy { width: 92px; height: 92px; } }
+  .joy::before { content: ""; position: absolute; inset: -28px; border-radius: 50%; } /* 앉기 버튼과 같은 크기, 누르는 곳은 넉넉하게 */
   .actbtns { position: fixed; z-index: 6; right: 18px; bottom: calc(env(safe-area-inset-bottom) + 30px); display: flex; gap: 12px; }
   .actbtns button {
     width: 64px; height: 64px; border-radius: 50%; border: 2px solid rgba(255,255,255,.8); background: rgba(255,255,255,.35);
@@ -240,7 +239,7 @@
   .actbtns button.seatable { background: rgba(47,168,119,.85); border-color: #bff0d8; }
   body.intro .actbtns, body.entering .actbtns { display: none !important; }
   body.walking.admin .actbtns { bottom: calc(env(safe-area-inset-bottom) + 84px); }
-  body.walking.admin .mapbtn, body.walking.admin .joy { bottom: calc(env(safe-area-inset-bottom) + 76px); }
+  body.walking.admin .mapbtn, body.walking.admin .joy { bottom: calc(env(safe-area-inset-bottom) + 84px); }
   body.walking .adminbar > span { display: none; }
   body.walking .adminbar #bossLookBtn, body.walking .adminbar #adminChatBtn { display: none; } /* 매장 안: 관리자 바는 한 줄 (채팅은 💬 버튼) */
   body.walking.admin .livebtns { bottom: calc(env(safe-area-inset-bottom) + 162px); }
@@ -273,9 +272,9 @@
   .emopop button { width: 44px; height: 44px; border: 0; border-radius: 12px; background: transparent; font-size: 26px; cursor: pointer; padding: 0; }
   .emopop button:active { background: #f1e9e2; }
   /* 채팅: 평소엔 조이스틱 위 작은 3줄(거의 투명), 누르면 그 자리에서 위로 커짐 */
-  .chat { display: none; position: fixed; z-index: 9; left: 12px; right: 96px; max-width: 320px; bottom: calc(env(safe-area-inset-bottom) + 134px);
+  .chat { display: none; position: fixed; z-index: 9; left: 12px; right: 96px; max-width: 320px; bottom: calc(env(safe-area-inset-bottom) + 108px);
     color: #fff; border-radius: 16px; flex-direction: column; overflow: hidden; transition: background .2s; }
-  body.walking.admin .chat { bottom: calc(env(safe-area-inset-bottom) + 186px); }
+  body.walking.admin .chat { bottom: calc(env(safe-area-inset-bottom) + 162px); }
   body:not(.walking) .chat { bottom: calc(env(safe-area-inset-bottom) + 130px); right: 12px; margin: 0 auto; max-width: 420px; } /* 관리자 화면 */
   .chat.show { display: flex; }
   body.intro .chat, body.entering .chat { display: none !important; }
