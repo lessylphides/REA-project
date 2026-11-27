@@ -149,7 +149,7 @@ export class SeatStore extends DurableObject<Env> {
       const user = typeof m.session === "string" ? await this.userBySession(m.session) : null;
       if (user) { a.member = user.email; a.name = user.name; a.look = user.look; }
       else { a.name = cleanName(m.name) ?? `손님${Math.floor(100 + Math.random() * 900)}`; }
-      if (a.admin && !a.walk) a.name = "사장님";
+      if (a.admin) { a.name = "사장님"; a.look = (await this.ctx.storage.get<Look>("bossLook")) ?? BOSS_LOOK; }
       save();
       const peers = this.ctx.getWebSockets().filter((w) => w !== ws).map((w) => this.att(w)).filter((p) => p.id && p.walk).map((p) => this.peerOf(p));
       this.send(ws, { t: "welcome", id: a.id, name: a.name, look: a.look, member: !!a.member, admin: a.admin, peers, emojis: EMOJIS });
@@ -165,6 +165,24 @@ export class SeatStore extends DurableObject<Env> {
         a.x = num(m.x, -30, 40); a.z = num(m.z, -30, 40); a.y = num(m.y, -10, 10); a.s = num(m.s, 0, 1.5); a.c = m.c === 1 ? 1 : 0; a.pt = now;
         save();
         this.cast({ t: "p", id: a.id, x: a.x, z: a.z, y: a.y, s: a.s, c: a.c }, ws);
+        return;
+      }
+      case "walk": { // 관리자: 3D 매장 안으로 들어감 / 나옴 → 사장님 캐릭터로 보임
+        if (!a.admin) return;
+        const on = m.on === true;
+        if (on === a.walk) return;
+        a.walk = on; a.left = false; save();
+        if (on) this.cast({ t: "join", p: this.peerOf(a), n: this.online() }, ws);
+        else this.cast({ t: "leave", id: a.id, n: this.online() }, ws);
+        return;
+      }
+      case "bosslook": { // 관리자: 사장님 캐릭터 꾸미기
+        const look = cleanLook(m.look);
+        if (!a.admin || !look) return;
+        await this.ctx.storage.put("bossLook", look);
+        a.look = look; save();
+        this.send(ws, { t: "bosslook", look });
+        if (a.walk) this.cast({ t: "look", id: a.id, look }, ws);
         return;
       }
       case "act": { // 점프 등 순간 동작
@@ -303,6 +321,7 @@ export class SeatStore extends DurableObject<Env> {
 
 type LiveAtt = { id: string; ip: string; dev?: string; c?: number; jt?: number; name: string; look: Look | null; member: string | null; admin: boolean; walk: boolean; x: number; z: number; y: number; s: number; pt: number; ct: number[]; et: number; mute: number; left?: boolean };
 type User = { salt: string; hash: string; name: string; look: Look; at: number };
+const BOSS_LOOK: Look = { b: 6, h: 0, s: 0, a: 0 }; // 사장님 기본 모습
 const LIVE_MAX = 60; // 동시에 붙을 수 있는 사람 수
 const BAN_MS = 60 * 60e3; // 내보낸 손님은 1시간 동안 못 들어옴
 const SESSION_MS = 180 * 86400e3; // 로그인 유지 180일

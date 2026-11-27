@@ -4981,7 +4981,7 @@ function jump() {
   if (!walk.on || walk.tween) return;
   if (walk.sit) return; // 앉아 있을 땐 점프 안 됨
   if (walk.crouch) { standUp(); return; }
-  if (walk.jumpY === 0) { walk.vy = 3.1; if (live?.want === "walk") liveSend({ t: "act", a: "jump" }); }
+  if (walk.jumpY === 0) { walk.vy = 3.1; if (live?.want === "walk" || live?.bossWalk) liveSend({ t: "act", a: "jump" }); }
 }
 function updateActBtns() {
   const b = $("sitBtn");
@@ -5668,7 +5668,7 @@ var NAME_B = ["고양이", "강아지", "수달", "판다", "여우", "토끼", 
 var autoName = () => `${NAME_A[Math.floor(Math.random() * NAME_A.length)]} ${NAME_B[Math.floor(Math.random() * NAME_B.length)]}`;
 
 /** 동글동글 캐릭터 한 명 (정면 = 로컬 +z) */
-function makeAvatar(look, name) {
+function makeAvatar(look, name, boss) {
   const g = new THREE.Group(), L = look || guestLook(name);
   const body = new THREE.Group(); g.add(body);
   const legs = new THREE.Group(); legs.position.y = 0.7; body.add(legs); // 엉덩이 높이에서 다리가 매달림
@@ -5699,7 +5699,13 @@ function makeAvatar(look, name) {
   else if (L.a === 2) { for (const sx of [-1, 1]) { const r = mk(new THREE.SphereGeometry(0.06, 10, 8), hatCol, [sx * 0.07, 0.17, -0.02], head, { outline: 0.006 }); r.scale.set(1.2, 0.7, 0.5); } mk(new THREE.SphereGeometry(0.03, 8, 6), hatCol, [0, 0.17, -0.02], head, { outline: 0.004 }); }
   else if (L.a === 3) { mk(new THREE.SphereGeometry(0.19, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2), hatCol, [0, 0.02, 0], head, { outline: 0.008 }); mk(new THREE.SphereGeometry(0.05, 10, 8), "#f4efe6", [0, 0.21, 0], head, { outline: 0.005 }); }
   else if (L.a === 4) { mk(cyl(0.14, 0.19, 0.11, 16), hatCol, [0, 0.12, 0], head, { outline: 0.008 }); mk(cyl(0.27, 0.27, 0.015, 20), hatCol, [0, 0.07, 0], head, { outline: 0.006 }); }
-  const tag = textSprite(name, { size: 0.15 });
+  if (boss) { // 사장님: 앞치마 + 주황 이름표
+    mk(box(0.3, 0.5, 0.02), "#4a3328", [0, 0.86, 0.215], body, { outline: 0.006 });
+    mk(box(0.04, 0.2, 0.012), "#4a3328", [-0.1, 1.19, 0.19], body, { outline: 0, shadow: false });
+    mk(box(0.04, 0.2, 0.012), "#4a3328", [0.1, 1.19, 0.19], body, { outline: 0, shadow: false });
+    mk(box(0.1, 0.07, 0.008), "#c9a46e", [0, 0.88, 0.228], body, { outline: 0, shadow: false }); // 앞주머니
+  }
+  const tag = textSprite(name, boss ? { size: 0.16, bg: "rgba(238,122,98,.95)", fg: "#ffffff" } : { size: 0.15 });
   tag.position.y = 1.86; g.add(tag);
   g.userData = { body, legs, legL, legR, head, tag, walkT: 0 };
   return g;
@@ -5744,7 +5750,7 @@ var liveSend = (m) => { if (live.ws?.readyState === 1 && live.id) live.ws.send(J
 
 function addPeer(p) {
   removePeer(p.id);
-  const g = makeAvatar(p.look || guestLook(p.id), p.name);
+  const g = makeAvatar(p.look || guestLook(p.id), p.name, p.boss);
   g.position.set(p.x, 0, p.z); g.rotation.y = (p.y || 0) + Math.PI;
   scene.add(g);
   live.peers.set(p.id, { ...p, g, tx: p.x, tz: p.z, ty: p.y || 0, ts: p.s || 0, tc: p.c || 0, sitK: p.s ? 1 : 0, cK: p.c ? 1 : 0, jy: 0, vy: 0 });
@@ -5757,10 +5763,10 @@ function removePeer(id) {
   live.peers.delete(id);
 }
 function liveCount(n) {
-  const c = n ?? (live.peers.size + (live.want === "walk" && live.id ? 1 : 0));
+  const c = n ?? (live.peers.size + ((live.want === "walk" || live.bossWalk) && live.id ? 1 : 0));
   $("liveN").textContent = String(Math.max(1, c));
   $("adminLiveN").textContent = String(live.peers.size);
-  $("chatWho").textContent = live.admin && live.want === "obs" ? `지금 매장 안 ${live.peers.size}명` : `지금 매장 안 ${Math.max(1, c)}명`;
+  $("chatWho").textContent = live.admin && !live.bossWalk ? `지금 매장 안 ${live.peers.size}명` : `지금 매장 안 ${Math.max(1, c)}명`;
 }
 
 function liveOn(m) {
@@ -5770,7 +5776,8 @@ function liveOn(m) {
       for (const p of m.peers) addPeer(p);
       buildEmoPop(); liveCount();
       if (live.want === "walk") store.set("live-name", m.member ? store.get("live-name") : m.name);
-      document.body.classList.toggle("live", live.want === "walk");
+      if (live.bossWalk) liveSend({ t: "walk", on: true }); // 다시 연결됐을 때 계속 매장 안
+      document.body.classList.toggle("live", live.want === "walk" || !!live.bossWalk);
       break;
     case "join": addPeer(m.p); chatSys(`${m.p.name} 님이 들어왔어요`); liveCount(); break;
     case "leave": { const p = live.peers.get(m.id); if (p) chatSys(`${p.name} 님이 나갔어요`); removePeer(m.id); liveCount(); break; }
@@ -5794,6 +5801,7 @@ function liveOn(m) {
       break;
     }
     case "chat": chatAdd(m); break;
+    case "bosslook": if (live.me) live.me.look = m.look; toast("사장님 캐릭터를 저장했어요", 1400); break;
     case "del": { live.log = live.log.filter((x) => x.mid !== m.mid); document.querySelector(`#chatLog li[data-mid="${m.mid}"]`)?.remove(); break; }
     case "sys": chatSys(m.text, true); break;
     case "kicked": live.want = null; toast(m.until ? "지금은 들어갈 수 없어요. 잠시 뒤에 다시 와 주세요" : "관리자가 내보냈어요", 2500); if (walk.on) exitWalk(); break;
@@ -5803,7 +5811,7 @@ function liveOn(m) {
 // 매 프레임: 내 위치 보내기 + 다른 손님 부드럽게 움직이기
 function liveTick(dt) {
   if (!live) return;
-  if (live.want === "walk" && walk.on && live.id) {
+  if ((live.want === "walk" || live.bossWalk) && walk.on && live.id) {
     const now = performance.now();
     const s = walk.sit ? (seats.get(walk.sit)?.seatY ?? 0.46) : 0;
     const c = walk.crouch ? 1 : 0;
@@ -5890,8 +5898,13 @@ $("chatForm").addEventListener("submit", (e) => {
 });
 for (const t of ["pointerdown", "touchstart", "wheel"]) for (const id of ["chat", "emoPop", "liveBtns"]) $(id).addEventListener(t, (e) => e.stopPropagation(), { passive: true });
 
-function liveStart() { if (!IS_ADMIN) liveConnect("walk"); }
-function liveStop() { if (live.want === "walk") { liveDisconnect(); document.body.classList.remove("live"); openChat(false); $("chatLog").textContent = ""; live.log = []; } }
+function liveStart() {
+  if (!IS_ADMIN) return liveConnect("walk");
+  if (live.want === "obs") { live.bossWalk = true; live.last = ""; liveSend({ t: "walk", on: true }); document.body.classList.add("live"); liveCount(); } // 사장님으로 입장
+}
+function liveStop() {
+  if (live.bossWalk) { live.bossWalk = false; liveSend({ t: "walk", on: false }); document.body.classList.remove("live"); $("emoPop").classList.remove("show"); liveCount(); return; }
+  if (live.want === "walk") { liveDisconnect(); document.body.classList.remove("live"); openChat(false); $("chatLog").textContent = ""; live.log = []; } }
 function liveAdminStart() { if (!live) return setTimeout(liveAdminStart, 300); if (IS_ADMIN && token) liveConnect("obs"); }
 
 // ───── 입장: 게스트 이름 / 회원 로그인 ─────
@@ -5982,6 +5995,7 @@ function drawLookPrev() {
   shape(cloth, () => g.roundRect(48, 92, 64, 58, 22));
   shape(skin, () => g.arc(80, 70, 32, 0, Math.PI * 2));
   shape(hair, () => { g.arc(80, 66, 33, Math.PI * 1.02, Math.PI * 1.98); g.closePath(); });
+  if (lookBoss) { shape("#4a3328", () => g.roundRect(62, 100, 36, 46, 6)); }
   g.fillStyle = "#1e1a18"; for (const x of [69, 91]) { g.beginPath(); g.arc(x, 74, 3.5, 0, Math.PI * 2); g.fill(); }
   const hc = ["", "#3d6fb0", "#e0607e", "#c9563c", "#d8c49a"][L.a];
   if (L.a === 1) { shape(hc, () => { g.arc(80, 58, 32, Math.PI, 0); g.closePath(); }); shape(hc, () => g.roundRect(80, 52, 40, 8, 4)); }
@@ -6004,6 +6018,7 @@ function buildSwatches() {
 }
 function openLookEd() {
   if (!member) return;
+  lookBoss = false; $("lookEd").querySelector("h2").textContent = "캐릭터 꾸미기"; $("acctDelete").hidden = false;
   lookDraft = { ...(member.look || { b: 0, h: 0, s: 0, a: 0 }) };
   $("lookErr").textContent = "";
   buildSwatches(); drawLookPrev();
@@ -6011,9 +6026,21 @@ function openLookEd() {
   $("lookEd").classList.add("show");
 }
 $("entryLook").addEventListener("click", openLookEd);
-$("lookCancel").addEventListener("click", (e) => { e.preventDefault(); $("lookEd").classList.remove("show"); $("entry").classList.add("show"); });
+$("lookCancel").addEventListener("click", (e) => { e.preventDefault(); $("lookEd").classList.remove("show"); if (lookBoss) { lookBoss = false; return; } $("entry").classList.add("show"); });
+var lookBoss = false; // 사장님 캐릭터 꾸미기 중
+function openBossLook() {
+  if (!live.admin || !live.me) { toast("연결 중이에요. 잠시 뒤에 다시 눌러 주세요", 1600); return; }
+  lookBoss = true;
+  lookDraft = { ...(live.me.look || { b: 6, h: 0, s: 0, a: 0 }) };
+  $("lookEd").querySelector("h2").textContent = "사장님 캐릭터";
+  $("acctDelete").hidden = true; $("lookErr").textContent = "";
+  buildSwatches(); drawLookPrev();
+  $("lookEd").classList.add("show");
+}
+$("bossLookBtn")?.addEventListener("click", openBossLook);
 $("lookForm").addEventListener("submit", async (e) => {
   e.preventDefault();
+  if (lookBoss) { liveSend({ t: "bosslook", look: lookDraft }); $("lookEd").classList.remove("show"); lookBoss = false; return; }
   try {
     member = await acctApi("profile", { session: liveSession(), look: lookDraft });
     liveSend({ t: "look", look: member.look });
