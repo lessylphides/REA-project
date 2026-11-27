@@ -122,7 +122,8 @@ export class SeatStore extends DurableObject<Env> {
     const raw = JSON.stringify(m);
     for (const w of this.ctx.getWebSockets()) {
       if (w === except) continue;
-      if (walkersOnly && !this.att(w).walk && !this.att(w).admin) continue;
+      const a = this.att(w);
+      if (!a.id || a.left || (walkersOnly && !a.walk && !a.admin)) continue;
       try { w.send(raw); } catch { /* 끊긴 연결 */ }
     }
   }
