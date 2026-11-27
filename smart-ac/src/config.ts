@@ -38,6 +38,10 @@ export interface Config {
   restAbove?: number;
   /** 비영업 난방 여유폭(℃): 최저 기준 이하가 되면 켜서 '최저 기준 + 이 값'까지 올린 뒤 끔 (껐다 켰다 줄이기). 여름 상한도 같은 방식 */
   setbackBand?: number;
+  /** 날씨 흐름·매장 열에 맞춰 영업 목표 온도를 자동으로 천천히 조정 */
+  adaptAuto?: boolean;
+  /** 자동 조정으로 겨울 목표를 최대 몇 ℃까지 낮출지 */
+  adaptMaxDown?: number;
   /** 자동 가습 on/off (가습기 = 헤이홈 레시피 토글) */
   humAuto?: boolean;
   /** 이 습도(%) 아래면 가습기 켜기 */
@@ -90,6 +94,8 @@ export const DEFAULT_CONFIG: Config = {
   observeMinutes: 30,
   restAbove: 1,
   setbackBand: 3,
+  adaptAuto: true,
+  adaptMaxDown: 3,
   humAuto: false,
   humLow: 40,
   humHigh: 55,

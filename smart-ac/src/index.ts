@@ -1,6 +1,7 @@
 // Cloudflare Worker 엔트리
 //  - scheduled(cron): 주기적으로 센서 읽고 에어컨 자동 제어
 //  - fetch(http):     상태 확인 + on/off + 설정 UI/API
+import { AdaptState, AdaptInfo, computeAdapt } from './adapt';
 import { CircState, CIRC_DEFAULT, findCircScene, circExtraScenes, circDecide } from './circ';
 import { VaneState, findUpDownScene, fixVane, vaneReady } from './vane';
 import { HumState, HUM_DEFAULT, humDecide, findHumPowerScene } from './hum';
@@ -104,6 +105,7 @@ interface RunStatus {
   vaneNote?: string;
   override?: BizOverride | null;
   circ?: { on: boolean; auto: boolean; reason: string } | null;
+  adapt?: AdaptInfo | null;
   hum?: { on: boolean; warn: boolean; auto: boolean; reason: string; low: number; high: number } | null;
   acLast?: { power: boolean; mode?: string; temperature?: number; fanSpeed?: string } | null;
   acWarn?: { type: 'noheat' | 'nocool'; dT: number } | null;
@@ -115,18 +117,18 @@ interface RunStatus {
 // KV 무료 한도(쓰기 하루 1,000회)를 아끼려고 마지막 상태(status)와 온도 기록(history)을
 // 한 키('state')에 함께 저장한다 → 10분마다 실행해도 쓰기는 1회.
 interface HistoryPoint { t: number; temp: number; hum: number | null; out: number | null; cmd?: string }
-interface RunState { status: RunStatus | null; history: HistoryPoint[] }
+interface RunState { status: RunStatus | null; history: HistoryPoint[]; adapt?: AdaptState | null }
 const HISTORY_MAX = 1008; // 최근 ~7일(10분 간격)
 
 async function loadState(env: Env): Promise<RunState> {
   const s = await env.KV.get('state', 'json') as RunState | null;
-  if (s) return { status: s.status ?? null, history: Array.isArray(s.history) ? s.history : [] };
+  if (s) return { status: s.status ?? null, history: Array.isArray(s.history) ? s.history : [], adapt: s.adapt ?? null };
   // 이전 버전은 status/history 를 따로 저장했음 → 처음 한 번 읽어서 이어받음
   const [status, history] = await Promise.all([env.KV.get('status', 'json'), env.KV.get('history', 'json')]);
   return { status: status as RunStatus | null, history: Array.isArray(history) ? history as HistoryPoint[] : [] };
 }
 async function saveState(env: Env, st: RunState): Promise<void> {
-  await env.KV.put('state', JSON.stringify({ status: st.status, history: st.history.slice(-HISTORY_MAX) }));
+  await env.KV.put('state', JSON.stringify({ status: st.status, history: st.history.slice(-HISTORY_MAX), adapt: st.adapt ?? null }));
 }
 /** 값이 바뀌었을 때만 KV 에 쓴다 */
 async function putIfChanged(env: Env, key: string, prev: unknown, next: unknown): Promise<void> {
@@ -267,7 +269,14 @@ async function runOnce(env: Env, opts: { force?: boolean; preview?: boolean; log
     status.scheduleState = sched.state;
     status.nextTransition = nextTransitionWithOverride(new Date(), cfg, ov);
     status.override = activeOverride(ov, new Date());
-    const effCfg = sched.comfort ? cfg : { ...cfg, winterTarget: cfg.alertCold, summerTarget: cfg.alertHot };
+    // 영업 목표: 날씨 흐름·매장 열에 맞춰 천천히 조정 (상태는 state 에 함께 저장 → 추가 KV 쓰기 없음)
+    let cfgA = cfg;
+    if (cfg.adaptAuto !== false) {
+      const ad = computeAdapt(cfg, state.history, weather?.outdoorTemp ?? null, temp, state.adapt, Date.now());
+      state.adapt = ad.state; status.adapt = ad.info;
+      cfgA = { ...cfg, winterTarget: ad.state.w, summerTarget: ad.state.s };
+    }
+    const effCfg = sched.comfort ? cfgA : { ...cfg, winterTarget: cfg.alertCold, summerTarget: cfg.alertHot };
     const prevCtl = await env.KV.get('ctl', 'json') as Ctl | null;
     const decision = decide(reading, effCfg, sched.comfort, prevCtl);
     status.stage = decision.stage;
@@ -820,7 +829,7 @@ function renderUI(token: string): string {
 
 <div class="tiles">
   <div class="tile"><div class="v" id="t_season">–</div><div class="k">계절</div></div>
-  <div class="tile"><div class="v" id="t_target">–</div><div class="k">목표</div></div>
+  <div class="tile" id="tgtTile" style="cursor:pointer"><div class="v" id="t_target">–</div><div class="k" id="t_target_k">목표</div></div>
   <div class="tile" id="outTile" style="cursor:pointer"><div class="v" id="t_out">–</div><div class="k">바깥 ›</div></div>
   <div class="tile" id="acTile" style="cursor:pointer"><div class="v" id="t_ac">–</div><div class="k">에어컨 ›</div></div>
 </div>
@@ -868,6 +877,11 @@ function renderUI(token: string): string {
       <div><label>추이 관찰(분)</label><input id="observeMinutes" type="number" inputmode="numeric"></div>
       <div><label>쉬기 기준(목표+℃)</label><input id="restAbove" type="number" inputmode="decimal"></div></div>
       <div class="mini">목표에 닿으면 바람을 약하게 바꾸고 이 시간 동안 지켜봐요. 그래도 목표+기준℃ 넘게 계속 오르면(냉방은 내려가면) 잠시 쉬어요.</div></div>
+    <div class="fld" style="display:flex;align-items:center;justify-content:space-between">
+      <div><div style="font-size:16px">🌡️ 목표 온도 자동 조정</div><div class="mini">포근한 날이 이어지거나 손님 열로 매장이 데워지면 목표를 천천히 낮춰요 (30분에 0.5℃씩)</div></div>
+      <label class="tg"><input type="checkbox" id="adaptAuto"><span class="sl"></span></label>
+    </div>
+    <div class="fld"><label>자동 조정 최대 낮춤 ℃</label><input id="adaptMaxDown" type="number" inputmode="decimal"></div>
     <div class="fld" style="display:flex;align-items:center;justify-content:space-between">
       <div><div style="font-size:16px">💧 자동 가습</div><div class="mini">습도가 낮으면 가습기를 켜고, 충분하면 꺼요</div></div>
       <label class="tg"><input type="checkbox" id="humAuto"><span class="sl"></span></label>
@@ -1132,6 +1146,9 @@ document.getElementById('tUp').onclick=()=>{if(acTemp<30){acTemp++;showAcTemp();
 document.getElementById('tDown').onclick=()=>{if(acTemp>16){acTemp--;showAcTemp();acSend({temperature:acTemp},acTemp+'℃')}};
 document.getElementById('wxClose').onclick=()=>document.getElementById('wxModal').style.display='none';
 document.getElementById('devline').onclick=function(e){e.stopPropagation();document.getElementById('acTile').click();setTimeout(function(){var x=document.getElementById('circState');if(x)x.scrollIntoView({block:'center'})},250);};
+document.getElementById('tgtTile').onclick=function(){var ad=lastPv&&lastPv.adapt;if(!ad){alert('목표 온도 자동 조정이 꺼져 있어요');return}
+  if(lastPv.scheduleState==='closed'){alert('비영업 시간이라 최저 기준만 지켜요.\\n\\n영업 시간 목표: '+ad.note);return}
+  alert((lastPv.seasonMode==='cooling'?('여름 목표 설정 '+ad.baseS+'℃ → 지금 '+ad.s+'℃'+(ad.climateS?'\\n· 선선한 날씨가 이어져 +'+ad.climateS+'℃':'')):ad.note)+'\\n\\n목표는 30분에 0.5℃씩 천천히 움직여요.');};
 document.getElementById('humid').onclick=function(e){e.stopPropagation();document.getElementById('humModal').style.display='flex';document.getElementById('humMsg').textContent='';var h=lastPv&&lastPv.indoorHumidity;document.getElementById('humNow').textContent='지금 실내 습도 '+(h!=null?h+'%':'–');showHum(null);refreshHum();loadHum();};
 document.getElementById('humClose').onclick=()=>document.getElementById('humModal').style.display='none';
 function bizRender(){var pv=lastPv||{},o=pv.override,i=document.getElementById('bizInfo');
@@ -1208,7 +1225,7 @@ async function load(){
   // 설정값 채우기
   document.getElementById('title').textContent=c.storeName||'우리 매장';
   document.getElementById('storeName').value=c.storeName||'';
-  for(const k of ['summerTarget','winterTarget','deadband','acBias','observeMinutes','restAbove','humLow','humHigh','vaneStopSec','setbackBand','alertHot','alertCold'])document.getElementById(k).value=c[k];
+  for(const k of ['summerTarget','winterTarget','deadband','acBias','observeMinutes','restAbove','humLow','humHigh','vaneStopSec','setbackBand','adaptMaxDown','alertHot','alertCold'])document.getElementById(k).value=c[k];
   curSensor=c.sensorDeviceId||'';curAc=c.acDeviceId||'';curSensor2=c.sensor2DeviceId||'';document.getElementById('sensorMode').value=c.sensorMode||'avg';
   document.getElementById('address').value=c.address||'';
   document.getElementById('loc').textContent=c.address?('현재 위치: '+c.address):('좌표 '+(c.lat||'-')+', '+(c.lon||'-'));
@@ -1232,7 +1249,10 @@ async function load(){
     document.getElementById('humid').textContent='습도 '+(pv.indoorHumidity!=null?pv.indoorHumidity+'%':'–')+' · '+(pv.hum&&pv.hum.warn?'⚠️ 가습기 확인':(pv.hum&&pv.hum.on?'💧 가습 중':'가습기'))+' ›';
     document.getElementById('t_season').textContent=pv.seasonMode==='cooling'?'냉방철':pv.seasonMode==='heating'?'난방철':'간절기';
     document.getElementById('t_out').textContent=pv.outdoorTemp!=null?((pv.weather&&pv.weather.emoji?pv.weather.emoji+' ':'')+Math.round(pv.outdoorTemp)+'℃'):'–';
-    document.getElementById('t_target').textContent=pv.targetTemp!=null?pv.targetTemp+'℃':'–';
+    document.getElementById('t_target').textContent=pv.targetTemp!=null?(Math.round(pv.targetTemp*10)/10)+'℃':'–';
+    var ad=pv.adapt,tk=document.getElementById('t_target_k'),dlt=0;
+    if(ad&&pv.scheduleState!=='closed'){dlt=Math.round(((pv.seasonMode==='cooling'?ad.s-ad.baseS:ad.w-ad.baseW))*10)/10;}
+    tk.textContent=dlt?('자동 '+(dlt>0?'+':'')+dlt+' ›'):'목표';
   }
   const chip=document.getElementById('chip');chip.className='chip '+f.c;
   chip.querySelector('.em').textContent=f.em;document.getElementById('chipt').textContent=f.t;
@@ -1240,7 +1260,7 @@ async function load(){
   const ovr=pv&&pv.override;
   document.getElementById('sched').textContent=!pv||!pv.scheduleState?'':(ovr&&ovr.type==='extend'?'🟢 영업중 · '+kstHM(ovr.until)+'까지 연장 ›':ovr&&ovr.type==='close'?'⚪ 일찍 마감 ›':(SM[pv.scheduleState]||'')+' ›');
   document.getElementById('useSchedule').checked=c.useSchedule!==false;
-  document.getElementById('humAuto').checked=!!c.humAuto;document.getElementById('vaneFix').checked=!!c.vaneFix;document.getElementById('circAuto').checked=c.circAuto!==false;document.getElementById('humBizOnly').checked=c.humBizOnly!==false;
+  document.getElementById('humAuto').checked=!!c.humAuto;document.getElementById('vaneFix').checked=!!c.vaneFix;document.getElementById('circAuto').checked=c.circAuto!==false;document.getElementById('adaptAuto').checked=c.adaptAuto!==false;document.getElementById('humBizOnly').checked=c.humBizOnly!==false;
   document.getElementById('preheatMinutes').value=c.preheatMinutes!=null?c.preheatMinutes:60;
   const DAYS=[['월',1],['화',2],['수',3],['목',4],['금',5],['토',6],['일',0]];
   document.getElementById('daysBox').innerHTML=DAYS.map(function(e){var nm=e[0],ix=e[1];var h=(c.hours&&c.hours[ix])||{closed:false,open:'09:00',close:'00:00'};return '<div class="dayrow'+(h.closed?' off':'')+'" data-d="'+ix+'"><span class="dname">'+nm+'</span><label class="offbox"><input type="checkbox" class="dClosed"'+(h.closed?' checked':'')+'>휴무</label><input type="time" class="dOpen" value="'+(h.open||'09:00')+'"><span class="tilde">~</span><input type="time" class="dClose" value="'+(h.close||'00:00')+'"></div>';}).join('');
@@ -1265,7 +1285,7 @@ document.getElementById('run').onclick=async(e)=>{const b=e.currentTarget,L='↻
   b.textContent=!j?'✗ 점검 실패':(j.enabled===false?'자동 꺼짐 · 신호 없이 확인만 했어요':((j.sent&&j.sent.length)?('✓ 보냄: '+j.sent.map(sentKo).join(', ')):'✓ 바꿀 것 없음'));
   load();setTimeout(function(){b.textContent=L;b.disabled=false;},2500);};
 document.getElementById('login').onclick=async()=>{const email=document.getElementById('email').value,password=document.getElementById('password').value;if(!email||!password){alert('이메일/비번을 입력하세요');return}const r=await fetch(q('/api/login'),{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({email,password})});const j=await r.json();if(j.ok){document.getElementById('password').value='';document.getElementById('dLogin').open=false;alert('로그인 성공!')}else alert('로그인 실패: '+(j.error||''));load()};
-document.getElementById('save').onclick=async()=>{const b={};for(const k of ['summerTarget','winterTarget','deadband','acBias','observeMinutes','restAbove','humLow','humHigh','vaneStopSec','setbackBand','alertHot','alertCold']){const v=document.getElementById(k).value;if(v!==''&&!isNaN(Number(v)))b[k]=Number(v)}b.humAuto=document.getElementById('humAuto').checked;b.vaneFix=document.getElementById('vaneFix').checked;b.circAuto=document.getElementById('circAuto').checked;b.humBizOnly=document.getElementById('humBizOnly').checked;b.storeName=document.getElementById('storeName').value||'우리 매장';const ow=document.getElementById('owmKey').value;if(ow)b.owmKey=ow;await fetch(q('/api/config'),{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(b)});document.getElementById('owmKey').value='';alert('저장됨');load()};
+document.getElementById('save').onclick=async()=>{const b={};for(const k of ['summerTarget','winterTarget','deadband','acBias','observeMinutes','restAbove','humLow','humHigh','vaneStopSec','setbackBand','adaptMaxDown','alertHot','alertCold']){const v=document.getElementById(k).value;if(v!==''&&!isNaN(Number(v)))b[k]=Number(v)}b.humAuto=document.getElementById('humAuto').checked;b.vaneFix=document.getElementById('vaneFix').checked;b.circAuto=document.getElementById('circAuto').checked;b.adaptAuto=document.getElementById('adaptAuto').checked;b.humBizOnly=document.getElementById('humBizOnly').checked;b.storeName=document.getElementById('storeName').value||'우리 매장';const ow=document.getElementById('owmKey').value;if(ow)b.owmKey=ow;await fetch(q('/api/config'),{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(b)});document.getElementById('owmKey').value='';alert('저장됨');load()};
 document.getElementById('geocode').onclick=async()=>{const a=document.getElementById('address').value.trim();if(!a){alert('주소를 입력하세요');return}const loc=document.getElementById('loc');loc.textContent='위치 찾는 중…';const url='/api/geocode?q='+encodeURIComponent(a)+(T?'&t='+T:'');const j=await(await fetch(url)).json();if(j.ok){await fetch(q('/api/config'),{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({address:a,lat:j.lat,lon:j.lon})});loc.textContent='✓ 설정됨: '+j.name;load()}else{loc.textContent='✗ '+(j.error||'주소를 못 찾음')}};
 document.getElementById('saveSched').onclick=async()=>{const hours=[];document.querySelectorAll('#daysBox .dayrow').forEach(function(row){var d=+row.dataset.d;hours[d]={closed:row.querySelector('.dClosed').checked,open:row.querySelector('.dOpen').value||'09:00',close:row.querySelector('.dClose').value||'00:00'};});const b={useSchedule:document.getElementById('useSchedule').checked,preheatMinutes:Number(document.getElementById('preheatMinutes').value)||60,hours:hours};await fetch(q('/api/config'),{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(b)});alert('영업시간 저장됨');load()};
 function typeLabel(t){const m={SensorTh:'온습도계',SensorTh2:'온습도계',IrAirconditioner:'에어컨(IR)',IrFan:'선풍기(IR)',IrTv:'TV(IR)',Plug:'플러그',SmartPlug:'플러그',Curtain:'커튼',Lightbulb:'전구',IrDIY:'IR리모컨'};return t?(' · '+(m[t]||t)):'';}
