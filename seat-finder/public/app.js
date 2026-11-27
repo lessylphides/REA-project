@@ -4894,6 +4894,8 @@ function updateWalk(dt, time) {
 }
 
 /** 의자 바로 앞(약 70cm 안)에서 그 의자를 바라보고 있을 때 그 의자 */
+/** 접속한 다른 손님이 앉아 있는 의자인지 (실제 손님 자리와 별개) */
+function peerOnSeat(id) { if (!live) return false; for (const p of live.peers.values()) if (p.sd === id) return true; return false; }
 function seatCandidate() {
   let best = null, bd = 0.75;
   const fx = -Math.sin(walk.yaw), fz = -Math.cos(walk.yaw);
@@ -4911,7 +4913,7 @@ function toggleSit() {
   if (!walk.on || walk.tween) return;
   if (walk.sit || walk.crouch) return standUp();
   const best = seatCandidate();
-  if (best && !best.occupied) {
+  if (best && !best.occupied && !peerOnSeat(best.id)) {
     walk.back = walk.pos.clone();
     walk.sit = best.id;
     walk.pos.set(best.group.position.x, 0, best.group.position.z);
@@ -4987,7 +4989,7 @@ function updateActBtns() {
   const b = $("sitBtn");
   if (!b) return;
   const c = !walk.sit && !walk.crouch ? seatCandidate() : null;
-  const label = walk.sit ? "의자에서<br>일어나기" : walk.crouch ? "일어서기" : c && !c.occupied ? "의자에<br>앉기" : "앉기";
+  const label = walk.sit ? "의자에서<br>일어나기" : walk.crouch ? "일어서기" : c && !c.occupied && !peerOnSeat(c.id) ? "의자에<br>앉기" : "앉기";
   if (b.dataset.l !== label) { b.dataset.l = label; b.innerHTML = label; }
   b.classList.toggle("seatable", label.startsWith("의자에")); // 앉을 수 있을 때·앉아 있을 때 초록
 }
@@ -5723,12 +5725,16 @@ function makeAvatar(look, name, boss) {
   const torso = mk(new THREE.CapsuleGeometry(0.17, 0.34, 6, 14), top, [0, 1.07, 0], body, { outline: 0.012 });
   torso.scale.set(1.1, 1, 0.8);
   const sleeveLong = L.t !== 0;
-  for (const sx of [-1, 1]) { // 팔: 위팔 + 아래팔 + 손
-    mk(new THREE.CapsuleGeometry(0.058, 0.2, 4, 10), top, [sx * 0.235, 1.15, 0], body, { outline: 0.01 }).rotation.z = sx * 0.1;
-    const fa = mk(new THREE.CapsuleGeometry(0.052, 0.19, 4, 10), sleeveLong ? top : skin, [sx * 0.26, 0.93, 0.01], body, { outline: 0.01 }); fa.rotation.z = sx * 0.06;
-    if (L.t === 0) mk(cyl(0.066, 0.064, 0.05, 10), top, [sx * 0.243, 1.04, 0], body, { outline: 0.006 }); // 반팔 소매 끝
-    if (L.t === 2) mk(cyl(0.058, 0.058, 0.04, 10), darker(top, 0.85), [sx * 0.265, 0.84, 0.01], body, no); // 니트 소매 고무단
-    mk(new THREE.SphereGeometry(0.048, 10, 8), skin, [sx * 0.27, 0.79, 0.015], body, { outline: 0.006 }); // 손
+  const arms = [];
+  for (const sx of [-1, 1]) { // 팔: 어깨(위팔) → 팔꿈치(아래팔 + 손). 걷거나 앉으면 꺾임
+    const sh = new THREE.Group(); sh.position.set(sx * 0.235, 1.26, 0); sh.rotation.z = sx * 0.1; body.add(sh);
+    mk(new THREE.CapsuleGeometry(0.058, 0.16, 4, 10), top, [0, -0.1, 0], sh, { outline: 0.01 });
+    if (L.t === 0) mk(cyl(0.066, 0.064, 0.05, 10), top, [0, -0.19, 0], sh, { outline: 0.006 }); // 반팔 소매 끝
+    const el = new THREE.Group(); el.position.y = -0.21; sh.add(el);
+    mk(new THREE.CapsuleGeometry(0.052, 0.15, 4, 10), sleeveLong ? top : skin, [0, -0.1, 0], el, { outline: 0.01 });
+    if (L.t === 2) mk(cyl(0.058, 0.058, 0.04, 10), darker(top, 0.85), [0, -0.17, 0], el, no); // 니트 소매 고무단
+    mk(new THREE.SphereGeometry(0.048, 10, 8), skin, [0, -0.21, 0.005], el, { outline: 0.006 }); // 손
+    sh.userData.el = el; arms.push(sh);
   }
   if (L.t === 0) mk(new THREE.TorusGeometry(0.075, 0.012, 6, 18), darker(top, 0.85), [0, 1.32, 0.02], body, no).rotation.x = Math.PI / 2 - 0.3; // 티셔츠 목둘레
   if (L.t === 1) { // 셔츠: 깃 + 단추
@@ -5810,7 +5816,7 @@ function makeAvatar(look, name, boss) {
   else if (L.a === 5) { mk(cyl(0.12, 0.14, 0.12, 18), hatC, [0, 0.14, 0], head, { outline: 0.008 }); mk(cyl(0.141, 0.141, 0.03, 18), "#8b2f3a", [0, 0.095, 0], head, no); const br = mk(cyl(0.24, 0.24, 0.012, 22), hatC, [0, 0.085, 0], head, { outline: 0.006 }); br.scale.z = 0.85; }
   const tag = textSprite(name, boss ? { size: 0.16, bg: "rgba(238,122,98,.95)", fg: "#ffffff" } : { size: 0.15 });
   tag.position.y = 1.92; g.add(tag);
-  g.userData = { body, legs, legL, legR, head, tag, walkT: 0 };
+  g.userData = { body, legs, legL, legR, arms, head, tag, walkT: 0 };
   return g;
 }
 
@@ -5856,7 +5862,7 @@ function addPeer(p) {
   const g = makeAvatar(p.look || guestLook(p.id), p.name, p.boss);
   g.position.set(p.x, 0, p.z); g.rotation.y = (p.y || 0) + Math.PI;
   scene.add(g);
-  live.peers.set(p.id, { ...p, g, tx: p.x, tz: p.z, ty: p.y || 0, ts: p.s || 0, tc: p.c || 0, sitK: p.s ? 1 : 0, cK: p.c ? 1 : 0, jy: 0, vy: 0 });
+  live.peers.set(p.id, { ...p, g, tx: p.x, tz: p.z, ty: p.y || 0, ts: p.s || 0, tc: p.c || 0, sd: p.sd || "", sitK: p.s ? 1 : 0, cK: p.c ? 1 : 0, jy: 0, vy: 0 });
 }
 function removePeer(id) {
   const p = live.peers.get(id);
@@ -5884,7 +5890,8 @@ function liveOn(m) {
       break;
     case "join": addPeer(m.p); chatSys(`${m.p.name} 님이 들어왔어요`); liveCount(); break;
     case "leave": { const p = live.peers.get(m.id); if (p) chatSys(`${p.name} 님이 나갔어요`); removePeer(m.id); liveCount(); break; }
-    case "p": { const p = live.peers.get(m.id); if (p) { p.tx = m.x; p.tz = m.z; p.ty = m.y; p.ts = m.s; p.tc = m.c; } break; }
+    case "p": { const p = live.peers.get(m.id); if (p) { p.tx = m.x; p.tz = m.z; p.ty = m.y; p.ts = m.s; p.tc = m.c; p.sd = m.sd || ""; } break; }
+    case "seatTaken": if (walk.sit && walk.sit === m.sd) { standUp(); toast("다른 분이 먼저 앉았어요", 1600); } break;
     case "act": { const p = live.peers.get(m.id); if (p && m.a === "jump" && !(p.jy > 0)) p.vy = 3.1; break; }
     case "name": {
       const p = live.peers.get(m.id);
@@ -5917,16 +5924,18 @@ function liveTick(dt) {
   if ((live.want === "walk" || live.bossWalk) && walk.on && live.id) {
     const now = performance.now();
     const s = walk.sit ? (seats.get(walk.sit)?.seatY ?? 0.46) : 0;
-    const c = walk.crouch ? 1 : 0;
-    const key = `${walk.pos.x.toFixed(2)},${walk.pos.z.toFixed(2)},${walk.yaw.toFixed(2)},${s},${c}`;
+    const c = walk.crouch ? 1 : 0, sd = walk.sit || "";
+    const key = `${walk.pos.x.toFixed(2)},${walk.pos.z.toFixed(2)},${walk.yaw.toFixed(2)},${s},${c},${sd}`;
     if (now - live.lastSend > 200 && (key !== live.last || now - live.lastSend > 4000)) {
       live.lastSend = now; live.last = key;
-      liveSend({ t: "pos", x: walk.pos.x, z: walk.pos.z, y: walk.yaw, s, c });
+      liveSend({ t: "pos", x: walk.pos.x, z: walk.pos.z, y: walk.yaw, s, c, sd });
     }
   }
   const k = 1 - Math.exp(-dt * 9);
   for (const p of live.peers.values()) {
     const g = p.g, u = g.userData;
+    const st = p.sd && seats.get(p.sd)?.group; // 의자에 앉았으면: 내 화면의 그 의자 위에 정확히 (앉은 사람 화면에서는 의자를 뒤로 빼서 위치가 다름)
+    if (st) { p.tx = st.position.x; p.tz = st.position.z; p.ty = st.rotation.y + Math.PI; }
     const dx = p.tx - g.position.x, dz = p.tz - g.position.z;
     g.position.x += dx * k; g.position.z += dz * k;
     let dy = (p.ty + Math.PI) - g.rotation.y; dy = Math.atan2(Math.sin(dy), Math.cos(dy));
@@ -5943,6 +5952,10 @@ function liveTick(dt) {
     const hip = -p.sitK * Math.PI / 2 - p.cK * 1.5 - air, kneeA = p.sitK * Math.PI / 2 + p.cK * 2.2 + air * 1.4;
     u.legL.rotation.x = swing + hip; u.legR.rotation.x = -swing + hip;
     u.legL.userData.knee.rotation.x = kneeA; u.legR.userData.knee.rotation.x = kneeA;
+    if (u.arms) u.arms.forEach((a, i) => { // 걸으면 다리와 반대로 흔들고, 앉으면 손을 무릎 위로
+      a.rotation.x = (i ? swing : -swing) * 0.7 - p.sitK * 0.35 - p.cK * 0.5 - air * 0.6;
+      a.userData.el.rotation.x = -p.sitK * 1.15 - p.cK * 0.9 - (moving ? 0.25 : 0);
+    });
     const sitY = (p.ts || 0.46) - 0.74; // 의자 높이에 엉덩이를 맞춤 (바 의자는 서 있을 때와 비슷)
     u.body.position.y = p.sitK * sitY - p.cK * 0.42 + (p.jy || 0) + (moving ? Math.abs(Math.sin(u.walkT)) * 0.03 : 0);
   }

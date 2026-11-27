@@ -116,7 +116,7 @@ export class SeatStore extends DurableObject<Env> {
   }
 
   private att(ws: WebSocket) { return ws.deserializeAttachment() as LiveAtt; }
-  private peerOf(a: LiveAtt) { return { id: a.id, name: a.name, look: a.look, x: a.x, z: a.z, y: a.y, s: a.s, c: a.c ?? 0, boss: a.admin }; }
+  private peerOf(a: LiveAtt) { return { id: a.id, name: a.name, look: a.look, x: a.x, z: a.z, y: a.y, s: a.s, c: a.c ?? 0, sd: a.sd ?? "", boss: a.admin }; }
   private send(ws: WebSocket, m: unknown) { try { ws.send(JSON.stringify(m)); } catch { /* 끊긴 연결 */ } }
   private cast(m: unknown, except?: WebSocket, walkersOnly = false) {
     const raw = JSON.stringify(m);
@@ -163,8 +163,12 @@ export class SeatStore extends DurableObject<Env> {
         if (!a.walk || now - a.pt < 150) return;
         const num = (v: unknown, lo: number, hi: number) => (typeof v === "number" && Number.isFinite(v) ? Math.min(hi, Math.max(lo, Math.round(v * 100) / 100)) : 0);
         a.x = num(m.x, -30, 40); a.z = num(m.z, -30, 40); a.y = num(m.y, -10, 10); a.s = num(m.s, 0, 1.5); a.c = m.c === 1 ? 1 : 0; a.pt = now;
+        const sd = typeof m.sd === "string" && SEAT_ID.test(m.sd) ? m.sd : "";
+        if (sd && sd !== a.sd && this.ctx.getWebSockets().some((w) => { if (w === ws) return false; const o = this.att(w); return o.walk && !o.left && o.sd === sd; })) {
+          this.send(ws, { t: "seatTaken", sd }); a.sd = ""; a.s = 0; // 한발 늦음: 다른 사람이 이미 앉음
+        } else a.sd = sd;
         save();
-        this.cast({ t: "p", id: a.id, x: a.x, z: a.z, y: a.y, s: a.s, c: a.c }, ws);
+        this.cast({ t: "p", id: a.id, x: a.x, z: a.z, y: a.y, s: a.s, c: a.c, sd: a.sd }, ws);
         return;
       }
       case "walk": { // 관리자: 3D 매장 안으로 들어감 / 나옴 → 사장님 캐릭터로 보임
@@ -322,7 +326,7 @@ export class SeatStore extends DurableObject<Env> {
   }
 }
 
-type LiveAtt = { id: string; ip: string; dev?: string; c?: number; jt?: number; name: string; look: Look | null; member: string | null; admin: boolean; walk: boolean; x: number; z: number; y: number; s: number; pt: number; ct: number[]; et: number; mute: number; left?: boolean };
+type LiveAtt = { id: string; ip: string; dev?: string; c?: number; jt?: number; sd?: string; name: string; look: Look | null; member: string | null; admin: boolean; walk: boolean; x: number; z: number; y: number; s: number; pt: number; ct: number[]; et: number; mute: number; left?: boolean };
 type User = { salt: string; hash: string; name: string; look: Look; at: number };
 const BOSS_LOOK = { b: 1, h: 1, s: 0, a: 0, hs: 0, e: 0, m: 0, bl: 0, g: 0, f: 0, t: 1, p: 1, pc: 1, sh: 1, sc: 1, ap: 1 } as Look; // 사장님 기본 모습
 const LIVE_MAX = 60; // 동시에 붙을 수 있는 사람 수
