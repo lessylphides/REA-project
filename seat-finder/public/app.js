@@ -3999,15 +3999,24 @@ function isOpenNow() {
 }
 /** 새벽 4시 ~ 오전 10시(한국시간): 문이 잠긴 시간 */
 const FORCE_LOCK = new URLSearchParams(location.search).has("locked"); // 확인용: ?locked
-function isLockedNow() { if (FORCE_LOCK) return true; const { min } = kstNow(); return min >= 4 * 60 && min < 10 * 60; }
+const LOCK_FROM = 4 * 60, LOCK_TO = 10 * 60; // 새벽 4시 ~ 오전 10시: 문 잠김
+function isLockedNow() { if (FORCE_LOCK) return true; const { min } = kstNow(); return min >= LOCK_FROM && min < LOCK_TO; }
+// 화면을 켜 둔 채 문 잠김 시간이 시작되거나 끝나면 새로 고침 (안에 갇히거나 불 꺼진 채 남지 않게). 관리자 화면은 그대로
+{
+  const lockedAtStart = isLockedNow();
+  const recheck = () => { if (!IS_ADMIN && !FORCE_LOCK && document.visibilityState !== "hidden" && isLockedNow() !== lockedAtStart) location.reload(); };
+  setInterval(recheck, 30000);
+  document.addEventListener("visibilitychange", recheck);
+  addEventListener("pageshow", recheck);
+}
 /** 영업시간이 아닐 때 바텐더 안내 멘트 */
 function closedMessage() {
   const H = storeInfo?.hours; if (!Array.isArray(H) || H.length !== 7) return "아직 영업시간 전입니다";
   const { day, min } = kstNow(), t = H[day], p = H[(day + 6) % 7];
+  if (min < LOCK_FROM && p && !p.closed) return "오늘 영업은 끝났습니다"; // 자정 ~ 새벽 4시: 어젯밤 영업이 끝난 뒤
   if (t?.closed) return "오늘은 휴무일이에요";
-  const prevEnded = p && !p.closed && hm(p.close) <= hm(p.open) && min >= hm(p.close) && min < hm(t.open); // 새벽에 영업이 끝난 뒤
-  const todayEnded = t && hm(t.close) > hm(t.open) && min >= hm(t.close); // 같은 날 영업이 끝난 뒤
-  return prevEnded || todayEnded ? "오늘 영업은 끝났습니다" : "아직 영업시간 전입니다";
+  const todayEnded = t && hm(t.close) > hm(t.open) && min >= hm(t.close); // 같은 날 영업이 끝난 뒤 ~ 자정
+  return todayEnded ? "오늘 영업은 끝났습니다" : "아직 영업시간 전입니다"; // 문 열리는 시간부터는 "영업 전"
 }
 /** 첫 화면 안내: "영업 중 · 02:00까지" / "오늘 18:00 오픈" / "오늘은 쉬어요" */
 function openLabel() {
