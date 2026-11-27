@@ -1,9 +1,10 @@
 const { chromium, devices } = require('playwright');
+// 시계는 늘 한국시간 저녁 7시로 맞춰 점검 (새벽 4~10시 문 잠김 시간에 돌려도 입장 점검이 되게)
 (async () => {
   const b = await chromium.launch({ args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
   const out = [];
   for (const [q, label] of [['?time=12', '낮'], ['?time=21', '밤'], ['?locked', '문 잠김'], ['?debug&time=19', '매장 안']]) {
-    const p = await (await b.newContext({ ...devices['iPhone 13'] })).newPage();
+    const cx = await b.newContext({ ...devices['iPhone 13'] }); await cx.addInitScript(() => { const real = Date.now.bind(Date), t0 = real(), k = new Date(t0 + 9 * 3600e3); const tgt = Date.UTC(k.getUTCFullYear(), k.getUTCMonth(), k.getUTCDate(), 19, 0, 0) - 9 * 3600e3; Date.now = () => tgt + (real() - t0); }); const p = await cx.newPage();
     const errs = []; p.on('pageerror', (e) => errs.push(e.message)); p.on('console', (m) => { if (m.type() === 'error' || /Content Security Policy/i.test(m.text())) errs.push(m.text()); });
     await p.goto('http://localhost:8787/' + q); await p.waitForTimeout(4500);
     const boot = await p.evaluate(() => document.body.classList.contains('booting'));
