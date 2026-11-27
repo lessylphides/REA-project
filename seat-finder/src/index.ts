@@ -29,7 +29,16 @@ export class SeatStore extends DurableObject<Env> {
   async snapshot() {
     const seats = await this.load();
     const updatedAt = (await this.ctx.storage.get<number>("updatedAt")) ?? 0;
-    return { seats, updatedAt };
+    const lights = (await this.ctx.storage.get<{ on: boolean; at: number }>("lights")) ?? null;
+    return { seats, updatedAt, lights };
+  }
+
+  /** 매장 불 스위치 (관리자만): 모든 화면에 적용. 다음 새벽 4시·오전 10시가 되면 시간대 기본값으로 돌아감 */
+  async setLights(on: boolean) {
+    const lights = { on, at: Date.now() };
+    await this.ctx.storage.put("lights", lights);
+    this.cast({ t: "lights", lights });
+    return { lights };
   }
 
   /** occupied 를 주면 그 값으로, 안 주면 반대로 바꿈 */
@@ -484,6 +493,11 @@ export default {
         const clean = { barQ: num(src.barQ, 0.5, 2, 1.12), bar: { dx: num(src.bar?.dx, -10, 10, 0), dz: num(src.bar?.dz, -10, 10, 0) }, seats, tables };
         await store.setBoard(clean, b.asDefault === true);
         return json({ ok: true, board: clean });
+      }
+      if (url.pathname === "/api/lights") {
+        const b = (await req.json().catch(() => null)) as { on?: unknown } | null;
+        if (typeof b?.on !== "boolean") return json({ error: "bad lights" }, 400);
+        return json(await store.setLights(b.on));
       }
       if (url.pathname === "/api/stats") return json({ days: await store.stats([0, 1, 2, 3, 4, 5, 6].map(kstDay)) });
 

@@ -1780,7 +1780,20 @@ const IN_DAY = new THREE.Color("#7f6a5e"), IN_NIGHT = new THREE.Color("#6a5348")
 const tmpIn = new THREE.Color();
 const tmpC = new THREE.Color();
 let lastTint = -1;
-let lockState = null;
+let lockState = null, blindLocked = null, lightSwitch = null;
+let lightsCfg = null; // 서버의 불 스위치 { on, at }
+/** 마지막 시간 경계(새벽 4시 또는 오전 10시, 한국시간) */
+function lightSegStart() {
+  const t = Date.now(), k = new Date(t + 9 * 3600e3);
+  const sinceMid = ((k.getUTCHours() * 60 + k.getUTCMinutes()) * 60 + k.getUTCSeconds()) * 1000 + k.getUTCMilliseconds(), mid = t - sinceMid, m = sinceMid / 60000;
+  return m >= LOCK_TO ? mid + LOCK_TO * 60000 : m >= LOCK_FROM ? mid + LOCK_FROM * 60000 : mid - (1440 - LOCK_TO) * 60000;
+}
+/** 지금 매장 불이 켜져 있는지: 스위치를 이번 시간대에 바꿨으면 그 값, 아니면 시간대 기본값 */
+function lightsLit() {
+  if (lightsCfg && typeof lightsCfg.on === "boolean" && lightsCfg.at >= lightSegStart()) return lightsCfg.on;
+  return !isLockedNow();
+}
+function setLightsCfg(v) { const a = JSON.stringify(lightsCfg ?? null), b = JSON.stringify(v ?? null); lightsCfg = v ?? null; if (a !== b) lockState = null; }
 const IS_ADMIN_VIEW = () => document.body.classList.contains("admin"); // 관리자는 잠긴 시간에도 평소처럼
 function applyTime(outside, time) {
   const k = timeK; // 바깥 하늘/건물 색은 시간 기준 (밖에 있을 때만 보임)
@@ -1788,16 +1801,19 @@ function applyTime(outside, time) {
   const root = document.documentElement.classList;
   for (const p of ["day", "dusk", "night"]) root.toggle(`sky-${p}`, p === phase);
   updateStreetViews(phase);
-  // 문 잠긴 시간(새벽 4시~오전 10시): 가게 안팎 조명 끄기 + 블라인드 완전히 닫기 + 바텐더 퇴근
-  const locked = isLockedNow() && !IS_ADMIN_VIEW(), on = locked ? 0 : 1;
-  if (locked !== lockState) {
-    lockState = locked;
-    for (const f of blindFaces.values()) { if (locked) { f.saved = f.level; setBlindLevel(f, 2); } else setBlindLevel(f, f.saved ?? 0); }
+  // 문 잠긴 시간(새벽 4시~오전 10시): 블라인드 완전히 닫기 + 바텐더 퇴근 (관리자 화면도 손님과 똑같이)
+  // 불은 시간대 기본값(잠긴 시간엔 꺼짐), 사장님이 불 스위치로 켜고 끌 수 있음 (모든 화면에 적용)
+  const locked = isLockedNow(), lit = lightsLit(), on = lit ? 1 : 0;
+  const st = `${locked},${lit}`;
+  if (st !== lockState) {
+    if (locked !== blindLocked) { blindLocked = locked; for (const f of blindFaces.values()) { if (locked) { f.saved = f.level; setBlindLevel(f, 2); } else setBlindLevel(f, f.saved ?? 0); } }
+    lockState = st;
     for (const b of bartenders) b.visible = !locked;
-    for (const [l, i] of nightGlow.storeLights || []) l.intensity = locked ? 0 : i;
-    if (nightGlow.lanternMat) nightGlow.lanternMat.color.set(locked ? "#5a5560" : "#ffffff");
+    for (const [l, i] of nightGlow.storeLights || []) l.intensity = lit ? i : 0;
+    if (nightGlow.lanternMat) nightGlow.lanternMat.color.set(lit ? "#ffffff" : "#5a5560");
+    if (lightSwitch) lightSwitch.rotation.x = lit ? -0.45 : 0.45; // 스위치 레버: 위 = 켜짐
   }
-  const key = k + outside * 10 + (locked ? 100 : 0);
+  const key = k + outside * 10 + (lit ? 0 : 100);
   if (Math.abs(key - lastTint) > 0.005) {
     lastTint = key;
     // 바깥: 낮 → 노을(분홍빛) → 밤(푸르고 어둡게) / 안: 밤에 은은한 분홍빛
@@ -2975,6 +2991,20 @@ function buildInteriorProp(p, g) {
       g.userData.hit = [0.22, 0.4 * S, 0.22, y0 + 0.17 * S]; g.userData.sayY = y0 + 0.42 * S;
       return true;
     }
+    case "lightswitch": { // 조그만 위아래 불 스위치 (흰 판 + 레버). 손님이 누르면 "사장님만…", 사장님이 누르면 켜고 끔
+      const y0 = p.y ?? 1.42;
+      mk(box(0.075, 0.115, 0.01), "#f3efe6", [0, y0, 0.005], g, { outline: 0.004 });
+      mk(box(0.022, 0.05, 0.006), "#d9d3c7", [0, y0, 0.012], g, { outline: 0, shadow: false }); // 레버 홈
+      for (const yy of [0.045, -0.045]) mk(cyl(0.004, 0.004, 0.002, 8), "#b9b2a6", [0, y0 + yy, 0.0105], g, { outline: 0, shadow: false }).rotation.x = Math.PI / 2; // 나사
+      const piv = new THREE.Group(); piv.position.set(0, y0, 0.013); g.add(piv);
+      mk(box(0.014, 0.03, 0.014), "#ffffff", [0, 0, 0.007], piv, { outline: 0.003 });
+      lightSwitch = piv; lockState = null;
+      const hb = new THREE.Mesh(box(0.16, 0.2, 0.12), hitMat); hb.position.set(0, y0, 0.04); g.add(hb);
+      piv.userData.hitbox = hb;
+      g.userData.onTap = () => { if (document.body.classList.contains("admin")) toggleLights(); else g.userData.sayLine = "숨겨진 스위치 발견!\n사장님만 켜고 끌 수 있어요"; };
+      g.userData.hit = [0.16, 0.2, 0.12, y0]; g.userData.sayY = y0 + 0.3;
+      return true;
+    }
     case "sconce": { // 벽걸이 나무 거울 + 받침 위 캔들 (위가 둥근 짙은 원목판, 타원 거울, 아래 둥근 받침대). 로컬 +z = 방 쪽
       const y0 = p.y ?? 1.25, wood = "#4a2a1c", woodL = "#5c3524", W = 0.17, T = 0.016;
       const sh = new THREE.Shape(); // 판: 아래 직선 → 위는 어깨가 살짝 들어간 둥근 아치
@@ -4142,6 +4172,7 @@ async function poll() {
     if (!r.ok) throw new Error(r.status);
     const data = await r.json();
     lastFetchOk = Date.now();
+    setLightsCfg(data.lights);
     if (seq !== localSeq || inflight > 0) return; // 그 사이 관리자가 바꿨으면 이번 응답은 버림
     lastUpdatedAt = data.updatedAt;
     applyState(data.seats);
@@ -4216,7 +4247,8 @@ setInterval(() => { if (!document.hidden) loadStore(); }, 120000);
 function startPolling() {
   clearInterval(pollTimer);
   poll();
-  pollTimer = setInterval(() => { if (!document.hidden && (IS_ADMIN || isOpenNow())) poll(); }, POLL_MS);
+  let n = 0;
+  pollTimer = setInterval(() => { n++; if (!document.hidden && (IS_ADMIN || isOpenNow() || n % 6 === 0)) poll(); }, POLL_MS); // 영업 외 시간엔 30초마다 (불 스위치 반영)
 }
 document.addEventListener("visibilitychange", () => { if (!document.hidden) poll(); });
 setInterval(renderUpdated, 1000);
@@ -4419,6 +4451,7 @@ function tapProp(u) {
   u.wiggle = 1;
   u.onTap?.();
   bu.onTap?.(); // 소품 자체 반응 (예: 연기 인형)
+  if (bu.sayLine) { line = bu.sayLine; bu.sayLine = null; }
   const p = u.prop;
   if (p.type === "aircon" && storeInfo?.temp != null) line = `에어컨이에요\n지금 매장 ${Math.round(storeInfo.temp * 10) / 10}℃${storeInfo.acOn ? " · 작동 중" : ""}`;
   if (p.type === "sidetable" && p.item === "humidifier" && storeInfo?.hum != null) line = `가습기예요\n지금 습도 ${Math.round(storeInfo.hum)}%`;
@@ -4541,6 +4574,7 @@ function bindPointer() {
     if (moved > 8 || !quick) return;
     if (!IS_ADMIN && adminFanHit && fpGroup.visible && pick(e, [adminFanHit])) { if (token) location.href = "/admin"; else showLogin(); return; }
     if (document.body.classList.contains("admin")) {
+      if (lightSwitch?.userData.hitbox && pick(e, [lightSwitch.userData.hitbox])) { toggleLights(); return; } // 사장님: 불 스위치
       const id = seatAt(e);
       if (id) toggleSeat(id);
       return;
@@ -4931,6 +4965,12 @@ function flyTo(pos, quat, fov, dur, onDone, onProgress) {
 }
 
 /** 관리자 매장 안: [← 뒤로가기]를 위쪽 '빈자리' 표시 바로 옆에 같은 높이로 */
+/** 사장님: 매장 불 켜기/끄기 (모든 화면에 적용) */
+async function toggleLights() {
+  const want = !lightsLit();
+  try { const r = await api("/api/lights", { on: want }); setLightsCfg(r.lights); toast(want ? "💡 매장 불을 켰어요" : "🌙 매장 불을 껐어요", 1500); }
+  catch (err) { toast(err.message || "잠시 뒤에 다시 해 주세요", 1600); }
+}
 function placeBackBtn() {
   const r = document.querySelector(".count")?.getBoundingClientRect(), st = document.documentElement.style;
   if (!r || !r.width) return;
@@ -6116,6 +6156,7 @@ function liveOn(m) {
       peerBubble(p, sp, 3, (e) => { const k = e.t < 0.25 ? elastic(e.t / 0.25) : 1; sp.scale.set(base.x * k, base.y * k, 1); sp.position.y = 2.25 + e.t * 0.05; });
       break;
     }
+    case "lights": setLightsCfg(m.lights); break;
     case "chat": {
       chatAdd(m);
       const p = live.peers.get(m.id);

@@ -106,6 +106,7 @@ export default {
     { type: "board", x: 9.38, z: 7.605, rot: 90, w: 0.49, h: 1.5, lean: 0.075, color: "#a87d55",
       poster: { w: 0.36, h: 0.5, y: 1.18, photo: "/poster-reel.jpg" } }, // 포스터를 누르면 실제 사진 // 와인 셀러 뒤 넓은 나무판 (49 × 150cm) + 포스터
     { type: "winebarrel", x: 9.2, z: 7.63, rot: 90, say: "오크통 와인 셀러\n와인도 준비돼 있어요" },
+    { type: "lightswitch", x: 9.49, z: 8.21, rot: 90, y: 1.42, say: "숨겨진 스위치 발견!\n사장님만 켜고 끌 수 있어요" }, // 달력 바로 위 벽: 매장 불 스위치
     { type: "frames", x: 9.3, z: 8.25, rot: 90, say: "아직 걸지 못한 액자들\n곧 벽에 걸릴 거예요" },
     // 오른쪽 벽
     // 오른쪽 벽: 노퍽 소나무 옆 원목 행거

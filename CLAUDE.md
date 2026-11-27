@@ -46,3 +46,7 @@ for i in 1 2 3 4 5 6; do CLOUDFLARE_ACCOUNT_ID=9ecdd9e050cc043f4c41cbef5f0b9853 
 - 서버: `src/index.ts` SeatStore 의 웹소켓(`/api/live`), 회원 `/api/account/*`, 도구 `src/live.ts` (욕설 목록·이름 규칙·비밀번호 해시)
 - 화면: `public/app.js` 맨 아래 "실시간" 블록 (맨 위 변수는 var — 시작 중 await 때문에 const 쓰면 초기화 전 오류)
 - 채팅은 저장 안 함. 내보내기는 휴대폰별 번호(`live-dev`)로 1시간 (매장 와이파이는 IP 가 같아서 IP 로 막으면 안 됨)
+
+## 매장 불 스위치
+- 달력 바로 위 벽의 작은 스위치(`lightswitch`). 손님이 누르면 "숨겨진 스위치 발견! 사장님만 켜고 끌 수 있어요", 관리자가 누르면 모든 화면의 불을 켜고 끔 (`POST /api/lights`, 서버 `lights`)
+- 스위치 값은 다음 새벽 4시·오전 10시가 되면 시간대 기본값으로 돌아감. 관리자 화면도 손님과 똑같이 잠긴 시간엔 블라인드 닫힘·바텐더 없음
