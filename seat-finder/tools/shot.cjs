@@ -12,7 +12,7 @@ if (!out || tz == null) { console.log('사용: node tools/shot.cjs out.png x z �
   const errs = []; p.on('pageerror', (e) => errs.push(e.message));
   await p.addInitScript(() => localStorage.setItem('seat-hint-shown', '1'));
   await p.goto(`http://localhost:8787/?time=${time}&debug`); await p.waitForTimeout(4500);
-  await p.click('#enterBtn'); await p.waitForFunction(() => window.__walk && __walk.on, null, { timeout: 60000 });
+  await p.click('#enterBtn'); await p.click('#entryGo'); await p.waitForFunction(() => window.__walk && __walk.on, null, { timeout: 60000 });
   const X = +x, Z = +z, outside = Z > 9.8 || X < -0.2;
   const path = outside ? [[8.1, 10.6], [X, Z]] : [[8.1, 9.0], [7.5, 7.0], [5.5, 5.0], [X, Z]];
   for (const [a, c] of path) { await p.evaluate(([a, c]) => { __walk.pos.x = a; __walk.pos.z = c; }, [a, c]); await p.waitForTimeout(250); }

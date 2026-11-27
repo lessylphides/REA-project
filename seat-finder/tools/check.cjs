@@ -10,7 +10,7 @@ const { chromium, devices } = require('playwright');
     let extra = '';
     if (label === '문 잠김') { await p.click('#enterBtn'); await p.waitForTimeout(800); extra = '입장막힘=' + (await p.evaluate(() => document.body.classList.contains('intro') && !document.body.classList.contains('entering'))) + ' 안내=' + (await p.textContent('#toast')); }
     if (label === '매장 안') {
-      await p.click('#enterBtn'); await p.waitForFunction(() => window.__walk && __walk.on, null, { timeout: 60000 });
+      await p.click('#enterBtn'); await p.click('#entryGo'); await p.waitForFunction(() => window.__walk && __walk.on, null, { timeout: 60000 });
       await p.evaluate(() => { const g = __seats.get('BAR-4').group, a = g.rotation.y; __walk.pos.x = g.position.x - Math.sin(a) * 0.45; __walk.pos.z = g.position.z - Math.cos(a) * 0.45; __walk.yaw = a + Math.PI; });
       await p.waitForTimeout(800); await p.tap('#sitBtn'); await p.waitForTimeout(800);
       extra = 'sit=' + (await p.evaluate(() => __walk.sit)); await p.tap('#sitBtn'); await p.tap('#jumpBtn'); await p.waitForTimeout(600);
