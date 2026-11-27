@@ -149,7 +149,7 @@ export class SeatStore extends DurableObject<Env> {
       const user = typeof m.session === "string" ? await this.userBySession(m.session) : null;
       if (user) { a.member = user.email; a.name = user.name; a.look = user.look; }
       else { a.name = cleanName(m.name) ?? `손님${Math.floor(100 + Math.random() * 900)}`; }
-      if (a.admin) { a.name = "사장님"; a.look = (await this.ctx.storage.get<Look>("bossLook")) ?? BOSS_LOOK; }
+      if (a.admin) { a.name = (await this.ctx.storage.get<string>("bossName")) ?? "사장님"; a.look = (await this.ctx.storage.get<Look>("bossLook")) ?? BOSS_LOOK; }
       save();
       const peers = this.ctx.getWebSockets().filter((w) => w !== ws).map((w) => this.att(w)).filter((p) => p.id && p.walk).map((p) => this.peerOf(p));
       this.send(ws, { t: "welcome", id: a.id, name: a.name, look: a.look, member: !!a.member, admin: a.admin, peers, emojis: EMOJIS });
@@ -179,10 +179,13 @@ export class SeatStore extends DurableObject<Env> {
       case "bosslook": { // 관리자: 사장님 캐릭터 꾸미기
         const look = cleanLook(m.look);
         if (!a.admin || !look) return;
-        await this.ctx.storage.put("bossLook", look);
-        a.look = look; save();
-        this.send(ws, { t: "bosslook", look });
-        if (a.walk) this.cast({ t: "look", id: a.id, look }, ws);
+        const name = m.name === undefined ? a.name : cleanName(m.name);
+        if (!name) return this.send(ws, { t: "sys", text: "그 이름은 쓸 수 없어요 (1~10자, 욕설 금지)" });
+        await this.ctx.storage.put({ bossLook: look, bossName: name });
+        const renamed = name !== a.name;
+        a.look = look; a.name = name; save();
+        this.send(ws, { t: "bosslook", look, name });
+        if (a.walk) { this.cast({ t: "look", id: a.id, look }, ws); if (renamed) this.cast({ t: "name", id: a.id, name }, ws); }
         return;
       }
       case "act": { // 점프 등 순간 동작

@@ -5904,7 +5904,7 @@ function liveOn(m) {
       break;
     }
     case "chat": chatAdd(m); break;
-    case "bosslook": if (live.me) live.me.look = m.look; toast("사장님 캐릭터를 저장했어요", 1400); break;
+    case "bosslook": if (live.me) { live.me.look = m.look; live.me.name = m.name; } toast("사장님 캐릭터를 저장했어요", 1400); break;
     case "del": { live.log = live.log.filter((x) => x.mid !== m.mid); document.querySelector(`#chatLog li[data-mid="${m.mid}"]`)?.remove(); break; }
     case "sys": chatSys(m.text, true); break;
     case "kicked": live.want = null; toast(m.until ? "지금은 들어갈 수 없어요. 잠시 뒤에 다시 와 주세요" : "관리자가 내보냈어요", 2500); if (walk.on) exitWalk(); break;
@@ -6148,7 +6148,7 @@ function buildSwatches() {
 }
 function openLookEd() {
   if (!member) return;
-  lookBoss = false; $("lookEd").querySelector("h2").textContent = "캐릭터 꾸미기"; $("acctDelete").hidden = false;
+  lookBoss = false; $("lookEd").querySelector("h2").textContent = "캐릭터 꾸미기"; $("acctDelete").hidden = false; $("lookNameRow").hidden = true;
   lookDraft = fullLook(member.look);
   $("lookErr").textContent = "";
   $("entry").classList.remove("show");
@@ -6164,13 +6164,18 @@ function openBossLook() {
   lookDraft = fullLook(live.me.look);
   $("lookEd").querySelector("h2").textContent = "사장님 캐릭터";
   $("acctDelete").hidden = true; $("lookErr").textContent = "";
+  $("lookNameRow").hidden = false; $("lookName").value = live.me.name || "사장님";
   $("lookEd").classList.add("show");
   buildSwatches(); drawLookPrev();
 }
 $("bossLookBtn")?.addEventListener("click", openBossLook);
 $("lookForm").addEventListener("submit", async (e) => {
   e.preventDefault();
-  if (lookBoss) { liveSend({ t: "bosslook", look: lookDraft }); $("lookEd").classList.remove("show"); lookBoss = false; return; }
+  if (lookBoss) {
+    const nm = $("lookName").value.trim();
+    if (!nm || [...nm].length > 10) { $("lookErr").textContent = "이름표는 1~10자로 해 주세요"; return; }
+    liveSend({ t: "bosslook", look: lookDraft, name: nm }); $("lookEd").classList.remove("show"); lookBoss = false; return;
+  }
   try {
     member = await acctApi("profile", { session: liveSession(), look: lookDraft });
     liveSend({ t: "look", look: member.look });

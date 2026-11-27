@@ -301,6 +301,9 @@
   #entry .memberonly p { margin: 0; }
   #lookPrev { align-self: center; background: radial-gradient(circle at 50% 40%, #fffaf4, #efe3d7); border-radius: 18px; width: 180px; height: 225px; touch-action: none; cursor: grab; }
   #lookForm { max-height: calc(100dvh - 32px); overflow-y: auto; gap: 10px; }
+  #lookNameRow { align-items: center; }
+  #lookNameRow[hidden] { display: none; }
+  #lookNameRow .lbl2 { font-size: 13px; color: var(--sub); font-weight: 700; width: 48px; flex: none; }
   .ltabs { display: flex; gap: 4px; overflow-x: auto; }
   .modal .ltabs button { flex: none; padding: 8px 11px; font-size: 13px; border-radius: 10px; background: #f1e9e2; color: var(--sub); }
   .modal .ltabs button.on { background: var(--ink); color: #fff; }
@@ -431,6 +434,7 @@
     <form id="lookForm">
       <h2>캐릭터 꾸미기</h2>
       <canvas id="lookPrev" title="손가락으로 돌려 보기"></canvas>
+      <div class="namerow" id="lookNameRow" hidden><span class="lbl2">이름표</span><input id="lookName" maxlength="10" autocomplete="off" /></div>
       <div class="ltabs" id="lookTabs"></div>
       <div class="lrows" id="lookRows"></div>
       <div class="err" id="lookErr"></div>
