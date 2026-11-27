@@ -4758,7 +4758,7 @@ function enterWalk() {
   walk.pitch = -0.12;
   controls.enabled = false;
   document.body.classList.add("walking");
-  if (IS_ADMIN) $("logoutBtn").textContent = "돌아가기";
+  if (IS_ADMIN) $("logoutBtn").textContent = "← 뒤로가기";
   flyTo(new THREE.Vector3(walk.pos.x, EYE, walk.pos.z), eulerQuat(walk.pitch, walk.yaw), walkFov(), 1.6,
     () => { walk.on = true; showWalkHint(); liveStart(); },
     (t) => { fpGroup.visible = t > 0.82; });
