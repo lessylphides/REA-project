@@ -4935,6 +4935,7 @@ function placeBackBtn() {
   const r = document.querySelector(".count")?.getBoundingClientRect(), st = document.documentElement.style;
   if (!r || !r.width) return;
   st.setProperty("--backTop", `${Math.round(r.top)}px`); st.setProperty("--backLeft", `${Math.round(r.right + 8)}px`); st.setProperty("--backH", `${Math.round(r.height)}px`);
+  const b = $("logoutBtn").getBoundingClientRect(); if (b.width) st.setProperty("--resetLeft", `${Math.round(b.right + 8)}px`); // [전체 비우기]는 뒤로가기 옆
 }
 addEventListener("resize", () => { if (IS_ADMIN && walk.on) placeBackBtn(); });
 function enterWalk() {

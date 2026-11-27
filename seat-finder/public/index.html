@@ -246,15 +246,13 @@
   .actbtns button:active { transform: scale(.94); }
   .actbtns button.seatable { background: rgba(47,168,119,.85); border-color: #bff0d8; }
   body.intro .actbtns, body.entering .actbtns { display: none !important; }
-  body.walking.admin .actbtns { bottom: calc(env(safe-area-inset-bottom) + 84px); }
-  body.walking.admin .mapbtn, body.walking.admin .joy { bottom: calc(env(safe-area-inset-bottom) + 84px); }
   body.walking .adminbar > span { display: none; }
   /* 관리자 매장 안: [← 뒤로가기]는 위쪽 '빈자리' 표시 옆으로 */
+  body.walking.admin .adminbar { background: none; box-shadow: none; padding: 0; } /* 매장 안: 아래 바는 비움 (버튼은 위로) */
+  body.walking.admin .adminbar #resetBtn { position: fixed; z-index: 12; top: var(--backTop, calc(env(safe-area-inset-top) + 12px)); left: var(--resetLeft, 240px); height: var(--backH, 40px); padding: 0 14px; border-radius: 16px; box-shadow: 0 6px 24px rgba(120,80,50,.14); font-weight: 800; }
   body.walking.admin .adminbar #logoutBtn { position: fixed; z-index: 12; top: var(--backTop, calc(env(safe-area-inset-top) + 12px)); left: var(--backLeft, 140px); height: var(--backH, 40px);
     padding: 0 14px; border-radius: 16px; background: var(--card); color: var(--ink); border: 1px solid rgba(255,255,255,.7); box-shadow: 0 6px 24px rgba(120,80,50,.14); font-weight: 800; }
   body.walking .adminbar #bossLookBtn, body.walking .adminbar #adminChatBtn, body.walking .adminbar #boardEditBtn, body.walking .adminbar #view3dBtn { display: none; } /* 매장 안: 안에서 안 쓰는 버튼은 숨김 */
-  body.walking.admin .livebtns { bottom: calc(env(safe-area-inset-bottom) + 162px); }
-  body.walking.admin .emopop { bottom: calc(env(safe-area-inset-bottom) + 214px); }
 
   /* 처음 켜질 때 로딩 화면 (3D 준비되면 사라짐) */
   .boot { position: fixed; inset: 0; z-index: 50; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px;
@@ -283,9 +281,8 @@
   .emopop button { width: 44px; height: 44px; border: 0; border-radius: 12px; background: transparent; font-size: 26px; cursor: pointer; padding: 0; }
   .emopop button:active { background: #f1e9e2; }
   /* 채팅: 평소엔 조이스틱 위 작은 3줄(거의 투명), 누르면 그 자리에서 위로 커짐 */
-  .chat { display: none; position: fixed; z-index: 9; left: 12px; right: 96px; max-width: 320px; bottom: calc(env(safe-area-inset-bottom) + 108px);
+  .chat { display: none; position: fixed; z-index: 9; left: 12px; right: 12px; max-width: 340px; bottom: calc(env(safe-area-inset-bottom) + 108px);
     color: #fff; border-radius: 16px; flex-direction: column; overflow: hidden; transition: background .2s; }
-  body.walking.admin .chat { bottom: calc(env(safe-area-inset-bottom) + 162px); }
   body:not(.walking) .chat { bottom: calc(env(safe-area-inset-bottom) + 130px); right: 12px; margin: 0 auto; max-width: 420px; } /* 관리자 화면 */
   .chat.show { display: flex; }
   body.intro .chat, body.entering .chat { display: none !important; }
@@ -323,7 +320,7 @@
   .chat .chatbar button { border: 0; border-radius: 12px; padding: 0 14px; background: var(--empty); color: #fff; font-weight: 800; font-family: inherit; cursor: pointer; }
   .chat.kbraise { opacity: 0; pointer-events: none; } /* 키보드 부르는 순간: 위쪽에 투명하게 */
   .chat.kbglide { transition: transform .32s cubic-bezier(.2,.8,.2,1), opacity .25s ease-out, background .2s; } /* 키보드 위로 스르륵 */
-  #chatBtn { display: none !important; } /* 채팅 버튼 없앰: 채팅창이 늘 떠 있음 */
+  #chatBtn, .livebtns, .emopop { display: none !important; } /* 채팅 버튼·이모티콘 없앰 */ /* 채팅 버튼 없앰: 채팅창이 늘 떠 있음 */
   .modal .lbl { font-size: 13px; color: var(--sub); margin-bottom: -6px; }
   .modal .namerow { display: flex; gap: 8px; }
   .modal .namerow input { flex: 1; min-width: 0; }
