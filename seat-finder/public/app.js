@@ -5656,57 +5656,160 @@ main();
 
 // ═════════ 실시간: 매장 안 다른 손님 캐릭터 · 채팅 · 이모지 · 간단 회원 ═════════
 var LOOK_COL = {
-  b: ["#e8836b", "#6aa3d8", "#7cbf7a", "#f2c14e", "#a98bd6", "#ef9fbf", "#5d6b7a", "#f4efe6"], // 옷
-  h: ["#2b211c", "#5a3a26", "#a8743f", "#e3c27a", "#c9c9c9", "#b5523b"], // 머리
-  s: ["#f6d7bd", "#eac09b", "#c98f68", "#8d5a3b"], // 피부
-  a: ["없음", "🧢", "🎀", "🧶", "👒"], // 모자: 없음 / 캡 / 리본 / 비니 / 벙거지
+  b: ["#e8836b", "#6aa3d8", "#7cbf7a", "#f2c14e", "#a98bd6", "#ef9fbf", "#5d6b7a", "#f4efe6", "#2f3a4a", "#8b5a3c", "#c9c1b4", "#232326"], // 상의
+  h: ["#2b211c", "#5a3a26", "#a8743f", "#e3c27a", "#c9c9c9", "#b5523b", "#f1ece3", "#4b5d8c"], // 머리
+  s: ["#f6d7bd", "#eac09b", "#c98f68", "#8d5a3b", "#ffe6d2", "#6b4128"], // 피부
+  pc: ["#3a5683", "#1f1f22", "#6b6f78", "#c9b48f", "#4a3328", "#7d8f6a", "#f2eee6", "#8b2f3a"], // 하의
+  sc: ["#f4f4f2", "#1f1f22", "#8b5a3c", "#c0533f", "#3d6fb0", "#d8c49a"], // 신발
 };
+var LOOK_OPT = { // 종류 이름
+  hs: ["짧은 머리", "스포츠", "단발", "긴 머리", "포니테일", "올림머리", "파마", "민머리"],
+  e: ["동그란 눈", "웃는 눈", "가는 눈", "또렷한 눈"],
+  m: ["미소", "활짝", "무표정", "오!"],
+  bl: ["없음", "볼터치"],
+  t: ["티셔츠", "셔츠", "니트", "후드", "재킷"],
+  p: ["청바지", "슬랙스", "반바지", "치마"],
+  sh: ["운동화", "구두", "부츠"],
+  a: ["없음", "캡", "리본", "비니", "벙거지", "페도라"],
+  g: ["없음", "동그란 안경", "네모 안경", "선글라스"],
+  f: ["없음", "콧수염", "턱수염", "수염 자국"],
+  ap: ["없음", "앞치마"],
+};
+var LOOK_MAX = { b: 12, h: 8, s: 6, a: 6, hs: 8, e: 4, m: 4, bl: 2, g: 4, f: 4, t: 5, p: 4, pc: 8, sh: 3, sc: 6, ap: 2 };
+var fullLook = (L) => { const o = {}; for (const k in LOOK_MAX) o[k] = Number.isInteger(L?.[k]) && L[k] >= 0 && L[k] < LOOK_MAX[k] ? L[k] : 0; return o; };
 var hashStr = (s) => { let h = 7; for (const c of s) h = (h * 31 + c.charCodeAt(0)) >>> 0; return h; };
-var guestLook = (id) => { const h = hashStr(id || "x"); return { b: h % 8, h: (h >> 3) % 6, s: (h >> 6) % 4, a: 0 }; };
+var guestLook = (id) => { // 손님(비회원)은 번호로 정해지는 무작위 모습
+  let h = hashStr(id || "x");
+  const r = (n) => { h = (h * 1103515245 + 12345) >>> 0; return (h >>> 8) % n; };
+  return { b: r(12), h: r(6), s: r(5), a: r(3) ? 0 : 1 + r(5), hs: r(7), e: r(4), m: r(3), bl: r(2), g: r(4) ? 0 : 1 + r(2), f: r(5) ? 0 : 1 + r(3), t: r(5), p: r(4), pc: r(8), sh: r(3), sc: r(6), ap: 0 };
+};
 var NAME_A = ["졸린", "신난", "배고픈", "수줍은", "용감한", "느긋한", "반짝이는", "말랑한", "포근한", "씩씩한", "조용한", "행복한"];
 var NAME_B = ["고양이", "강아지", "수달", "판다", "여우", "토끼", "펭귄", "곰", "다람쥐", "부엉이", "고래", "햄스터"];
 var autoName = () => `${NAME_A[Math.floor(Math.random() * NAME_A.length)]} ${NAME_B[Math.floor(Math.random() * NAME_B.length)]}`;
 
-/** 동글동글 캐릭터 한 명 (정면 = 로컬 +z) */
+/** 손님 캐릭터 (정면 = 로컬 +z). 바텐더와 같은 그림체: 캡슐 몸, 얼굴형·눈·코·입·귀, 옷 종류별 디테일 */
 function makeAvatar(look, name, boss) {
-  const g = new THREE.Group(), L = look || guestLook(name);
+  const L = fullLook(look), g = new THREE.Group();
+  const skin = LOOK_COL.s[L.s], hair = LOOK_COL.h[L.h], top = LOOK_COL.b[L.b], pant = LOOK_COL.pc[L.pc], shoe = LOOK_COL.sc[L.sc];
+  const ink = new THREE.MeshBasicMaterial({ color: "#1b1b1f" });
+  const darker = (c, k = 0.75) => "#" + new THREE.Color(c).multiplyScalar(k).getHexString();
+  const no = { outline: 0, shadow: false };
   const body = new THREE.Group(); g.add(body);
-  const legs = new THREE.Group(); legs.position.y = 0.7; body.add(legs); // 엉덩이 높이에서 다리가 매달림
-  const leg = (sx) => { // 허벅지(엉덩이에서) + 정강이(무릎에서) → 앉으면 무릎이 꺾임
-    const thigh = new THREE.Group(); thigh.position.x = sx * 0.08; legs.add(thigh);
-    mk(cyl(0.065, 0.06, 0.36, 10), "#3b3a40", [0, -0.18, 0], thigh, { outline: 0.008 });
-    const knee = new THREE.Group(); knee.position.y = -0.35; thigh.add(knee);
-    mk(cyl(0.058, 0.052, 0.35, 10), "#3b3a40", [0, -0.175, 0], knee, { outline: 0.008 });
-    mk(box(0.1, 0.05, 0.16), "#2a2522", [0, -0.34, 0.03], knee, { outline: 0.006 }); // 신발
+  // ── 다리: 허벅지(엉덩이) + 정강이(무릎) → 앉으면 무릎이 꺾임
+  const bare = L.p === 3; // 치마: 다리는 맨살
+  const legs = new THREE.Group(); legs.position.y = 0.74; body.add(legs);
+  const leg = (sx) => {
+    const thigh = new THREE.Group(); thigh.position.x = sx * 0.088; legs.add(thigh);
+    mk(new THREE.CapsuleGeometry(0.07, 0.24, 4, 10), bare ? skin : pant, [0, -0.17, 0], thigh, { outline: 0.01 });
+    const knee = new THREE.Group(); knee.position.y = -0.34; thigh.add(knee);
+    const shin = L.p >= 2 ? skin : pant; // 반바지·치마: 정강이 맨살
+    mk(new THREE.CapsuleGeometry(0.058, 0.24, 4, 10), shin, [0, -0.16, 0], knee, { outline: 0.01 });
+    if (L.p === 0) mk(cyl(0.064, 0.064, 0.04, 10), darker(pant, 0.82), [0, -0.3, 0], knee, no); // 청바지 밑단 접음
+    if (L.p === 2) mk(cyl(0.078, 0.074, 0.06, 10), pant, [0, -0.03, 0], knee, { outline: 0.006 }); // 반바지 끝단 (무릎 위)
+    // 신발
+    const sg = new THREE.Group(); sg.position.set(0, -0.36, 0.035); knee.add(sg);
+    if (L.sh === 0) { mk(new THREE.CapsuleGeometry(0.055, 0.1, 4, 8), shoe, [0, 0, 0], sg, { outline: 0.006 }).rotation.x = Math.PI / 2; mk(box(0.11, 0.025, 0.2), "#f7f5f0", [0, -0.045, 0], sg, { outline: 0.004 }); }
+    else if (L.sh === 1) { const s = mk(new THREE.CapsuleGeometry(0.05, 0.1, 4, 8), shoe, [0, -0.01, 0], sg, { outline: 0.006 }); s.rotation.x = Math.PI / 2; s.scale.set(1, 1, 0.7); mk(box(0.1, 0.015, 0.19), darker(shoe, 0.6), [0, -0.05, 0], sg, no); }
+    else { mk(cyl(0.065, 0.065, 0.16, 10), shoe, [0, 0.06, -0.02], sg, { outline: 0.006 }); const t = mk(new THREE.CapsuleGeometry(0.055, 0.08, 4, 8), shoe, [0, -0.015, 0.02], sg, { outline: 0.006 }); t.rotation.x = Math.PI / 2; mk(box(0.12, 0.022, 0.2), darker(shoe, 0.55), [0, -0.055, 0.01], sg, no); }
     thigh.userData.knee = knee;
     return thigh;
   };
   const legL = leg(-1), legR = leg(1);
-  const cloth = LOOK_COL.b[L.b] || LOOK_COL.b[0], skin = LOOK_COL.s[L.s] || LOOK_COL.s[0], hair = LOOK_COL.h[L.h] || LOOK_COL.h[0];
-  mk(cyl(0.19, 0.23, 0.52, 16), cloth, [0, 0.96, 0], body, { outline: 0.012 });
-  mk(new THREE.SphereGeometry(0.19, 16, 10, 0, Math.PI * 2, 0, Math.PI / 2), cloth, [0, 1.21, 0], body, { outline: 0.01 }); // 어깨
-  for (const sx of [-1, 1]) mk(cyl(0.05, 0.05, 0.42, 8), cloth, [sx * 0.24, 1.0, 0], body, { outline: 0.008 }).rotation.z = sx * 0.12; // 팔
-  const head = new THREE.Group(); head.position.y = 1.47; body.add(head);
-  mk(new THREE.SphereGeometry(0.17, 18, 14), skin, [0, 0, 0], head, { outline: 0.012 });
-  const hairM = mk(new THREE.SphereGeometry(0.178, 18, 10, 0, Math.PI * 2, 0, Math.PI * 0.55), hair, [0, 0.01, -0.012], head, { outline: 0.008 });
-  hairM.rotation.x = -0.25;
-  for (const sx of [-1, 1]) {
-    mk(new THREE.SphereGeometry(0.02, 8, 6), "#1e1a18", [sx * 0.06, 0.0, 0.158], head, { outline: 0, shadow: false });
-    mk(new THREE.CircleGeometry(0.025, 10), new THREE.MeshBasicMaterial({ color: "#f3a0a0", transparent: true, opacity: 0.6 }), [sx * 0.1, -0.045, 0.142], head, { outline: 0, shadow: false });
+  // ── 엉덩이·허리
+  if (L.p === 3) { const sk = mk(new THREE.CylinderGeometry(0.17, 0.29, 0.34, 20, 1, true), toon(pant, { side: THREE.DoubleSide }), [0, 0.68, 0], body, { outline: 0.01 }); sk.scale.z = 0.85; } // 치마
+  else mk(new THREE.CapsuleGeometry(0.15, 0.1, 4, 12), pant, [0, 0.8, 0], body, { outline: 0.01 }).scale.set(1.2, 1, 0.85);
+  if (L.p === 1) { mk(box(0.36, 0.04, 0.26), "#2a2522", [0, 0.88, 0], body, no); mk(box(0.05, 0.03, 0.01), "#c9a54a", [0, 0.88, 0.13], body, no); } // 슬랙스 벨트
+  // ── 몸통 (상의 종류별)
+  const torso = mk(new THREE.CapsuleGeometry(0.17, 0.34, 6, 14), top, [0, 1.07, 0], body, { outline: 0.012 });
+  torso.scale.set(1.1, 1, 0.8);
+  const sleeveLong = L.t !== 0;
+  for (const sx of [-1, 1]) { // 팔: 위팔 + 아래팔 + 손
+    mk(new THREE.CapsuleGeometry(0.058, 0.2, 4, 10), top, [sx * 0.235, 1.15, 0], body, { outline: 0.01 }).rotation.z = sx * 0.1;
+    const fa = mk(new THREE.CapsuleGeometry(0.052, 0.19, 4, 10), sleeveLong ? top : skin, [sx * 0.26, 0.93, 0.01], body, { outline: 0.01 }); fa.rotation.z = sx * 0.06;
+    if (L.t === 0) mk(cyl(0.066, 0.064, 0.05, 10), top, [sx * 0.243, 1.04, 0], body, { outline: 0.006 }); // 반팔 소매 끝
+    if (L.t === 2) mk(cyl(0.058, 0.058, 0.04, 10), darker(top, 0.85), [sx * 0.265, 0.84, 0.01], body, no); // 니트 소매 고무단
+    mk(new THREE.SphereGeometry(0.048, 10, 8), skin, [sx * 0.27, 0.79, 0.015], body, { outline: 0.006 }); // 손
   }
-  const hatCol = ["", "#3d6fb0", "#e0607e", "#c9563c", "#d8c49a"][L.a];
-  if (L.a === 1) { mk(new THREE.SphereGeometry(0.185, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2), hatCol, [0, 0.03, 0], head, { outline: 0.008 }); mk(box(0.2, 0.02, 0.14), hatCol, [0, 0.04, 0.2], head, { outline: 0.006 }); }
-  else if (L.a === 2) { for (const sx of [-1, 1]) { const r = mk(new THREE.SphereGeometry(0.06, 10, 8), hatCol, [sx * 0.07, 0.17, -0.02], head, { outline: 0.006 }); r.scale.set(1.2, 0.7, 0.5); } mk(new THREE.SphereGeometry(0.03, 8, 6), hatCol, [0, 0.17, -0.02], head, { outline: 0.004 }); }
-  else if (L.a === 3) { mk(new THREE.SphereGeometry(0.19, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2), hatCol, [0, 0.02, 0], head, { outline: 0.008 }); mk(new THREE.SphereGeometry(0.05, 10, 8), "#f4efe6", [0, 0.21, 0], head, { outline: 0.005 }); }
-  else if (L.a === 4) { mk(cyl(0.14, 0.19, 0.11, 16), hatCol, [0, 0.12, 0], head, { outline: 0.008 }); mk(cyl(0.27, 0.27, 0.015, 20), hatCol, [0, 0.07, 0], head, { outline: 0.006 }); }
-  if (boss) { // 사장님: 앞치마 + 주황 이름표
-    mk(box(0.3, 0.5, 0.02), "#4a3328", [0, 0.86, 0.215], body, { outline: 0.006 });
-    mk(box(0.04, 0.2, 0.012), "#4a3328", [-0.1, 1.19, 0.19], body, { outline: 0, shadow: false });
-    mk(box(0.04, 0.2, 0.012), "#4a3328", [0.1, 1.19, 0.19], body, { outline: 0, shadow: false });
-    mk(box(0.1, 0.07, 0.008), "#c9a46e", [0, 0.88, 0.228], body, { outline: 0, shadow: false }); // 앞주머니
+  if (L.t === 0) mk(new THREE.TorusGeometry(0.075, 0.012, 6, 18), darker(top, 0.85), [0, 1.32, 0.02], body, no).rotation.x = Math.PI / 2 - 0.3; // 티셔츠 목둘레
+  if (L.t === 1) { // 셔츠: 깃 + 단추
+    for (const sx of [-1, 1]) mk(box(0.09, 0.05, 0.02), top, [sx * 0.045, 1.33, 0.115], body, { outline: 0.006 }).rotation.z = sx * -0.5;
+    for (let i = 0; i < 4; i++) mk(new THREE.SphereGeometry(0.008, 6, 4), "#e9e5dc", [0, 0.92 + i * 0.09, 0.14], body, no);
   }
+  if (L.t === 2) { // 니트: 목·밑단 고무단 + 꽈배기 줄
+    mk(new THREE.TorusGeometry(0.08, 0.022, 6, 18), darker(top, 0.85), [0, 1.32, 0.01], body, no).rotation.x = Math.PI / 2 - 0.25;
+    const hem = mk(new THREE.TorusGeometry(0.19, 0.022, 6, 24), darker(top, 0.85), [0, 0.88, 0], body, no); hem.rotation.x = Math.PI / 2; hem.scale.set(1, 0.8, 1);
+    for (const sx of [-0.06, 0.06]) mk(box(0.025, 0.36, 0.01), darker(top, 0.88), [sx, 1.08, 0.137], body, no);
+  }
+  if (L.t === 3) { // 후드: 모자(등 뒤) + 끈 + 앞주머니
+    const hood = mk(new THREE.TorusGeometry(0.12, 0.05, 8, 20, Math.PI * 1.3), top, [0, 1.33, -0.05], body, { outline: 0.008 }); hood.rotation.set(Math.PI / 2 + 0.5, 0, Math.PI * 0.35 + Math.PI);
+    for (const sx of [-1, 1]) mk(cyl(0.006, 0.006, 0.12, 5), "#f4f1ea", [sx * 0.04, 1.24, 0.14], body, no);
+    mk(box(0.2, 0.1, 0.02), darker(top, 0.9), [0, 0.96, 0.135], body, { outline: 0.004 });
+  }
+  if (L.t === 4) { // 재킷: 안에 흰 셔츠(V) + 옷깃 + 단추
+    mk(box(0.1, 0.22, 0.01), "#f6f3ec", [0, 1.2, 0.138], body, no);
+    for (const sx of [-1, 1]) { const lp = mk(box(0.06, 0.22, 0.02), darker(top, 0.8), [sx * 0.065, 1.2, 0.14], body, { outline: 0.004 }); lp.rotation.z = sx * 0.28; }
+    for (const y of [0.98, 1.06]) mk(new THREE.SphereGeometry(0.011, 6, 4), "#2a2522", [0.02, y, 0.142], body, no);
+  }
+  if (L.ap || boss) { // 앞치마
+    mk(box(0.3, 0.52, 0.02), "#4a3328", [0, 0.88, 0.15], body, { outline: 0.006 });
+    for (const sx of [-1, 1]) mk(box(0.035, 0.2, 0.012), "#4a3328", [sx * 0.1, 1.2, 0.135], body, no);
+    mk(box(0.12, 0.08, 0.008), "#c9a46e", [0, 0.86, 0.162], body, no);
+  }
+  // ── 머리
+  const head = new THREE.Group(); head.position.y = 1.5; body.add(head);
+  mk(cyl(0.05, 0.055, 0.08, 10), skin, [0, -0.13, 0], head, { outline: 0.006 }); // 목
+  const face = mk(new THREE.SphereGeometry(0.14, 22, 18), skin, [0, 0, 0], head, { outline: 0.014 }); face.scale.set(0.95, 1.08, 0.95);
+  for (const sx of [-1, 1]) mk(new THREE.SphereGeometry(0.03, 8, 6), skin, [sx * 0.135, -0.005, 0], head, { outline: 0.004 }).scale.set(0.6, 1, 0.8); // 귀
+  mk(new THREE.SphereGeometry(0.018, 8, 6), darker(skin, 0.9), [0, -0.02, 0.138], head, no).scale.set(1, 1.2, 0.9); // 코
+  for (const sx of [-1, 1]) { mk(box(0.05, 0.012, 0.01), darker(hair, 0.9), [sx * 0.05, 0.06, 0.128], head, no).rotation.z = sx * -0.12; } // 눈썹
+  for (const sx of [-1, 1]) { // 눈
+    const ex = sx * 0.05, ey = 0.018, ez = 0.13;
+    if (L.e === 0) { mk(new THREE.SphereGeometry(0.019, 10, 8), ink, [ex, ey, ez], head, no).scale.set(1, 1.15, 0.6); mk(new THREE.SphereGeometry(0.006, 6, 4), "#ffffff", [ex + 0.006, ey + 0.008, ez + 0.012], head, no); }
+    else if (L.e === 1) { const a = mk(new THREE.TorusGeometry(0.017, 0.005, 5, 12, Math.PI), ink, [ex, ey - 0.006, ez + 0.002], head, no); }
+    else if (L.e === 2) mk(new THREE.SphereGeometry(0.02, 10, 6), ink, [ex, ey, ez], head, no).scale.set(1.4, 0.4, 0.6);
+    else { mk(new THREE.SphereGeometry(0.023, 10, 8), ink, [ex, ey, ez], head, no).scale.set(1, 1.2, 0.6); mk(new THREE.SphereGeometry(0.007, 6, 4), "#ffffff", [ex + 0.007, ey + 0.01, ez + 0.014], head, no); mk(box(0.012, 0.004, 0.004), ink, [ex + sx * 0.022, ey + 0.022, ez - 0.004], head, no).rotation.z = sx * 0.6; }
+  }
+  if (L.m === 0) { const sm = mk(new THREE.TorusGeometry(0.025, 0.005, 5, 12, Math.PI), "#8a3f35", [0, -0.06, 0.128], head, no); sm.rotation.z = Math.PI; }
+  else if (L.m === 1) { const mo = mk(new THREE.CircleGeometry(0.028, 14, Math.PI, Math.PI), "#6e2a25", [0, -0.055, 0.135], head, no); mk(box(0.04, 0.008, 0.002), "#ffffff", [0, -0.06, 0.136], head, no); }
+  else if (L.m === 2) mk(box(0.04, 0.007, 0.006), "#8a3f35", [0, -0.065, 0.128], head, no);
+  else mk(new THREE.CircleGeometry(0.012, 12), "#6e2a25", [0, -0.065, 0.134], head, no);
+  if (L.bl) for (const sx of [-1, 1]) mk(new THREE.CircleGeometry(0.022, 12), new THREE.MeshBasicMaterial({ color: "#f39a9a", transparent: true, opacity: 0.55 }), [sx * 0.085, -0.03, 0.115], head, no).rotation.y = sx * 0.55;
+  if (L.f === 1) mk(new THREE.CapsuleGeometry(0.011, 0.05, 3, 8), darker(hair, 0.95), [0, -0.04, 0.135], head, no).rotation.z = Math.PI / 2;
+  if (L.f === 2) { const bd = mk(new THREE.SphereGeometry(0.135, 18, 10, 0, Math.PI * 2, Math.PI * 0.55, Math.PI * 0.45), toon(darker(hair, 0.95), { side: THREE.DoubleSide }), [0, 0.0, 0.012], head, { outline: 0.006, shadow: false }); bd.scale.set(1, 1.1, 1); mk(new THREE.CapsuleGeometry(0.011, 0.05, 3, 8), darker(hair, 0.95), [0, -0.04, 0.135], head, no).rotation.z = Math.PI / 2; }
+  if (L.f === 3) mk(box(0.13, 0.06, 0.01), new THREE.MeshBasicMaterial({ color: "#7d6a5e", transparent: true, opacity: 0.35 }), [0, -0.075, 0.12], head, no);
+  // 머리 모양
+  const hm = toon(hair, { side: THREE.DoubleSide });
+  const capShell = (len, back = -0.035) => { const c = mk(new THREE.SphereGeometry(0.15, 22, 12, 0, Math.PI * 2, 0, Math.PI * len), hm, [0, 0.02, back], head, { outline: 0.008, shadow: false }); c.rotation.x = -0.35; c.scale.set(1.02, 1.08, 1.05); return c; };
+  if (L.hs === 0) { capShell(0.5); mk(box(0.18, 0.035, 0.04), hair, [0.01, 0.11, 0.1], head, { outline: 0.004 }).rotation.z = -0.15; } // 짧은 머리 + 앞머리 살짝
+  else if (L.hs === 1) capShell(0.38); // 스포츠
+  else if (L.hs === 2 || L.hs === 3) { // 단발 / 긴 머리
+    const sh = mk(new THREE.SphereGeometry(0.165, 24, 14, Math.PI * 0.5 + 0.95, Math.PI * 2 - 1.9, 0, Math.PI * (L.hs === 2 ? 0.68 : 0.62)), hm, [0, 0.0, -0.01], head, { outline: 0.008, shadow: false }); sh.scale.set(1.05, 1.12, 1.05);
+    capShell(0.45);
+    mk(box(0.2, 0.05, 0.04), hair, [0, 0.105, 0.105], head, { outline: 0.004 }).rotation.x = 0.4; // 앞머리
+    if (L.hs === 3) { const bk = mk(new THREE.CapsuleGeometry(0.12, 0.26, 4, 12), hair, [0, -0.2, -0.07], head, { outline: 0.008 }); bk.scale.set(1.2, 1, 0.55); }
+  } else if (L.hs === 4) { capShell(0.52); const tl = mk(new THREE.CapsuleGeometry(0.045, 0.2, 4, 10), hair, [0, -0.04, -0.19], head, { outline: 0.006 }); tl.rotation.x = 0.35; mk(new THREE.TorusGeometry(0.03, 0.01, 5, 10), "#c0533f", [0, 0.07, -0.16], head, no).rotation.x = 1.2; }
+  else if (L.hs === 5) { capShell(0.52); mk(new THREE.SphereGeometry(0.07, 14, 10), hair, [0, 0.15, -0.08], head, { outline: 0.008 }); }
+  else if (L.hs === 6) { capShell(0.55); const wg = new THREE.SphereGeometry(0.06, 10, 8); for (let i = 0; i < 14; i++) { const th = (i / 14) * Math.PI * 2, y = i % 2 ? 0.07 : -0.02; if (Math.cos(th) > 0.35) continue; /* 얼굴 앞은 비움 */ mk(wg, hair, [Math.sin(th) * 0.15, y, Math.cos(th) * 0.15 - 0.02], head, { outline: 0.004, shadow: false }); } for (let i = 0; i < 5; i++) mk(wg, hair, [(i - 2) * 0.05, 0.155 - Math.abs(i - 2) * 0.012, -0.005 - Math.abs(i - 2) * 0.02], head, { outline: 0.004, shadow: false }).scale.set(1, 0.8, 0.9); }
+  // 안경
+  if (L.g) {
+    const fr = L.g === 3 ? "#1b1b1f" : "#4a3328";
+    for (const sx of [-1, 1]) {
+      if (L.g === 1) mk(new THREE.TorusGeometry(0.03, 0.006, 6, 16), fr, [sx * 0.05, 0.018, 0.142], head, no);
+      else { const w = L.g === 3 ? 0.056 : 0.06; for (const [x, y, ww, hh] of [[0, 0.024, w, 0.008], [0, -0.022, w, 0.008], [-w / 2, 0, 0.008, 0.052], [w / 2, 0, 0.008, 0.052]]) mk(box(ww, hh, 0.006), fr, [sx * 0.05 + x, 0.018 + y, 0.142], head, no); }
+      mk(new THREE.PlaneGeometry(0.056, 0.046), new THREE.MeshBasicMaterial({ color: L.g === 3 ? "#1d2228" : "#cfe3ec", transparent: true, opacity: L.g === 3 ? 0.92 : 0.25 }), [sx * 0.05, 0.018, 0.14], head, no);
+      mk(box(0.006, 0.006, 0.12), fr, [sx * 0.085, 0.022, 0.08], head, no);
+    }
+    mk(box(0.03, 0.006, 0.006), fr, [0, 0.024, 0.144], head, no);
+  }
+  // 모자
+  const hatC = ["", "#3d6fb0", "#e0607e", "#c9563c", "#d8c49a", "#3b3a40"][L.a];
+  if (L.a === 1) { mk(new THREE.SphereGeometry(0.155, 18, 8, 0, Math.PI * 2, 0, Math.PI / 2), hatC, [0, 0.03, -0.005], head, { outline: 0.008 }); mk(box(0.17, 0.016, 0.12), hatC, [0, 0.035, 0.18], head, { outline: 0.005 }); mk(new THREE.SphereGeometry(0.014, 6, 4), darker(hatC), [0, 0.185, 0], head, no); }
+  else if (L.a === 2) { for (const sx of [-1, 1]) { const r = mk(new THREE.SphereGeometry(0.05, 10, 8), hatC, [sx * 0.06, 0.15, -0.05], head, { outline: 0.006 }); r.scale.set(1.25, 0.7, 0.45); } mk(new THREE.SphereGeometry(0.025, 8, 6), hatC, [0, 0.15, -0.05], head, { outline: 0.004 }); }
+  else if (L.a === 3) { mk(new THREE.SphereGeometry(0.158, 18, 8, 0, Math.PI * 2, 0, Math.PI / 2), hatC, [0, 0.02, 0], head, { outline: 0.008 }); const cuff = mk(new THREE.TorusGeometry(0.152, 0.022, 6, 24), darker(hatC, 0.85), [0, 0.03, 0], head, no); cuff.rotation.x = Math.PI / 2; mk(new THREE.SphereGeometry(0.04, 10, 8), "#f4efe6", [0, 0.18, 0], head, { outline: 0.004 }); }
+  else if (L.a === 4) { mk(cyl(0.12, 0.16, 0.1, 18), hatC, [0, 0.12, 0], head, { outline: 0.008 }); mk(cyl(0.23, 0.23, 0.014, 22), hatC, [0, 0.07, 0], head, { outline: 0.006 }); }
+  else if (L.a === 5) { mk(cyl(0.12, 0.14, 0.12, 18), hatC, [0, 0.14, 0], head, { outline: 0.008 }); mk(cyl(0.141, 0.141, 0.03, 18), "#8b2f3a", [0, 0.095, 0], head, no); const br = mk(cyl(0.24, 0.24, 0.012, 22), hatC, [0, 0.085, 0], head, { outline: 0.006 }); br.scale.z = 0.85; }
   const tag = textSprite(name, boss ? { size: 0.16, bg: "rgba(238,122,98,.95)", fg: "#ffffff" } : { size: 0.15 });
-  tag.position.y = 1.86; g.add(tag);
+  tag.position.y = 1.92; g.add(tag);
   g.userData = { body, legs, legL, legR, head, tag, walkT: 0 };
   return g;
 }
@@ -5840,7 +5943,7 @@ function liveTick(dt) {
     const hip = -p.sitK * Math.PI / 2 - p.cK * 1.5 - air, kneeA = p.sitK * Math.PI / 2 + p.cK * 2.2 + air * 1.4;
     u.legL.rotation.x = swing + hip; u.legR.rotation.x = -swing + hip;
     u.legL.userData.knee.rotation.x = kneeA; u.legR.userData.knee.rotation.x = kneeA;
-    const sitY = (p.ts || 0.46) - 0.7; // 의자 높이에 엉덩이를 맞춤 (바 의자는 서 있을 때와 비슷)
+    const sitY = (p.ts || 0.46) - 0.74; // 의자 높이에 엉덩이를 맞춤 (바 의자는 서 있을 때와 비슷)
     u.body.position.y = p.sitK * sitY - p.cK * 0.42 + (p.jy || 0) + (moving ? Math.abs(Math.sin(u.walkT)) * 0.03 : 0);
   }
 }
@@ -5985,45 +6088,72 @@ var cleanLocalName = (v) => { const s = String(v || "").trim(); return s && [...
 
 // ───── 캐릭터 꾸미기 (회원) ─────
 var lookDraft = null;
+var LOOK_TABS = [
+  ["얼굴", [["s", "피부", "c"], ["e", "눈"], ["m", "입"], ["bl", "볼"]]],
+  ["머리", [["hs", "모양"], ["h", "색", "c"]]],
+  ["상의", [["t", "종류"], ["b", "색", "c"]]],
+  ["하의·신발", [["p", "하의"], ["pc", "하의 색", "c"], ["sh", "신발"], ["sc", "신발 색", "c"]]],
+  ["소품", [["a", "모자"], ["g", "안경"], ["f", "수염"], ["ap", "앞치마"]]],
+];
+var lookTab = 0, prev = null; // 3D 미리보기 (작은 렌더러 하나)
 function drawLookPrev() {
-  const c = $("lookPrev"), g = c.getContext("2d"), L = lookDraft;
-  g.clearRect(0, 0, c.width, c.height);
-  const cloth = LOOK_COL.b[L.b], skin = LOOK_COL.s[L.s], hair = LOOK_COL.h[L.h];
-  g.lineWidth = 4; g.strokeStyle = "#3b2f2a";
-  const shape = (fill, f) => { g.fillStyle = fill; g.beginPath(); f(); g.fill(); g.stroke(); };
-  shape("#3b3a40", () => { g.roundRect(62, 140, 14, 46, 6); g.roundRect(84, 140, 14, 46, 6); });
-  shape(cloth, () => g.roundRect(48, 92, 64, 58, 22));
-  shape(skin, () => g.arc(80, 70, 32, 0, Math.PI * 2));
-  shape(hair, () => { g.arc(80, 66, 33, Math.PI * 1.02, Math.PI * 1.98); g.closePath(); });
-  if (lookBoss) { shape("#4a3328", () => g.roundRect(62, 100, 36, 46, 6)); }
-  g.fillStyle = "#1e1a18"; for (const x of [69, 91]) { g.beginPath(); g.arc(x, 74, 3.5, 0, Math.PI * 2); g.fill(); }
-  const hc = ["", "#3d6fb0", "#e0607e", "#c9563c", "#d8c49a"][L.a];
-  if (L.a === 1) { shape(hc, () => { g.arc(80, 58, 32, Math.PI, 0); g.closePath(); }); shape(hc, () => g.roundRect(80, 52, 40, 8, 4)); }
-  if (L.a === 2) { shape(hc, () => { g.ellipse(66, 38, 12, 8, -0.3, 0, Math.PI * 2); }); shape(hc, () => { g.ellipse(94, 38, 12, 8, 0.3, 0, Math.PI * 2); }); }
-  if (L.a === 3) { shape(hc, () => { g.arc(80, 60, 33, Math.PI, 0); g.closePath(); }); shape("#f4efe6", () => g.arc(80, 26, 8, 0, Math.PI * 2)); }
-  if (L.a === 4) { shape(hc, () => g.roundRect(56, 30, 48, 22, 8)); shape(hc, () => g.roundRect(40, 48, 80, 8, 4)); }
+  const c = $("lookPrev");
+  if (!prev) {
+    let r;
+    try { r = new THREE.WebGLRenderer({ canvas: c, antialias: true, alpha: true }); } catch { return; }
+    r.setPixelRatio(Math.min(devicePixelRatio, 2)); r.setSize(c.clientWidth || 200, c.clientHeight || 250, false);
+    const sc = new THREE.Scene(), cam = new THREE.PerspectiveCamera(26, (c.clientWidth || 200) / (c.clientHeight || 250), 0.1, 20);
+    cam.position.set(0, 0.98, 4.45); cam.lookAt(0, 0.9, 0);
+    sc.add(new THREE.HemisphereLight("#fff6ec", "#8a7a6e", 1.6)); const dl = new THREE.DirectionalLight("#ffffff", 1.6); dl.position.set(1.5, 3, 3); sc.add(dl);
+    prev = { r, sc, cam, g: null, yaw: 0.35, spin: true, drag: null };
+    c.addEventListener("pointerdown", (e) => { prev.drag = e.clientX; prev.spin = false; c.setPointerCapture(e.pointerId); });
+    c.addEventListener("pointermove", (e) => { if (prev.drag == null) return; prev.yaw += (e.clientX - prev.drag) * 0.012; prev.drag = e.clientX; });
+    c.addEventListener("pointerup", () => { prev.drag = null; });
+    const loop = () => {
+      if (!$("lookEd").classList.contains("show")) { prev.raf = 0; return; }
+      if (prev.spin) prev.yaw += 0.008;
+      if (prev.g) prev.g.rotation.y = prev.yaw;
+      prev.r.render(prev.sc, prev.cam); prev.raf = requestAnimationFrame(loop);
+    };
+    prev.loop = loop;
+    if (new URLSearchParams(location.search).has("debug")) window.__prev = prev; // 확인용
+  }
+  if (prev.g) { prev.sc.remove(prev.g); prev.g.traverse((o) => { if (o.isSprite) o.material.map?.dispose(); }); }
+  prev.g = makeAvatar(lookDraft, " ", lookBoss); prev.g.userData.tag.visible = false; prev.g.rotation.y = prev.yaw;
+  prev.sc.add(prev.g);
+  if (!prev.raf) prev.raf = requestAnimationFrame(prev.loop);
 }
 function buildSwatches() {
-  for (const k of ["b", "h", "s", "a"]) {
-    const row = document.querySelector(`.sw[data-k="${k}"]`);
-    row.querySelectorAll("button").forEach((b) => b.remove());
-    LOOK_COL[k].forEach((v, i) => {
+  const tabs = $("lookTabs"), rows = $("lookRows");
+  tabs.textContent = ""; rows.textContent = "";
+  LOOK_TABS.forEach(([label], i) => {
+    const b = document.createElement("button"); b.type = "button"; b.textContent = label; b.classList.toggle("on", i === lookTab);
+    b.onclick = () => { lookTab = i; buildSwatches(); };
+    tabs.append(b);
+  });
+  for (const [k, label, kind] of LOOK_TABS[lookTab][1]) {
+    if (k === "ap" && lookBoss) continue; // 사장님은 앞치마 늘 입음
+    const row = document.createElement("div"); row.className = "sw";
+    const sp = document.createElement("span"); sp.textContent = label; row.append(sp);
+    const vals = kind === "c" ? LOOK_COL[k] : LOOK_OPT[k];
+    vals.forEach((v, i) => {
       const b = document.createElement("button"); b.type = "button";
-      if (k === "a") b.textContent = i ? v : "✕"; else b.style.background = v;
+      if (kind === "c") b.style.background = v; else { b.textContent = v; b.className = "chip"; }
       b.classList.toggle("on", lookDraft[k] === i);
       b.onclick = () => { lookDraft[k] = i; buildSwatches(); drawLookPrev(); };
       row.append(b);
     });
+    rows.append(row);
   }
 }
 function openLookEd() {
   if (!member) return;
   lookBoss = false; $("lookEd").querySelector("h2").textContent = "캐릭터 꾸미기"; $("acctDelete").hidden = false;
-  lookDraft = { ...(member.look || { b: 0, h: 0, s: 0, a: 0 }) };
+  lookDraft = fullLook(member.look);
   $("lookErr").textContent = "";
-  buildSwatches(); drawLookPrev();
   $("entry").classList.remove("show");
   $("lookEd").classList.add("show");
+  buildSwatches(); drawLookPrev();
 }
 $("entryLook").addEventListener("click", openLookEd);
 $("lookCancel").addEventListener("click", (e) => { e.preventDefault(); $("lookEd").classList.remove("show"); if (lookBoss) { lookBoss = false; return; } $("entry").classList.add("show"); });
@@ -6031,11 +6161,11 @@ var lookBoss = false; // 사장님 캐릭터 꾸미기 중
 function openBossLook() {
   if (!live.admin || !live.me) { toast("연결 중이에요. 잠시 뒤에 다시 눌러 주세요", 1600); return; }
   lookBoss = true;
-  lookDraft = { ...(live.me.look || { b: 6, h: 0, s: 0, a: 0 }) };
+  lookDraft = fullLook(live.me.look);
   $("lookEd").querySelector("h2").textContent = "사장님 캐릭터";
   $("acctDelete").hidden = true; $("lookErr").textContent = "";
-  buildSwatches(); drawLookPrev();
   $("lookEd").classList.add("show");
+  buildSwatches(); drawLookPrev();
 }
 $("bossLookBtn")?.addEventListener("click", openBossLook);
 $("lookForm").addEventListener("submit", async (e) => {

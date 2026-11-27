@@ -1,14 +1,15 @@
 // 실시간 접속(매장 안 손님 캐릭터) · 채팅 · 간단 회원가입에 쓰는 도구 모음
 
-/** 캐릭터 모양: b 옷 색, h 머리 색, s 피부 색, a 모자 (번호) */
-export type Look = { b: number; h: number; s: number; a: number };
-export const LOOK_MAX = { b: 8, h: 6, s: 4, a: 5 };
+/** 캐릭터 모양 (번호). b 상의 색, h 머리 색, s 피부, a 모자, hs 머리 모양, e 눈, m 입, bl 볼터치, g 안경, f 수염,
+ *  t 상의 종류, p 하의 종류, pc 하의 색, sh 신발, sc 신발 색, ap 앞치마 — 예전 저장값(b,h,s,a 만)도 그대로 쓰임 */
+export const LOOK_MAX = { b: 12, h: 8, s: 6, a: 6, hs: 8, e: 4, m: 4, bl: 2, g: 4, f: 4, t: 5, p: 4, pc: 8, sh: 3, sc: 6, ap: 2 };
+export type Look = Record<keyof typeof LOOK_MAX, number>;
 
 export function cleanLook(v: unknown): Look | null {
   if (!v || typeof v !== "object") return null;
   const o = v as Record<string, unknown>, out = {} as Look;
   for (const k of Object.keys(LOOK_MAX) as (keyof Look)[]) {
-    const n = o[k];
+    const n = o[k] ?? 0;
     if (typeof n !== "number" || !Number.isInteger(n) || n < 0 || n >= LOOK_MAX[k]) return null;
     out[k] = n;
   }

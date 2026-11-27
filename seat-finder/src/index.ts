@@ -292,7 +292,7 @@ export class SeatStore extends DurableObject<Env> {
       if (op === "signup") {
         if (u) return err(409, "이미 가입한 이메일이에요. 로그인해 주세요");
         const name = cleanName(b.name) ?? `손님${Math.floor(100 + Math.random() * 900)}`;
-        const look = cleanLook(b.look) ?? { b: 0, h: 0, s: 0, a: 0 };
+        const look = cleanLook(b.look) ?? (cleanLook({}) as Look);
         await this.ctx.storage.put(key, { ...(await hashPw(pw)), name, look, at: Date.now() } satisfies User);
         return res(200, { session: await this.newSession(email), name, look });
       }
@@ -321,7 +321,7 @@ export class SeatStore extends DurableObject<Env> {
 
 type LiveAtt = { id: string; ip: string; dev?: string; c?: number; jt?: number; name: string; look: Look | null; member: string | null; admin: boolean; walk: boolean; x: number; z: number; y: number; s: number; pt: number; ct: number[]; et: number; mute: number; left?: boolean };
 type User = { salt: string; hash: string; name: string; look: Look; at: number };
-const BOSS_LOOK: Look = { b: 6, h: 0, s: 0, a: 0 }; // 사장님 기본 모습
+const BOSS_LOOK = { b: 1, h: 1, s: 0, a: 0, hs: 0, e: 0, m: 0, bl: 0, g: 0, f: 0, t: 1, p: 1, pc: 1, sh: 1, sc: 1, ap: 1 } as Look; // 사장님 기본 모습
 const LIVE_MAX = 60; // 동시에 붙을 수 있는 사람 수
 const BAN_MS = 60 * 60e3; // 내보낸 손님은 1시간 동안 못 들어옴
 const SESSION_MS = 180 * 86400e3; // 로그인 유지 180일
