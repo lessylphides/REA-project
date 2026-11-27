@@ -2877,14 +2877,30 @@ function buildInteriorProp(p, g) {
       };
       arm(1);
       const la = arm(-1); // 왼손(보는 쪽 오른쪽): 갈색 공 + 주황 원판 + 하얀 비행기
-      { const h = new THREE.Group(); h.position.set(0, -0.07, 0.006); la.add(h); h.rotation.set(0.5, 0, 0.55);
-        mk(new THREE.SphereGeometry(0.02, 16, 12), "#6e4a32", [0.004, 0.012, 0.012], h, { outline: 0.002 });
-        const disc = mk(cyl(0.019, 0.019, 0.006, 20), "#d9794a", [-0.004, 0.006, 0.026], h, { outline: 0.002 }); disc.rotation.x = Math.PI / 2 - 0.3;
-        const pl = new THREE.Group(); pl.position.set(0.006, 0.036, 0.012); pl.rotation.y = 0.5; h.add(pl);
+      { // 지구본 (파란 바다 + 대륙, 금색 자오선 고리, 나무 받침) + 막대 끝에 붙은 하얀 비행기
+        const h = new THREE.Group(); h.position.set(0, -0.07, 0.006); la.add(h); h.rotation.set(0.5, 0, 0.55);
+        const earth = canvasTex(256, 128, (c, w, hh) => {
+          c.fillStyle = "#2f6fb0"; c.fillRect(0, 0, w, hh);
+          let sd = 11; const rr = () => ((sd = (sd * 16807) % 2147483647) / 2147483647);
+          for (const [x, y, rx, ry] of [[40, 45, 30, 22], [62, 85, 16, 26], [120, 40, 34, 18], [130, 78, 18, 24], [190, 42, 40, 20], [214, 92, 18, 10], [96, 16, 60, 6], [100, 120, 90, 6]]) {
+            c.fillStyle = rr() < 0.5 ? "#5f9a4c" : "#7ea85a";
+            for (let k = 0; k < 6; k++) { c.beginPath(); c.ellipse(x + (rr() - 0.5) * rx, y + (rr() - 0.5) * ry, rx * (0.4 + rr() * 0.5), ry * (0.4 + rr() * 0.5), rr() * 3, 0, Math.PI * 2); c.fill(); }
+            c.fillStyle = "#b99a62"; c.beginPath(); c.ellipse(x, y, rx * 0.25, ry * 0.25, 0, 0, Math.PI * 2); c.fill(); // 사막·산
+          }
+          c.fillStyle = "#eef3f6"; c.fillRect(0, 0, w, 7); c.fillRect(0, hh - 7, w, 7); // 극지방
+        });
+        const globe = mk(new THREE.SphereGeometry(0.02, 24, 18), toon("#ffffff", { map: earth, unique: true }), [0.004, 0.016, 0.012], h, { outline: 0.002 });
+        globe.rotation.set(0.4, 1.2, 0.41); // 지축 기울기
+        const mer = mk(new THREE.TorusGeometry(0.0235, 0.0012, 5, 28, Math.PI * 1.2), gold, [0.004, 0.016, 0.012], h, no); mer.rotation.set(0, Math.PI / 2, 0.41 - Math.PI * 0.1); // 자오선 고리
+        mk(cyl(0.0018, 0.0018, 0.012, 6), gold, [0.004, -0.008, 0.012], h, no); // 받침 기둥
+        mk(cyl(0.012, 0.014, 0.005, 18), "#b9763f", [0.004, -0.015, 0.012], h, { outline: 0.001 }); // 나무 받침
+        mk(cyl(0.0009, 0.0009, 0.016, 5), "#cfcfcf", [0.004, 0.042, 0.012], h, no); // 비행기 막대
+        const pl = new THREE.Group(); pl.position.set(0.004, 0.05, 0.012); pl.rotation.set(0.15, 0.6, -0.2); h.add(pl);
         mk(new THREE.CapsuleGeometry(0.0035, 0.032, 4, 8), white, [0, 0, 0], pl, { outline: 0.001 }).rotation.z = Math.PI / 2;
         mk(box(0.012, 0.0012, 0.04), white, [0.002, 0, 0], pl, no);
         mk(box(0.006, 0.0012, 0.014), white, [-0.017, 0.001, 0], pl, no); mk(box(0.006, 0.008, 0.0012), white, [-0.017, 0.004, 0], pl, no);
         for (let i = 0; i < 5; i++) mk(box(0.0012, 0.0012, 0.0005), "#556070", [0.01 - i * 0.004, 0.0015, 0.0035], pl, no); // 창문
+        mk(box(0.0016, 0.0016, 0.0005), "#c0533f", [-0.019, 0.007, 0.0008], pl, no); // 꼬리 빨간 표시
       }
       // 머리 (나무 얼굴) — 동그랗게 벌린 입이 연기 나오는 곳
       const head = new THREE.Group(); head.position.y = 0.112; up.add(head);
@@ -2913,19 +2929,29 @@ function buildInteriorProp(p, g) {
       const vis = mk(new THREE.CylinderGeometry(0.026, 0.026, 0.003, 22, 1, false, -Math.PI / 2, Math.PI), "#111113", [0, -0.004, 0.006], cap, { outline: 0.001 }); vis.rotation.x = 0.35; // 검은 챙
       { const w = new THREE.Group(); w.position.set(0, 0.012, 0.031); cap.add(w); mk(box(0.004, 0.004, 0.002), gold, [0, 0, 0], w, no); for (const sx of [-1, 1]) mk(box(0.011, 0.0018, 0.0015), gold, [sx * 0.007, 0.001, 0], w, no).rotation.z = sx * -0.15; } // 모자 휘장
       // ── 재미: 누르면 상반신이 들리며 콘 향에 불 → 닫히면 입에서 연기
-      const smokeTex = canvasTex(64, 64, (c, w, h) => { const gr = c.createRadialGradient(32, 32, 0, 32, 32, 32); gr.addColorStop(0, "rgba(255,255,255,.9)"); gr.addColorStop(0.5, "rgba(255,255,255,.35)"); gr.addColorStop(1, "rgba(255,255,255,0)"); c.fillStyle = gr; c.fillRect(0, 0, w, h); });
+      // 향 연기: 가늘고 긴 푸르스름한 회색 줄기가 좌우로 살랑이며 천천히 올라가다 흩어짐 (수증기처럼 동글동글하지 않게)
+      const smokeTex = canvasTex(32, 128, (c, w, h) => {
+        const gx = c.createLinearGradient(0, 0, w, 0); gx.addColorStop(0, "rgba(255,255,255,0)"); gx.addColorStop(0.5, "rgba(255,255,255,.85)"); gx.addColorStop(1, "rgba(255,255,255,0)");
+        c.fillStyle = gx; c.fillRect(0, 0, w, h);
+        c.globalCompositeOperation = "destination-in";
+        const gy = c.createLinearGradient(0, 0, 0, h); gy.addColorStop(0, "rgba(0,0,0,0)"); gy.addColorStop(0.3, "rgba(0,0,0,1)"); gy.addColorStop(0.7, "rgba(0,0,0,1)"); gy.addColorStop(1, "rgba(0,0,0,0)");
+        c.fillStyle = gy; c.fillRect(0, 0, w, h);
+      });
+      let phase = 0;
       const puff = (src, k = 1) => {
-        const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: smokeTex, color: "#e4e0d8", transparent: true, opacity: 0, depthWrite: false }));
+        const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: smokeTex, color: "#9ea3ae", transparent: true, opacity: 0, depthWrite: false }));
         const p0 = new THREE.Vector3(); src.getWorldPosition(p0);
         const fw = new THREE.Vector3(0, 0, 1).applyQuaternion(src.getWorldQuaternion(new THREE.Quaternion()));
-        const dx = (Math.random() - 0.5) * 0.05, dz = (Math.random() - 0.5) * 0.05;
+        const ph = (phase += 0.55), sway = 0.012 + Math.random() * 0.01, rot0 = (Math.random() - 0.5) * 0.4;
         sp.position.copy(p0); sp.renderOrder = 6;
-        addEffect(sp, scene, 3.2, (e) => {
-          const t = e.t / e.life;
-          sp.position.set(p0.x + fw.x * 0.06 * t + dx * t, p0.y + 0.32 * t * k, p0.z + fw.z * 0.06 * t + dz * t);
-          const sc = (0.02 + 0.16 * t) * k; sp.scale.set(sc, sc, 1);
-          sp.material.opacity = (t < 0.15 ? t / 0.15 : 1 - (t - 0.15) / 0.85) * 0.55;
-          sp.material.rotation = t * 1.5;
+        addEffect(sp, scene, 4.5, (e) => {
+          const t = e.t / e.life, y = 0.38 * t * k;
+          const curl = Math.sin(ph + t * 7) * sway * (0.3 + t * 2.2); // 위로 갈수록 크게 흔들림
+          sp.position.set(p0.x + fw.x * 0.02 * t + curl * fw.z, p0.y + y, p0.z + fw.z * 0.02 * t - curl * fw.x);
+          const wdt = (0.006 + 0.05 * t * t) * k, len = (0.03 + 0.07 * t) * k; // 처음엔 가는 줄, 올라가며 흩어짐
+          sp.scale.set(wdt, len, 1);
+          sp.material.rotation = rot0 + Math.sin(ph + t * 5) * 0.5 * t;
+          sp.material.opacity = (t < 0.1 ? t / 0.1 : Math.pow(1 - (t - 0.1) / 0.9, 1.6)) * 0.42;
         });
       };
       const st = { busy: false };
@@ -2938,10 +2964,10 @@ function buildInteriorProp(p, g) {
           const lift = t < 0.7 ? ease(t / 0.7) : t < 2 ? 1 : t < 2.7 ? 1 - ease((t - 2) / 0.7) : 0;
           up.position.y = 0.12 + lift * 0.085; up.rotation.z = lift * 0.14; up.position.x = lift * -0.012;
           ember.visible = t > 0.6 && t < 11.5; ember.material.color.setHSL(0.06, 1, 0.5 + Math.sin(t * 9) * 0.08);
-          if (t - last > 0.14) {
+          if (t - last > 0.06) {
             last = t;
-            if (t > 0.7 && t < 2.2) puff(ember, 0.45); // 콘 향 가는 연기
-            else if (t > 2.8 && t < 11) puff(mouth, 1); // 닫으면 입으로 몽글몽글
+            if (t > 0.7 && t < 2.2) puff(ember, 0.5); // 콘 향 가는 연기
+            else if (t > 2.8 && t < 11) puff(mouth, 1); // 닫으면 입으로 가늘게 피어오름
           }
           if (t > 11.9) { st.busy = false; ember.visible = false; }
         });
