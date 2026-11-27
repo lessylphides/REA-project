@@ -5087,7 +5087,7 @@ function initWalk() {
   // 가상 조이스틱 (휴대폰)
   const joy = $("joy"), knob = joy.querySelector("i");
   let jid = null, jc = null;
-  const R0 = 44;
+  const R0 = 36; // 조이스틱 손잡이가 움직이는 거리 (원 지름 100px 기준)
   const move = (e) => {
     let dx = e.clientX - jc.x, dy = e.clientY - jc.y;
     const m = Math.hypot(dx, dy);
@@ -5887,6 +5887,7 @@ function liveOn(m) {
       if (live.want === "walk") store.set("live-name", m.member ? store.get("live-name") : m.name);
       if (live.bossWalk) liveSend({ t: "walk", on: true }); // 다시 연결됐을 때 계속 매장 안
       document.body.classList.toggle("live", live.want === "walk" || !!live.bossWalk);
+      if (document.body.classList.contains("live")) $("chat").classList.add("show");
       break;
     case "join": addPeer(m.p); chatSys(`${m.p.name} 님이 들어왔어요`); liveCount(); break;
     case "leave": { const p = live.peers.get(m.id); if (p) chatSys(`${p.name} 님이 나갔어요`); removePeer(m.id); liveCount(); break; }
@@ -6004,16 +6005,27 @@ function chatPush(m) {
   const ol = $("chatLog"), stick = ol.scrollHeight - ol.scrollTop - ol.clientHeight < 40;
   ol.append(chatLine(m));
   while (ol.children.length > 80) ol.firstChild.remove();
-  if (stick || m.id === live.id) ol.scrollTop = ol.scrollHeight;
+  if (stick || m.id === live.id || !$("chat").classList.contains("open")) ol.scrollTop = ol.scrollHeight;
+  const li = ol.lastElementChild; setTimeout(() => li?.classList.add("old"), 20000); // 20초 지나면 작은 채팅에서 흐리게
   if (!$("chat").classList.contains("show") && !m.sys) $("chatBtn").classList.add("new");
 }
 var chatAdd = (m) => chatPush(m);
-var chatSys = (text, force) => { if (force || $("chat").classList.contains("show")) chatPush({ sys: true, text }); };
-function openChat(on = !$("chat").classList.contains("show")) {
-  $("chat").classList.toggle("show", on);
+var chatSys = (text) => chatPush({ sys: true, text });
+/** 채팅 크게(on) / 작게. 매장 안에서는 작은 채팅이 늘 떠 있고, 관리자 화면에서는 아예 닫힘 */
+function openChat(on = !$("chat").classList.contains("open")) {
+  const c = $("chat"), inside = document.body.classList.contains("live");
+  c.classList.toggle("open", on);
+  c.classList.toggle("show", on || inside);
   $("emoPop").classList.remove("show");
-  if (on) { $("chatBtn").classList.remove("new"); const ol = $("chatLog"); ol.scrollTop = ol.scrollHeight; }
+  const ol = $("chatLog");
+  if (on) { $("chatBtn").classList.remove("new"); requestAnimationFrame(() => { ol.scrollTop = ol.scrollHeight; }); }
+  else { $("chatIn").blur(); requestAnimationFrame(() => { ol.scrollTop = ol.scrollHeight; }); }
 }
+$("chat").addEventListener("click", (e) => { if (!$("chat").classList.contains("open")) { e.preventDefault(); openChat(true); $("chatIn").focus(); } });
+addEventListener("pointerdown", (e) => { // 채팅 밖(3D 화면·버튼)을 누르면 다시 작게
+  const c = $("chat");
+  if (c.classList.contains("open") && !c.contains(e.target) && !e.target.closest?.("#adminChatBtn, .modal")) openChat(false);
+}, true);
 function buildEmoPop() {
   const pop = $("emoPop"); pop.textContent = "";
   for (const e of live.emojis) {
@@ -6025,7 +6037,7 @@ function buildEmoPop() {
 $("chatBtn").addEventListener("click", () => openChat());
 $("adminChatBtn")?.addEventListener("click", () => openChat());
 $("chatClose").addEventListener("click", () => openChat(false));
-$("emoBtn").addEventListener("click", () => { $("chat").classList.remove("show"); $("emoPop").classList.toggle("show"); });
+$("emoBtn").addEventListener("click", () => { if ($("chat").classList.contains("open")) openChat(false); $("emoPop").classList.toggle("show"); });
 $("chatForm").addEventListener("submit", (e) => {
   e.preventDefault();
   const v = $("chatIn").value.trim();
@@ -6041,9 +6053,12 @@ for (const t of ["pointerdown", "touchstart", "wheel"]) for (const id of ["chat"
   const fit = () => {
     const c = $("chat"), ol = $("chatLog");
     if (!vv) return;
-    const kb = innerHeight - vv.height > 120; // 키보드가 떠 있음
-    c.style.transform = vv.offsetTop ? `translateY(${Math.round(vv.offsetTop)}px)` : "";
-    ol.style.height = kb ? `${Math.max(70, Math.min(210, vv.height - 190))}px` : "";
+    const kb = innerHeight - vv.height > 120 && c.classList.contains("open"); // 키보드가 떠 있음
+    if (!kb) { c.style.transform = ""; ol.style.height = ""; return; }
+    const B = parseFloat(getComputedStyle(c).bottom) || 0;
+    const T = vv.height - 8 - innerHeight + B + vv.offsetTop; // 채팅창 아래 끝을 키보드 바로 위로
+    c.style.transform = `translateY(${Math.round(Math.min(0, T))}px)`;
+    ol.style.height = `${Math.max(60, Math.min(210, vv.height - 140))}px`;
   };
   vv?.addEventListener("resize", fit); vv?.addEventListener("scroll", fit);
   $("chatIn").addEventListener("focus", () => setTimeout(fit, 300));
@@ -6052,11 +6067,11 @@ for (const t of ["pointerdown", "touchstart", "wheel"]) for (const id of ["chat"
 
 function liveStart() {
   if (!IS_ADMIN) return liveConnect("walk");
-  if (live.want === "obs") { live.bossWalk = true; live.last = ""; liveSend({ t: "walk", on: true }); document.body.classList.add("live"); liveCount(); } // 사장님으로 입장
+  if (live.want === "obs") { live.bossWalk = true; live.last = ""; liveSend({ t: "walk", on: true }); document.body.classList.add("live"); $("chat").classList.add("show"); liveCount(); } // 사장님으로 입장
 }
 function liveStop() {
-  if (live.bossWalk) { live.bossWalk = false; liveSend({ t: "walk", on: false }); document.body.classList.remove("live"); $("emoPop").classList.remove("show"); liveCount(); return; }
-  if (live.want === "walk") { liveDisconnect(); document.body.classList.remove("live"); openChat(false); $("chatLog").textContent = ""; live.log = []; } }
+  if (live.bossWalk) { live.bossWalk = false; liveSend({ t: "walk", on: false }); document.body.classList.remove("live"); $("emoPop").classList.remove("show"); $("chat").classList.remove("show", "open"); liveCount(); return; }
+  if (live.want === "walk") { liveDisconnect(); document.body.classList.remove("live"); $("chat").classList.remove("show", "open"); $("chatLog").textContent = ""; live.log = []; } }
 function liveAdminStart() { if (!live) return setTimeout(liveAdminStart, 300); if (IS_ADMIN && token) liveConnect("obs"); }
 
 // ───── 입장: 게스트 이름 / 회원 로그인 ─────
