@@ -312,6 +312,8 @@
   .chat.typing:not(.open) form { padding: 6px; border-top: 0; }
   .chat input { flex: 1; min-width: 0; font-size: 16px; padding: 9px 12px; border-radius: 12px; border: 0; outline: none; }
   .chat form button { border: 0; border-radius: 12px; padding: 0 14px; background: var(--empty); color: #fff; font-weight: 800; font-family: inherit; cursor: pointer; }
+  .chat.kbraise { opacity: 0; pointer-events: none; } /* 키보드 부르는 순간: 위쪽에 투명하게 */
+  .chat.kbglide { transition: transform .32s cubic-bezier(.2,.8,.2,1), opacity .25s ease-out, background .2s; } /* 키보드 위로 스르륵 */
   #chatBtn { display: none !important; } /* 채팅 버튼 없앰: 채팅창이 늘 떠 있음 */
   .modal .lbl { font-size: 13px; color: var(--sub); margin-bottom: -6px; }
   .modal .namerow { display: flex; gap: 8px; }

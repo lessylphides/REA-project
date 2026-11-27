@@ -6225,9 +6225,9 @@ function openChat(on = !$("chat").classList.contains("open")) {
 $("chat").addEventListener("click", (e) => {
   const c = $("chat");
   if (e.target.closest("#chatExpand, #chatClose, form, .mod")) return;
-  if (!c.classList.contains("typing") && !c.classList.contains("open")) { c.classList.add("typing"); $("chatIn").focus(); }
+  if (!c.classList.contains("typing") && !c.classList.contains("open")) { c.classList.add("typing"); focusChatInput(); }
 });
-$("chatExpand").addEventListener("click", () => { openChat(!$("chat").classList.contains("open")); if ($("chat").classList.contains("open")) $("chatIn").focus(); });
+$("chatExpand").addEventListener("click", () => { openChat(!$("chat").classList.contains("open")); if ($("chat").classList.contains("open")) focusChatInput(); });
 addEventListener("pointerdown", (e) => { // 채팅 밖(3D 화면·버튼)을 누르면 입력칸 닫고 작게
   const c = $("chat");
   if ((c.classList.contains("open") || c.classList.contains("typing")) && !c.contains(e.target) && !e.target.closest?.("#adminChatBtn, .modal")) {
@@ -6258,9 +6258,10 @@ for (const t of ["pointerdown", "touchstart", "wheel"]) for (const id of ["chat"
 // 아이폰: 입력칸을 누르면 키보드가 뜨면서 화면 전체가 위로 밀림 → 채팅창을 보이는 영역에 붙이고, 키보드가 닫히면 원위치
 (() => {
   const vv = window.visualViewport;
+  let raising = false; // 키보드를 부르는 중: 채팅창을 잠깐 화면 위쪽(투명)에 둠 → 사파리가 페이지를 밀지 않음
   const fit = () => {
     const c = $("chat"), ol = $("chatLog");
-    if (!vv) return;
+    if (!vv || raising) return;
     const kb = innerHeight - vv.height > 120 && (c.classList.contains("open") || c.classList.contains("typing")); // 키보드가 떠 있음
     if (!kb) { c.style.transform = ""; ol.style.height = ""; return; }
     const B = parseFloat(getComputedStyle(c).bottom) || 0;
@@ -6268,12 +6269,44 @@ for (const t of ["pointerdown", "touchstart", "wheel"]) for (const id of ["chat"
     c.style.transform = `translateY(${Math.round(Math.min(0, T))}px)`;
     if (c.classList.contains("open")) ol.style.height = `${Math.max(60, Math.min(210, vv.height - 140))}px`;
   };
-  // 아이폰이 페이지 전체를 위로 밀면 바로 원위치 (하얀 바닥이 드러나지 않게) → 채팅창만 키보드 위로
-  const unshift = () => { if (document.activeElement === $("chatIn") && (scrollY || document.documentElement.scrollTop || document.body.scrollTop)) { window.scrollTo(0, 0); document.documentElement.scrollTop = document.body.scrollTop = 0; } fit(); };
+  const settle = () => { // 키보드가 올라왔으면: 투명하게 위에 있던 채팅창을 키보드 바로 위에 스르륵
+    if (!raising) return;
+    raising = false;
+    const c = $("chat");
+    c.classList.add("kbglide");
+    fit();
+    c.classList.remove("kbraise");
+    setTimeout(() => c.classList.remove("kbglide"), 400);
+  };
+  /** 채팅 입력 시작: 매장 화면은 그대로, 키보드만 아래에서 덮고 채팅창이 그 위로 따라옴 */
+  window.focusChatInput = () => {
+    const c = $("chat"), inp = $("chatIn");
+    if (document.activeElement === inp) return;
+    const touchPhone = matchMedia("(pointer: coarse)").matches && vv;
+    if (touchPhone) {
+      raising = true;
+      const r = c.getBoundingClientRect();
+      c.style.transition = "none";
+      c.style.transform = `translateY(${Math.round(80 - r.top)}px)`; // 입력칸을 화면 위쪽으로 (사파리가 페이지를 밀 필요 없게)
+      c.classList.add("kbraise");
+      void c.offsetHeight; c.style.transition = "";
+      setTimeout(settle, 650); // 키보드 알림이 안 와도 제자리로
+    }
+    try { inp.focus({ preventScroll: true }); } catch { inp.focus(); }
+  };
+  // 그래도 페이지가 밀리면 바로 원위치 (하얀 바닥이 드러나지 않게)
+  const unshift = () => {
+    if (document.activeElement === $("chatIn") && (scrollY || document.documentElement.scrollTop || document.body.scrollTop)) { window.scrollTo(0, 0); document.documentElement.scrollTop = document.body.scrollTop = 0; }
+    if (raising && vv && innerHeight - vv.height > 120) return setTimeout(settle, 60);
+    fit();
+  };
   vv?.addEventListener("resize", unshift); vv?.addEventListener("scroll", unshift);
   addEventListener("scroll", unshift, { passive: true });
-  $("chatIn").addEventListener("focus", () => { for (const t of [0, 80, 250, 500]) setTimeout(unshift, t); });
-  $("chatIn").addEventListener("blur", () => setTimeout(() => { window.scrollTo(0, 0); document.documentElement.scrollTop = document.body.scrollTop = 0; fit(); }, 60));
+  $("chatIn").addEventListener("blur", () => setTimeout(() => {
+    raising = false; $("chat").classList.remove("kbraise");
+    window.scrollTo(0, 0); document.documentElement.scrollTop = document.body.scrollTop = 0;
+    $("chat").classList.add("kbglide"); fit(); setTimeout(() => $("chat").classList.remove("kbglide"), 400);
+  }, 60));
 })();
 
 function liveStart() {
