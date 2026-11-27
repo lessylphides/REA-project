@@ -5709,7 +5709,9 @@ function liveConnect(mode) { // mode: "walk" (매장 안 손님) | "obs" (관리
   live.ws = ws;
   ws.onopen = () => {
     live.tries = 0;
-    ws.send(JSON.stringify({ t: "hello", walk: mode === "walk", name: store.get("live-name") || "", session: liveSession() || undefined, admin: mode === "obs" ? token : undefined }));
+    let dev = store.get("live-dev");
+    if (!dev) { dev = Array.from(crypto.getRandomValues(new Uint8Array(12)), (x) => (x % 36).toString(36)).join(""); store.set("live-dev", dev); }
+    ws.send(JSON.stringify({ t: "hello", dev, walk: mode === "walk", name: store.get("live-name") || "", session: liveSession() || undefined, admin: mode === "obs" ? token : undefined }));
   };
   ws.onmessage = (ev) => { let m; try { m = JSON.parse(ev.data); } catch { return; } liveOn(m); };
   ws.onclose = (ev) => {
@@ -5785,7 +5787,7 @@ function liveOn(m) {
     case "chat": chatAdd(m); break;
     case "del": { live.log = live.log.filter((x) => x.mid !== m.mid); document.querySelector(`#chatLog li[data-mid="${m.mid}"]`)?.remove(); break; }
     case "sys": chatSys(m.text, true); break;
-    case "kicked": live.want = null; toast("관리자가 내보냈어요", 2500); if (walk.on) exitWalk(); break;
+    case "kicked": live.want = null; toast(m.until ? "지금은 들어갈 수 없어요. 잠시 뒤에 다시 와 주세요" : "관리자가 내보냈어요", 2500); if (walk.on) exitWalk(); break;
   }
 }
 
