@@ -4345,6 +4345,7 @@ function bindPointer() {
     if (!walk.on || !L || L.id !== e.pointerId) return;
     const k = e.pointerType === "touch" ? 0.0065 : 0.004;
     walk.yaw -= (e.clientX - L.x) * k;
+    if ($("lookHint").classList.contains("show") && (lookSwept += Math.abs(e.clientX - L.x)) > 40) hideLookHint(true); // 한 번 밀어 봤으면 끝
     walk.pitch = THREE.MathUtils.clamp(walk.pitch - (e.clientY - L.y) * k, -1.1, 0.9);
     L.x = e.clientX; L.y = e.clientY;
   });
@@ -4803,6 +4804,7 @@ function enterStore() {
 function exitWalk() {
   if (!walk.on) return;
   walk.on = false;
+  hideLookHint();
   liveStop();
   if (walk.chair) { walk.chair.g.position.x = walk.chair.x; walk.chair.g.position.z = walk.chair.z; walk.chair.g.rotation.y = walk.chair.r; walk.chair = null; }
   walk.sit = null; walk.crouch = false; walk.back = null; walk.jumpY = walk.vy = 0; walk.eye = EYE; updateActBtns();
@@ -4821,7 +4823,21 @@ function exitWalk() {
   });
 }
 
+// 둘러보기 화살표 (처음에만): 화면을 한 번 밀면 사라지고 이 휴대폰엔 다시 안 뜸, 안 밀어도 10초 뒤 사라짐
+var lookHintT = 0, lookSwept = 0;
+function showLookHint() {
+  if (store.get("look-hinted")) return;
+  lookSwept = 0;
+  $("lookHint").classList.add("show");
+  clearTimeout(lookHintT); lookHintT = setTimeout(hideLookHint, 10000);
+}
+function hideLookHint(learned) {
+  clearTimeout(lookHintT);
+  $("lookHint").classList.remove("show");
+  if (learned) store.set("look-hinted", "1");
+}
 function showWalkHint() {
+  showLookHint();
   if (store.get("seat-hint-shown") && !IS_ADMIN) return;
   store.set("seat-hint-shown", "1");
   toast(IS_TOUCH ? "동그라미로 걷고, 화면을 밀어 둘러보세요\n궁금한 곳을 눌러 보세요!" : "W A S D 로 걷고, 마우스로 둘러보세요\n궁금한 곳을 눌러 보세요!", 3600);

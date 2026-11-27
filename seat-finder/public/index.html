@@ -346,6 +346,15 @@
   .sw button { width: 32px; height: 32px; border-radius: 50%; border: 2px solid #e4d8cf; padding: 0; cursor: pointer; font-size: 15px; background: #fff; }
   .sw button.on { border-color: var(--ink); box-shadow: 0 0 0 2px #fff inset; }
   .adminbar #adminChatBtn b { background: var(--empty); color: #fff; border-radius: 8px; padding: 0 5px; font-size: 11px; }
+  /* 처음 들어왔을 때만: 조준점 양옆 흐린 ‹ › (화면을 밀어 둘러보라는 뜻), 한 번 밀면 사라짐 */
+  .lookhint { position: fixed; z-index: 4; left: 50%; top: 50%; width: 0; height: 0; pointer-events: none; opacity: 0; transition: opacity .8s; }
+  .lookhint.show { opacity: 1; }
+  .lookhint i { position: absolute; top: -19px; font: 300 34px/38px sans-serif; font-style: normal; color: rgba(255,255,255,.6); text-shadow: 0 1px 4px rgba(0,0,0,.45); }
+  .lookhint i:first-child { right: 22px; animation: lhL 1.6s ease-in-out infinite; }
+  .lookhint i:last-child { left: 22px; animation: lhR 1.6s ease-in-out infinite; }
+  @keyframes lhL { 0%, 100% { transform: translateX(0); opacity: .9; } 50% { transform: translateX(-9px); opacity: .45; } }
+  @keyframes lhR { 0%, 100% { transform: translateX(0); opacity: .9; } 50% { transform: translateX(9px); opacity: .45; } }
+  body.intro .lookhint, body.entering .lookhint { display: none; }
 </style>
 <script type="importmap">
 { "imports": {
@@ -405,6 +414,7 @@
 
   <div class="walk-ui">
     <div class="reticle"></div>
+    <div class="lookhint" id="lookHint" aria-hidden="true"><i>‹</i><i>›</i></div>
     <div class="aim" id="aim"></div>
     <button type="button" class="mapbtn" id="mapBtn" aria-label="전체 지도 보기"><canvas id="minimap"></canvas><span>전체 지도</span></button>
     <div class="joy" id="joy"><i></i></div>
