@@ -4614,7 +4614,15 @@ const walk = {
   keys: new Set(), joy: { x: 0, y: 0 }, bob: 0, aimId: null, frame: 0, intro: false,
   sit: null, crouch: false, eye: 1.55, jumpY: 0, vy: 0, back: null, // 앉기 / 쪼그려 앉기 / 점프
 };
-const walkFov = () => (camera.aspect < 1 ? 78 : 64);
+// 1인칭 시야: 기준 화면(휴대폰 세로 9:16, 위아래 78°)에서 보이는 범위가 어느 기종에서도 잘리지 않게 (contain)
+//   폭이 좁은 화면 → 살짝 축소(위아래가 조금 더 보임), 넓은 화면(태블릿·폴드·가로) → 기준 범위 + 옆이 더 보임
+const REF_ASPECT = 9 / 16, REF_VFOV = 78;
+const walkFov = () => {
+  const el = document.getElementById("scene");
+  const W = el?.clientWidth || innerWidth, V = Math.min(innerHeight, window.visualViewport?.height || innerHeight, el?.clientHeight || innerHeight);
+  const a = W / Math.max(1, V), t = Math.tan(THREE.MathUtils.degToRad(REF_VFOV) / 2);
+  return THREE.MathUtils.radToDeg(2 * Math.atan(Math.max(t, (t * REF_ASPECT) / a))); // 보이는 높이 기준 세로 시야
+};
 
 // ───────── 골목을 걷는 사람들 (삼거리: 정면 골목 / 왼쪽 골목 / 대각선 창 밖으로 뻗은 골목) ─────────
 const walkers = [];
