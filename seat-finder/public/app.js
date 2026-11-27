@@ -11,6 +11,7 @@ document.addEventListener("dblclick", (e) => e.preventDefault(), { passive: fals
 // ───────── 기본 설정 ─────────
 const POLL_MS = 5000; // 영업시간 중 빈자리 확인 간격
 const IS_ADMIN = location.pathname === "/admin" || decodeURIComponent(location.pathname) === "/관리자";
+if (IS_ADMIN) document.documentElement.classList.add("admin-page"); // 관리자 화면은 휴대폰 가로 모드도 허용
 // 관리자로 한 번이라도 로그인한 기기(사장님 휴대폰)는 손님 화면도 방문 통계에서 뺌
 const IS_STAFF = (() => { try { return localStorage.getItem("seat-staff") === "1" || !!localStorage.getItem("seat-admin-token"); } catch { return false; } })();
 const COLOR = { empty: "#2fa877", busy: "#ee7a62", outline: "#4a3a31", wood: "#b98a63", woodDark: "#8f6447" };
@@ -4616,12 +4617,14 @@ const walk = {
 };
 // 1인칭 시야: 기준 화면(휴대폰 세로 9:16, 위아래 78°)에서 보이는 범위가 어느 기종에서도 잘리지 않게 (contain)
 //   폭이 좁은 화면 → 살짝 축소(위아래가 조금 더 보임), 넓은 화면(태블릿·폴드·가로) → 기준 범위 + 옆이 더 보임
-const REF_ASPECT = 9 / 16, REF_VFOV = 78;
+const REF_ASPECT = 9 / 16, REF_VFOV = 78, MAX_HFOV = 100;
 const walkFov = () => {
   const el = document.getElementById("scene");
   const W = el?.clientWidth || innerWidth, V = Math.min(innerHeight, window.visualViewport?.height || innerHeight, el?.clientHeight || innerHeight);
   const a = W / Math.max(1, V), t = Math.tan(THREE.MathUtils.degToRad(REF_VFOV) / 2);
-  return THREE.MathUtils.radToDeg(2 * Math.atan(Math.max(t, (t * REF_ASPECT) / a))); // 보이는 높이 기준 세로 시야
+  let tv = Math.max(t, (t * REF_ASPECT) / a);
+  if (a > 1) tv = Math.min(tv, Math.tan(THREE.MathUtils.degToRad(MAX_HFOV) / 2) / a); // 가로 화면: 좌우 시야는 100°까지 (사람 눈이 편한 폭, 끝이 늘어나 보이지 않게)
+  return THREE.MathUtils.radToDeg(2 * Math.atan(tv)); // 보이는 높이 기준 세로 시야
 };
 
 // ───────── 골목을 걷는 사람들 (삼거리: 정면 골목 / 왼쪽 골목 / 대각선 창 밖으로 뻗은 골목) ─────────

@@ -363,6 +363,12 @@
   @keyframes lhL { 0%, 100% { transform: translateX(0); opacity: .9; } 50% { transform: translateX(-9px); opacity: .45; } }
   @keyframes lhR { 0%, 100% { transform: translateX(0); opacity: .9; } 50% { transform: translateX(9px); opacity: .45; } }
   body.intro .lookhint, body.entering .lookhint { display: none; }
+  /* 손님 화면 + 휴대폰 가로 모드: 세로로 돌려 달라는 안내로 덮음 (태블릿·관리자 화면은 그대로) */
+  .rotate { display: none; position: fixed; inset: 0; z-index: 200; background: #1d1714; color: #fff; flex-direction: column; align-items: center; justify-content: center; gap: 10px; text-align: center; padding: 20px; }
+  .rotate b { font-size: 18px; } .rotate span { font-size: 13px; color: rgba(255,255,255,.7); }
+  .rotate svg { animation: rot 2.4s ease-in-out infinite; }
+  @keyframes rot { 0%, 30% { transform: rotate(-90deg); } 60%, 100% { transform: rotate(0deg); } }
+  @media (orientation: landscape) and (max-height: 599px) and (pointer: coarse) { html:not(.admin-page) .rotate { display: flex; } }
 </style>
 <script type="importmap">
 { "imports": {
@@ -492,6 +498,10 @@
     </form>
   </div>
 
+  <div class="rotate" id="rotateHint" aria-live="polite">
+    <svg viewBox="0 0 64 64" width="72" height="72" aria-hidden="true"><rect x="20" y="8" width="24" height="44" rx="5" fill="none" stroke="#fff" stroke-width="3"/><circle cx="32" cy="46" r="2.2" fill="#fff"/><path d="M50 22a20 20 0 0 1 2 18" fill="none" stroke="#ffd59a" stroke-width="3" stroke-linecap="round"/><path d="M48 38l4 3 3-4" fill="none" stroke="#ffd59a" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    <b>휴대폰을 세로로 돌려 주세요</b><span>세로 화면에서 매장을 더 편하게 볼 수 있어요</span>
+  </div>
   <div class="toast" id="toast"></div>
 
   <div class="modal" id="login">
