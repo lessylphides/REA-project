@@ -6001,6 +6001,21 @@ $("chatForm").addEventListener("submit", (e) => {
 });
 for (const t of ["pointerdown", "touchstart", "wheel"]) for (const id of ["chat", "emoPop", "liveBtns"]) $(id).addEventListener(t, (e) => e.stopPropagation(), { passive: true });
 
+// 아이폰: 입력칸을 누르면 키보드가 뜨면서 화면 전체가 위로 밀림 → 채팅창을 보이는 영역에 붙이고, 키보드가 닫히면 원위치
+(() => {
+  const vv = window.visualViewport;
+  const fit = () => {
+    const c = $("chat"), ol = $("chatLog");
+    if (!vv) return;
+    const kb = innerHeight - vv.height > 120; // 키보드가 떠 있음
+    c.style.transform = vv.offsetTop ? `translateY(${Math.round(vv.offsetTop)}px)` : "";
+    ol.style.height = kb ? `${Math.max(70, Math.min(210, vv.height - 190))}px` : "";
+  };
+  vv?.addEventListener("resize", fit); vv?.addEventListener("scroll", fit);
+  $("chatIn").addEventListener("focus", () => setTimeout(fit, 300));
+  $("chatIn").addEventListener("blur", () => setTimeout(() => { window.scrollTo(0, 0); document.documentElement.scrollTop = document.body.scrollTop = 0; fit(); }, 60));
+})();
+
 function liveStart() {
   if (!IS_ADMIN) return liveConnect("walk");
   if (live.want === "obs") { live.bossWalk = true; live.last = ""; liveSend({ t: "walk", on: true }); document.body.classList.add("live"); liveCount(); } // 사장님으로 입장
