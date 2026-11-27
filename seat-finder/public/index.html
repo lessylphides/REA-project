@@ -254,6 +254,57 @@
   body.booting .top, body.booting .bottom { visibility: hidden; }
   .nogl { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; text-align: center; color: var(--sub); padding: 24px; }
   @media (min-width: 720px) { .count .n { font-size: 40px; } }
+
+  /* ───── 실시간: 채팅 · 이모지 · 입장 ───── */
+  .livebtns { display: none; position: fixed; z-index: 7; right: 18px; bottom: calc(env(safe-area-inset-bottom) + 108px); flex-direction: column; gap: 10px; }
+  body.walking.live:not(.intro):not(.entering) .livebtns { display: flex; }
+  .livebtns button { width: 52px; height: 52px; border-radius: 50%; border: 2px solid rgba(255,255,255,.8); background: rgba(255,255,255,.35); font-size: 22px; position: relative;
+    box-shadow: 0 4px 16px rgba(0,0,0,.12); backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); cursor: pointer; touch-action: manipulation; padding: 0; }
+  .livebtns b { position: absolute; right: -4px; top: -4px; min-width: 20px; height: 20px; border-radius: 10px; background: var(--empty); color: #fff; font: 800 11px/20px sans-serif; padding: 0 5px; }
+  .livebtns button.new::after { content: ""; position: absolute; left: 2px; top: 2px; width: 10px; height: 10px; border-radius: 50%; background: var(--busy); }
+  .emopop { display: none; position: fixed; z-index: 8; right: 80px; bottom: calc(env(safe-area-inset-bottom) + 160px); background: rgba(255,255,255,.95); border-radius: 18px; padding: 8px;
+    box-shadow: 0 8px 30px rgba(0,0,0,.2); grid-template-columns: repeat(4, 44px); gap: 4px; }
+  .emopop.show { display: grid; }
+  .emopop button { width: 44px; height: 44px; border: 0; border-radius: 12px; background: transparent; font-size: 26px; cursor: pointer; padding: 0; }
+  .emopop button:active { background: #f1e9e2; }
+  .chat { display: none; position: fixed; z-index: 9; left: 12px; right: 12px; top: calc(env(safe-area-inset-top) + 64px); max-width: 420px; margin: 0 auto; max-height: min(46vh, 380px);
+    background: rgba(32,26,23,.78); color: #fff; border-radius: 18px; flex-direction: column; overflow: hidden; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); box-shadow: 0 10px 40px rgba(0,0,0,.3); }
+  .chat.show { display: flex; }
+  .chat header { display: flex; align-items: center; gap: 8px; padding: 10px 12px 6px; font-size: 14px; }
+  .chat header span { color: rgba(255,255,255,.65); font-size: 12px; flex: 1; }
+  .chat header button { border: 0; background: rgba(255,255,255,.15); color: #fff; width: 30px; height: 30px; border-radius: 15px; cursor: pointer; }
+  .chat ol { list-style: none; margin: 0; padding: 4px 12px; overflow-y: auto; flex: 1; min-height: 80px; font-size: 14px; line-height: 1.4; overscroll-behavior: contain; }
+  .chat li { padding: 3px 0; word-break: break-word; }
+  .chat li b { color: #ffd59a; margin-right: 6px; }
+  .chat li.me b { color: #9fe0c4; }
+  .chat li.boss b::after { content: "사장님"; font-size: 10px; background: var(--busy); color: #fff; border-radius: 6px; padding: 1px 5px; margin-left: 4px; vertical-align: 1px; }
+  .chat li.sys { color: rgba(255,255,255,.55); font-size: 12px; }
+  .chat li .mod { margin-left: 6px; border: 0; border-radius: 8px; font-size: 11px; padding: 2px 7px; background: rgba(255,255,255,.18); color: #fff; cursor: pointer; }
+  .chat form { display: flex; gap: 6px; padding: 8px; border-top: 1px solid rgba(255,255,255,.12); }
+  .chat input { flex: 1; min-width: 0; font-size: 16px; padding: 9px 12px; border-radius: 12px; border: 0; outline: none; }
+  .chat form button { border: 0; border-radius: 12px; padding: 0 14px; background: var(--empty); color: #fff; font-weight: 800; font-family: inherit; cursor: pointer; }
+  .modal .lbl { font-size: 13px; color: var(--sub); margin-bottom: -6px; }
+  .modal .namerow { display: flex; gap: 8px; }
+  .modal .namerow input { flex: 1; min-width: 0; }
+  .modal .namerow button { width: 50px; border: 0; border-radius: 12px; background: #f1e9e2; font-size: 22px; cursor: pointer; }
+  .modal button.sub { background: #f1e9e2; color: var(--ink); }
+  .modal button.sub small { display: block; font-weight: 600; font-size: 11px; color: var(--sub); }
+  .modal .note { font-size: 12px; }
+  .modal a.danger { color: #c0533f; font-size: 12px; }
+  .modal .tabs { display: flex; gap: 6px; }
+  .modal .tabs button { flex: 1; background: #f1e9e2; color: var(--sub); padding: 10px; }
+  .modal .tabs button.on { background: var(--ink); color: #fff; }
+  #entry .memberonly, #entry.member .guestonly { display: none; }
+  #entry.member .memberonly { display: block; }
+  #entry.member a.memberonly { display: inline; }
+  #entry .memberonly input { width: 100%; margin: 10px 0; box-sizing: border-box; }
+  #entry .memberonly p { margin: 0; }
+  #lookPrev { align-self: center; background: #f6efe8; border-radius: 16px; width: 120px; height: 150px; }
+  .sw { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .sw span { width: 34px; font-size: 13px; color: var(--sub); font-weight: 700; }
+  .sw button { width: 32px; height: 32px; border-radius: 50%; border: 2px solid #e4d8cf; padding: 0; cursor: pointer; font-size: 15px; background: #fff; }
+  .sw button.on { border-color: var(--ink); box-shadow: 0 0 0 2px #fff inset; }
+  .adminbar #adminChatBtn b { background: var(--empty); color: #fff; border-radius: 8px; padding: 0 5px; font-size: 11px; }
 </style>
 <script type="importmap">
 { "imports": {
@@ -305,6 +356,7 @@
       <button type="button" id="boardEditBtn">배치 편집</button>
       <button type="button" id="view3dBtn">3D 보기</button>
       <button type="button" class="warn" id="resetBtn">전체 비우기</button>
+      <button type="button" id="adminChatBtn">채팅 <b id="adminLiveN">0</b></button>
       <button type="button" id="logoutBtn">나가기</button>
     </div>
   </footer>
@@ -323,6 +375,62 @@
       <span class="introname"><strong id="introName">DIVE HIDE AWAY</strong><em id="introOpen"></em></span>
       <button type="button" class="walkbtn" id="enterBtn">입장하기</button>
     </div>
+  </div>
+
+  <!-- 실시간: 채팅 · 이모지 -->
+  <div class="livebtns" id="liveBtns">
+    <button type="button" id="emoBtn" aria-label="감정 표현">😀</button>
+    <button type="button" id="chatBtn" aria-label="채팅"><span>💬</span><b id="liveN">1</b></button>
+  </div>
+  <div class="emopop" id="emoPop"></div>
+  <section class="chat" id="chat" aria-label="채팅">
+    <header><b>채팅</b><span id="chatWho">지금 매장 안 1명</span><button type="button" id="chatClose" aria-label="닫기">✕</button></header>
+    <ol id="chatLog"></ol>
+    <form id="chatForm" autocomplete="off"><input id="chatIn" maxlength="120" placeholder="메시지 보내기" enterkeyhint="send" /><button type="submit">보내기</button></form>
+  </section>
+
+  <!-- 입장: 게스트 / 회원 -->
+  <div class="modal" id="entry">
+    <form id="entryForm">
+      <h2>입장하기</h2>
+      <div class="guestonly">
+        <label class="lbl" for="entryName">매장에서 보일 내 이름</label>
+        <div class="namerow"><input id="entryName" maxlength="10" autocomplete="off" /><button type="button" id="entryDice" aria-label="다른 이름">🎲</button></div>
+      </div>
+      <div class="memberonly"><p id="entryMember"></p>
+        <label class="lbl" for="entryMName">이름</label><input id="entryMName" maxlength="10" autocomplete="off" />
+        <button type="button" class="sub" id="entryLook">캐릭터 꾸미기</button></div>
+      <div class="err" id="entryErr"></div>
+      <button type="submit" id="entryGo">게스트로 입장</button>
+      <button type="button" class="sub guestonly" id="entryAcct">로그인 · 회원가입 <small>캐릭터를 꾸밀 수 있어요</small></button>
+      <a href="#" class="memberonly" id="entryOut">로그아웃</a>
+      <a href="#" id="entryCancel">취소</a>
+    </form>
+  </div>
+  <div class="modal" id="acct">
+    <form id="acctForm">
+      <div class="tabs"><button type="button" id="tabIn" class="on">로그인</button><button type="button" id="tabUp">회원가입</button></div>
+      <input type="email" id="acctEmail" autocomplete="email" placeholder="이메일" required />
+      <input type="password" id="acctPw" autocomplete="current-password" placeholder="비밀번호 (6자 이상)" minlength="6" required />
+      <p class="note">이메일은 로그인에만 쓰고, 비밀번호는 알아볼 수 없게 바꿔서 저장해요.</p>
+      <div class="err" id="acctErr"></div>
+      <button type="submit" id="acctGo">로그인</button>
+      <a href="#" id="acctCancel">돌아가기</a>
+    </form>
+  </div>
+  <div class="modal" id="lookEd">
+    <form id="lookForm">
+      <h2>캐릭터 꾸미기</h2>
+      <canvas id="lookPrev" width="160" height="200"></canvas>
+      <div class="sw" id="swB" data-k="b"><span>옷</span></div>
+      <div class="sw" id="swH" data-k="h"><span>머리</span></div>
+      <div class="sw" id="swS" data-k="s"><span>피부</span></div>
+      <div class="sw" id="swA" data-k="a"><span>모자</span></div>
+      <div class="err" id="lookErr"></div>
+      <button type="submit">저장</button>
+      <a href="#" id="lookCancel">취소</a>
+      <a href="#" class="danger" id="acctDelete">회원 탈퇴</a>
+    </form>
   </div>
 
   <div class="toast" id="toast"></div>

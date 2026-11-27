@@ -4109,6 +4109,7 @@ $("loginForm").addEventListener("submit", async (e) => {
     if (!IS_ADMIN) { location.href = "/admin"; return; } // 환풍기로 들어온 경우: 관리자 화면으로
     $("login").classList.remove("show");
     document.body.classList.add("admin");
+    liveAdminStart();
     loadBoard().then(() => buildBoard(true));
     loadStats();
     $("pw").value = "";
@@ -4758,7 +4759,7 @@ function enterWalk() {
   document.body.classList.add("walking");
   if (IS_ADMIN) $("logoutBtn").textContent = "돌아가기";
   flyTo(new THREE.Vector3(walk.pos.x, EYE, walk.pos.z), eulerQuat(walk.pitch, walk.yaw), walkFov(), 1.6,
-    () => { walk.on = true; showWalkHint(); },
+    () => { walk.on = true; showWalkHint(); liveStart(); },
     (t) => { fpGroup.visible = t > 0.82; });
 }
 
@@ -4791,6 +4792,7 @@ function enterStore() {
     flyTo(new THREE.Vector3(walk.pos.x, EYE, walk.pos.z), eulerQuat(walk.pitch, walk.yaw), walkFov(), 1.9, () => {
       walk.intro = false;
       walk.on = true;
+      liveStart();
       document.body.classList.remove("entering");
       closedGreeting();
       showWalkHint();
@@ -4801,6 +4803,7 @@ function enterStore() {
 function exitWalk() {
   if (!walk.on) return;
   walk.on = false;
+  liveStop();
   if (walk.chair) { walk.chair.g.position.x = walk.chair.x; walk.chair.g.position.z = walk.chair.z; walk.chair.g.rotation.y = walk.chair.r; walk.chair = null; }
   walk.sit = null; walk.crouch = false; walk.back = null; walk.jumpY = walk.vy = 0; walk.eye = EYE; updateActBtns();
   if (myLegs) myLegs.g.visible = false;
@@ -5044,7 +5047,7 @@ function drawMinimap() {
 
 function initWalk() {
   if (new URLSearchParams(location.search).has("debug")) { window.__walk = walk; window.__cam = camera; window.__seats = seats; window.__bt = bartenders; window.__fx = { effects, spillMilk, spillIce, freezerPuff, fridges, iceMakers, blindFaces, setBlindLevel, sayProps, served }; } // 확인용
-  $("walkBtn").addEventListener("click", enterWalk);
+  $("walkBtn").addEventListener("click", () => (IS_ADMIN ? enterWalk() : showEntry(enterWalk)));
   $("mapBtn").addEventListener("click", exitWalk);
   $("enterBtn").addEventListener("click", () => {
     if (isLockedNow() && !IS_ADMIN) { // 새벽 4시 ~ 오전 10시: 문이 잠겨 입장 불가
@@ -5052,8 +5055,8 @@ function initWalk() {
       const d = doorPanels[0]?.g; if (d) { let k = 0; const iv = setInterval(() => { d.rotation.y = (k % 2 ? -1 : 1) * 0.03 * (k < 6 ? 1 : 0); if (++k > 6) clearInterval(iv); }, 70); } // 문 덜컹
       return;
     }
-    enterStore();
     screens.forEach((scr) => scr.media[scr.idx]?.play?.().catch(() => {})); // 영상은 사용자 터치 후 재생 가능
+    showEntry(enterStore); // 게스트 이름 / 회원 로그인 후 입장
   });
 
   addEventListener("keydown", (e) => {
@@ -5115,6 +5118,7 @@ const elastic = (t) => (t === 0 || t === 1 ? t : Math.pow(2, -10 * t) * Math.sin
 
 function tick() {
   const dt = Math.min(clock.getDelta(), 0.05);
+  liveTick(dt);
   const time = clock.elapsedTime;
   for (const s of seats.values()) {
     // 손님 등장/퇴장
@@ -5327,7 +5331,7 @@ async function main() {
   renderSummary();
   if (IS_ADMIN) {
     if (token) {
-      try { await api("/api/login"); document.body.classList.add("admin"); loadStats(); await loadBoard(); buildBoard(); }
+      try { await api("/api/login"); document.body.classList.add("admin"); liveAdminStart(); loadStats(); await loadBoard(); buildBoard(); }
       catch (e) { showLogin(e.message); }
     } else showLogin();
   }
@@ -5649,3 +5653,358 @@ function buildTablesHeadless() {
 }
 
 main();
+
+// ═════════ 실시간: 매장 안 다른 손님 캐릭터 · 채팅 · 이모지 · 간단 회원 ═════════
+var LOOK_COL = {
+  b: ["#e8836b", "#6aa3d8", "#7cbf7a", "#f2c14e", "#a98bd6", "#ef9fbf", "#5d6b7a", "#f4efe6"], // 옷
+  h: ["#2b211c", "#5a3a26", "#a8743f", "#e3c27a", "#c9c9c9", "#b5523b"], // 머리
+  s: ["#f6d7bd", "#eac09b", "#c98f68", "#8d5a3b"], // 피부
+  a: ["없음", "🧢", "🎀", "🧶", "👒"], // 모자: 없음 / 캡 / 리본 / 비니 / 벙거지
+};
+var hashStr = (s) => { let h = 7; for (const c of s) h = (h * 31 + c.charCodeAt(0)) >>> 0; return h; };
+var guestLook = (id) => { const h = hashStr(id || "x"); return { b: h % 8, h: (h >> 3) % 6, s: (h >> 6) % 4, a: 0 }; };
+var NAME_A = ["졸린", "신난", "배고픈", "수줍은", "용감한", "느긋한", "반짝이는", "말랑한", "포근한", "씩씩한", "조용한", "행복한"];
+var NAME_B = ["고양이", "강아지", "수달", "판다", "여우", "토끼", "펭귄", "곰", "다람쥐", "부엉이", "고래", "햄스터"];
+var autoName = () => `${NAME_A[Math.floor(Math.random() * NAME_A.length)]} ${NAME_B[Math.floor(Math.random() * NAME_B.length)]}`;
+
+/** 동글동글 캐릭터 한 명 (정면 = 로컬 +z) */
+function makeAvatar(look, name) {
+  const g = new THREE.Group(), L = look || guestLook(name);
+  const body = new THREE.Group(); g.add(body);
+  const legs = new THREE.Group(); legs.position.y = 0.7; body.add(legs); // 엉덩이 높이에서 다리가 매달림
+  const legL = mk(cyl(0.06, 0.055, 0.68, 10), "#3b3a40", [-0.08, -0.34, 0], legs, { outline: 0.008 });
+  const legR = mk(cyl(0.06, 0.055, 0.68, 10), "#3b3a40", [0.08, -0.34, 0], legs, { outline: 0.008 });
+  for (const lg of [legL, legR]) { lg.geometry = lg.geometry.clone(); lg.geometry.translate(0, -0.0, 0); }
+  const cloth = LOOK_COL.b[L.b] || LOOK_COL.b[0], skin = LOOK_COL.s[L.s] || LOOK_COL.s[0], hair = LOOK_COL.h[L.h] || LOOK_COL.h[0];
+  mk(cyl(0.19, 0.23, 0.52, 16), cloth, [0, 0.96, 0], body, { outline: 0.012 });
+  mk(new THREE.SphereGeometry(0.19, 16, 10, 0, Math.PI * 2, 0, Math.PI / 2), cloth, [0, 1.21, 0], body, { outline: 0.01 }); // 어깨
+  for (const sx of [-1, 1]) mk(cyl(0.05, 0.05, 0.42, 8), cloth, [sx * 0.24, 1.0, 0], body, { outline: 0.008 }).rotation.z = sx * 0.12; // 팔
+  const head = new THREE.Group(); head.position.y = 1.47; body.add(head);
+  mk(new THREE.SphereGeometry(0.17, 18, 14), skin, [0, 0, 0], head, { outline: 0.012 });
+  const hairM = mk(new THREE.SphereGeometry(0.178, 18, 10, 0, Math.PI * 2, 0, Math.PI * 0.55), hair, [0, 0.01, -0.012], head, { outline: 0.008 });
+  hairM.rotation.x = -0.25;
+  for (const sx of [-1, 1]) {
+    mk(new THREE.SphereGeometry(0.02, 8, 6), "#1e1a18", [sx * 0.06, 0.0, 0.158], head, { outline: 0, shadow: false });
+    mk(new THREE.CircleGeometry(0.025, 10), new THREE.MeshBasicMaterial({ color: "#f3a0a0", transparent: true, opacity: 0.6 }), [sx * 0.1, -0.045, 0.142], head, { outline: 0, shadow: false });
+  }
+  const hatCol = ["", "#3d6fb0", "#e0607e", "#c9563c", "#d8c49a"][L.a];
+  if (L.a === 1) { mk(new THREE.SphereGeometry(0.185, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2), hatCol, [0, 0.03, 0], head, { outline: 0.008 }); mk(box(0.2, 0.02, 0.14), hatCol, [0, 0.04, 0.2], head, { outline: 0.006 }); }
+  else if (L.a === 2) { for (const sx of [-1, 1]) { const r = mk(new THREE.SphereGeometry(0.06, 10, 8), hatCol, [sx * 0.07, 0.17, -0.02], head, { outline: 0.006 }); r.scale.set(1.2, 0.7, 0.5); } mk(new THREE.SphereGeometry(0.03, 8, 6), hatCol, [0, 0.17, -0.02], head, { outline: 0.004 }); }
+  else if (L.a === 3) { mk(new THREE.SphereGeometry(0.19, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2), hatCol, [0, 0.02, 0], head, { outline: 0.008 }); mk(new THREE.SphereGeometry(0.05, 10, 8), "#f4efe6", [0, 0.21, 0], head, { outline: 0.005 }); }
+  else if (L.a === 4) { mk(cyl(0.14, 0.19, 0.11, 16), hatCol, [0, 0.12, 0], head, { outline: 0.008 }); mk(cyl(0.27, 0.27, 0.015, 20), hatCol, [0, 0.07, 0], head, { outline: 0.006 }); }
+  const tag = textSprite(name, { size: 0.15 });
+  tag.position.y = 1.86; g.add(tag);
+  g.userData = { body, legs, legL, legR, head, tag, walkT: 0 };
+  return g;
+}
+
+var live = { ws: null, want: null, id: null, me: null, peers: new Map(), tries: 0, lastSend: 0, last: "", log: [], unread: false, admin: false, emojis: [] };
+var liveSession = () => store.get("live-session");
+
+function liveConnect(mode) { // mode: "walk" (매장 안 손님) | "obs" (관리자: 보기·관리만)
+  live.want = mode;
+  if (live.ws && live.ws.readyState <= 1) return;
+  let ws;
+  try { ws = new WebSocket(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/api/live`); } catch { return; }
+  live.ws = ws;
+  ws.onopen = () => {
+    live.tries = 0;
+    ws.send(JSON.stringify({ t: "hello", walk: mode === "walk", name: store.get("live-name") || "", session: liveSession() || undefined, admin: mode === "obs" ? token : undefined }));
+  };
+  ws.onmessage = (ev) => { let m; try { m = JSON.parse(ev.data); } catch { return; } liveOn(m); };
+  ws.onclose = (ev) => {
+    if (live.ws !== ws) return;
+    live.ws = null; live.id = null;
+    for (const id of [...live.peers.keys()]) removePeer(id);
+    liveCount();
+    if (ev.code === 4003 || !live.want) return;
+    if (live.tries >= 6) { chatSys("실시간 연결이 안 돼요. 잠시 뒤에 다시 들어와 주세요", true); return; }
+    const wait = Math.min(15000, 1000 * 2 ** live.tries++);
+    setTimeout(() => { if (live.want && !live.ws) liveConnect(live.want); }, wait);
+  };
+}
+function liveDisconnect() {
+  live.want = null;
+  const ws = live.ws; live.ws = null; live.id = null;
+  try { ws?.close(1000); } catch { /* 이미 끊김 */ }
+  for (const id of [...live.peers.keys()]) removePeer(id);
+  liveCount();
+}
+var liveSend = (m) => { if (live.ws?.readyState === 1 && live.id) live.ws.send(JSON.stringify(m)); };
+
+function addPeer(p) {
+  removePeer(p.id);
+  const g = makeAvatar(p.look || guestLook(p.id), p.name);
+  g.position.set(p.x, 0, p.z); g.rotation.y = (p.y || 0) + Math.PI;
+  scene.add(g);
+  live.peers.set(p.id, { ...p, g, tx: p.x, tz: p.z, ty: p.y || 0, ts: p.s || 0, sitK: p.s ? 1 : 0 });
+}
+function removePeer(id) {
+  const p = live.peers.get(id);
+  if (!p) return;
+  scene.remove(p.g);
+  p.g.traverse((o) => { if (o.isSprite) o.material.map?.dispose(); });
+  live.peers.delete(id);
+}
+function liveCount(n) {
+  const c = n ?? (live.peers.size + (live.want === "walk" && live.id ? 1 : 0));
+  $("liveN").textContent = String(Math.max(1, c));
+  $("adminLiveN").textContent = String(live.peers.size);
+  $("chatWho").textContent = live.admin && live.want === "obs" ? `지금 매장 안 ${live.peers.size}명` : `지금 매장 안 ${Math.max(1, c)}명`;
+}
+
+function liveOn(m) {
+  switch (m.t) {
+    case "welcome":
+      live.id = m.id; live.me = m; live.admin = !!m.admin; live.emojis = m.emojis || [];
+      for (const p of m.peers) addPeer(p);
+      buildEmoPop(); liveCount();
+      if (live.want === "walk") store.set("live-name", m.member ? store.get("live-name") : m.name);
+      document.body.classList.toggle("live", live.want === "walk");
+      break;
+    case "join": addPeer(m.p); chatSys(`${m.p.name} 님이 들어왔어요`); liveCount(); break;
+    case "leave": { const p = live.peers.get(m.id); if (p) chatSys(`${p.name} 님이 나갔어요`); removePeer(m.id); liveCount(); break; }
+    case "p": { const p = live.peers.get(m.id); if (p) { p.tx = m.x; p.tz = m.z; p.ty = m.y; p.ts = m.s; } break; }
+    case "name": {
+      const p = live.peers.get(m.id);
+      if (p) { p.name = m.name; addPeer({ ...p, x: p.g.position.x, z: p.g.position.z, y: p.ty, s: p.ts }); }
+      if (m.id === live.id && live.me) live.me.name = m.name;
+      break;
+    }
+    case "look": { const p = live.peers.get(m.id); if (p) { p.look = m.look; addPeer({ ...p, x: p.g.position.x, z: p.g.position.z, y: p.ty, s: p.ts }); } break; }
+    case "emo": {
+      if (m.id === live.id) { toast(m.e, 900); break; }
+      const p = live.peers.get(m.id);
+      if (!p) break;
+      const sp = textSprite(m.e, { size: 0.42, bg: "rgba(255,255,255,.95)" });
+      const base = sp.scale.clone();
+      sp.position.y = 2.15;
+      addEffect(sp, p.g, 3, (e) => { const k = e.t < 0.25 ? elastic(e.t / 0.25) : 1; sp.scale.set(base.x * k, base.y * k, 1); sp.position.y = 2.15 + e.t * 0.05; sp.material.opacity = e.t > e.life - 0.5 ? (e.life - e.t) / 0.5 : 1; });
+      break;
+    }
+    case "chat": chatAdd(m); break;
+    case "del": { live.log = live.log.filter((x) => x.mid !== m.mid); document.querySelector(`#chatLog li[data-mid="${m.mid}"]`)?.remove(); break; }
+    case "sys": chatSys(m.text, true); break;
+    case "kicked": live.want = null; toast("관리자가 내보냈어요", 2500); if (walk.on) exitWalk(); break;
+  }
+}
+
+// 매 프레임: 내 위치 보내기 + 다른 손님 부드럽게 움직이기
+function liveTick(dt) {
+  if (!live) return;
+  if (live.want === "walk" && walk.on && live.id) {
+    const now = performance.now();
+    const s = walk.sit ? (seats.get(walk.sit)?.seatY ?? 0.46) : 0;
+    const key = `${walk.pos.x.toFixed(2)},${walk.pos.z.toFixed(2)},${walk.yaw.toFixed(2)},${s}`;
+    if (now - live.lastSend > 200 && (key !== live.last || now - live.lastSend > 4000)) {
+      live.lastSend = now; live.last = key;
+      liveSend({ t: "pos", x: walk.pos.x, z: walk.pos.z, y: walk.yaw, s });
+    }
+  }
+  const k = 1 - Math.exp(-dt * 9);
+  for (const p of live.peers.values()) {
+    const g = p.g, u = g.userData;
+    const dx = p.tx - g.position.x, dz = p.tz - g.position.z;
+    g.position.x += dx * k; g.position.z += dz * k;
+    let dy = (p.ty + Math.PI) - g.rotation.y; dy = Math.atan2(Math.sin(dy), Math.cos(dy));
+    g.rotation.y += dy * k;
+    p.sitK += ((p.ts ? 1 : 0) - p.sitK) * Math.min(1, dt * 8);
+    const moving = Math.hypot(dx, dz) > 0.02 && !p.ts;
+    u.walkT = moving ? u.walkT + dt * 9 : u.walkT * 0.85;
+    const swing = moving ? Math.sin(u.walkT) * 0.5 : 0;
+    u.legL.rotation.x = swing; u.legR.rotation.x = -swing;
+    u.legs.rotation.x = -p.sitK * Math.PI / 2; // 앉으면 다리를 앞으로
+    u.body.position.y = p.sitK * ((p.ts || 0.46) - 0.7) + (moving ? Math.abs(Math.sin(u.walkT)) * 0.03 : 0);
+  }
+}
+
+// ───── 채팅창 ─────
+function chatLine(m) {
+  const li = document.createElement("li");
+  if (m.mid) li.dataset.mid = m.mid;
+  if (m.sys) { li.className = "sys"; li.textContent = m.text; return li; }
+  if (m.id === live.id) li.classList.add("me");
+  if (m.boss) li.classList.add("boss");
+  const b = document.createElement("b"); b.textContent = m.name; li.append(b, document.createTextNode(m.text));
+  if (live.admin && m.id !== live.id) {
+    const del = document.createElement("button"); del.type = "button"; del.className = "mod"; del.textContent = "지우기";
+    del.onclick = () => liveSend({ t: "mod", op: "del", mid: m.mid });
+    const kick = document.createElement("button"); kick.type = "button"; kick.className = "mod"; kick.textContent = "내보내기";
+    kick.onclick = () => { if (confirm(`${m.name} 님을 내보낼까요? (1시간 동안 못 들어와요)`)) { liveSend({ t: "mod", op: "kick", id: m.id }); liveSend({ t: "mod", op: "del", mid: m.mid }); } };
+    li.append(del, kick);
+  }
+  return li;
+}
+function chatPush(m) {
+  live.log.push(m); if (live.log.length > 80) live.log.shift();
+  const ol = $("chatLog"), stick = ol.scrollHeight - ol.scrollTop - ol.clientHeight < 40;
+  ol.append(chatLine(m));
+  while (ol.children.length > 80) ol.firstChild.remove();
+  if (stick || m.id === live.id) ol.scrollTop = ol.scrollHeight;
+  if (!$("chat").classList.contains("show") && !m.sys) $("chatBtn").classList.add("new");
+}
+var chatAdd = (m) => chatPush(m);
+var chatSys = (text, force) => { if (force || $("chat").classList.contains("show")) chatPush({ sys: true, text }); };
+function openChat(on = !$("chat").classList.contains("show")) {
+  $("chat").classList.toggle("show", on);
+  $("emoPop").classList.remove("show");
+  if (on) { $("chatBtn").classList.remove("new"); const ol = $("chatLog"); ol.scrollTop = ol.scrollHeight; }
+}
+function buildEmoPop() {
+  const pop = $("emoPop"); pop.textContent = "";
+  for (const e of live.emojis) {
+    const b = document.createElement("button"); b.type = "button"; b.textContent = e;
+    b.onclick = () => { liveSend({ t: "emo", e }); pop.classList.remove("show"); };
+    pop.append(b);
+  }
+}
+$("chatBtn").addEventListener("click", () => openChat());
+$("adminChatBtn")?.addEventListener("click", () => openChat());
+$("chatClose").addEventListener("click", () => openChat(false));
+$("emoBtn").addEventListener("click", () => { $("chat").classList.remove("show"); $("emoPop").classList.toggle("show"); });
+$("chatForm").addEventListener("submit", (e) => {
+  e.preventDefault();
+  const v = $("chatIn").value.trim();
+  if (!v) return;
+  if (!live.id) { chatSys("연결 중이에요. 잠시 뒤에 다시 보내 주세요", true); return; }
+  liveSend({ t: "chat", text: v }); $("chatIn").value = "";
+});
+for (const t of ["pointerdown", "touchstart", "wheel"]) for (const id of ["chat", "emoPop", "liveBtns"]) $(id).addEventListener(t, (e) => e.stopPropagation(), { passive: true });
+
+function liveStart() { if (!IS_ADMIN) liveConnect("walk"); }
+function liveStop() { if (live.want === "walk") { liveDisconnect(); document.body.classList.remove("live"); openChat(false); $("chatLog").textContent = ""; live.log = []; } }
+function liveAdminStart() { if (!live) return setTimeout(liveAdminStart, 300); if (IS_ADMIN && token) liveConnect("obs"); }
+
+// ───── 입장: 게스트 이름 / 회원 로그인 ─────
+var entryThen = null;
+async function acctApi(op, body) {
+  const r = await fetch(`/api/account/${op}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.error || "잠시 뒤에 다시 시도해 주세요");
+  return j;
+}
+var member = null; // { name, look }
+async function refreshMember() {
+  const s = liveSession();
+  if (!s) { member = null; return; }
+  try { member = await acctApi("me", { session: s }); } catch { member = null; store.set("live-session", null); }
+}
+function renderEntry() {
+  const m = $("entry");
+  m.classList.toggle("member", !!member);
+  $("entryErr").textContent = "";
+  if (member) { $("entryMember").textContent = `${member.name} 님, 반가워요!`; $("entryMName").value = member.name; $("entryGo").textContent = "입장하기"; }
+  else { $("entryName").value = store.get("live-name") || autoName(); $("entryGo").textContent = "게스트로 입장"; }
+}
+async function showEntry(then) {
+  entryThen = then;
+  await refreshMember();
+  renderEntry();
+  $("entry").classList.add("show");
+}
+$("entryDice").addEventListener("click", () => { $("entryName").value = autoName(); });
+$("entryCancel").addEventListener("click", (e) => { e.preventDefault(); $("entry").classList.remove("show"); entryThen = null; });
+$("entryForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const raw = (member ? $("entryMName") : $("entryName")).value.trim();
+  if (!raw || [...raw].length > 10) { $("entryErr").textContent = "이름은 1~10자로 해 주세요"; return; }
+  if (member && raw !== member.name) {
+    try { member = await acctApi("profile", { session: liveSession(), name: raw }); } catch (err) { $("entryErr").textContent = err.message; return; }
+  }
+  if (!member) store.set("live-name", raw);
+  $("entry").classList.remove("show");
+  const fn = entryThen; entryThen = null; fn?.();
+});
+$("entryOut").addEventListener("click", async (e) => {
+  e.preventDefault();
+  const s = liveSession();
+  store.set("live-session", null); member = null;
+  if (s) acctApi("logout", { session: s }).catch(() => {});
+  renderEntry();
+});
+var acctMode = "signin";
+function setAcctMode(mo) {
+  acctMode = mo;
+  $("tabIn").classList.toggle("on", mo === "signin"); $("tabUp").classList.toggle("on", mo === "signup");
+  $("acctGo").textContent = mo === "signin" ? "로그인" : "가입하기";
+  $("acctPw").autocomplete = mo === "signin" ? "current-password" : "new-password";
+  $("acctErr").textContent = "";
+}
+$("tabIn").addEventListener("click", () => setAcctMode("signin"));
+$("tabUp").addEventListener("click", () => setAcctMode("signup"));
+$("entryAcct").addEventListener("click", () => { setAcctMode("signin"); $("entry").classList.remove("show"); $("acct").classList.add("show"); });
+$("acctCancel").addEventListener("click", (e) => { e.preventDefault(); $("acct").classList.remove("show"); $("entry").classList.add("show"); });
+$("acctForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  $("acctGo").disabled = true;
+  try {
+    const name = cleanLocalName($("entryName").value) || autoName();
+    const r = await acctApi(acctMode, { email: $("acctEmail").value, pw: $("acctPw").value, name, look: guestLook(name) });
+    store.set("live-session", r.session);
+    member = { name: r.name, look: r.look };
+    $("acctPw").value = "";
+    $("acct").classList.remove("show");
+    renderEntry(); $("entry").classList.add("show");
+    if (acctMode === "signup") openLookEd();
+  } catch (err) { $("acctErr").textContent = err.message; }
+  $("acctGo").disabled = false;
+});
+var cleanLocalName = (v) => { const s = String(v || "").trim(); return s && [...s].length <= 10 ? s : ""; };
+
+// ───── 캐릭터 꾸미기 (회원) ─────
+var lookDraft = null;
+function drawLookPrev() {
+  const c = $("lookPrev"), g = c.getContext("2d"), L = lookDraft;
+  g.clearRect(0, 0, c.width, c.height);
+  const cloth = LOOK_COL.b[L.b], skin = LOOK_COL.s[L.s], hair = LOOK_COL.h[L.h];
+  g.lineWidth = 4; g.strokeStyle = "#3b2f2a";
+  const shape = (fill, f) => { g.fillStyle = fill; g.beginPath(); f(); g.fill(); g.stroke(); };
+  shape("#3b3a40", () => { g.roundRect(62, 140, 14, 46, 6); g.roundRect(84, 140, 14, 46, 6); });
+  shape(cloth, () => g.roundRect(48, 92, 64, 58, 22));
+  shape(skin, () => g.arc(80, 70, 32, 0, Math.PI * 2));
+  shape(hair, () => { g.arc(80, 66, 33, Math.PI * 1.02, Math.PI * 1.98); g.closePath(); });
+  g.fillStyle = "#1e1a18"; for (const x of [69, 91]) { g.beginPath(); g.arc(x, 74, 3.5, 0, Math.PI * 2); g.fill(); }
+  const hc = ["", "#3d6fb0", "#e0607e", "#c9563c", "#d8c49a"][L.a];
+  if (L.a === 1) { shape(hc, () => { g.arc(80, 58, 32, Math.PI, 0); g.closePath(); }); shape(hc, () => g.roundRect(80, 52, 40, 8, 4)); }
+  if (L.a === 2) { shape(hc, () => { g.ellipse(66, 38, 12, 8, -0.3, 0, Math.PI * 2); }); shape(hc, () => { g.ellipse(94, 38, 12, 8, 0.3, 0, Math.PI * 2); }); }
+  if (L.a === 3) { shape(hc, () => { g.arc(80, 60, 33, Math.PI, 0); g.closePath(); }); shape("#f4efe6", () => g.arc(80, 26, 8, 0, Math.PI * 2)); }
+  if (L.a === 4) { shape(hc, () => g.roundRect(56, 30, 48, 22, 8)); shape(hc, () => g.roundRect(40, 48, 80, 8, 4)); }
+}
+function buildSwatches() {
+  for (const k of ["b", "h", "s", "a"]) {
+    const row = document.querySelector(`.sw[data-k="${k}"]`);
+    row.querySelectorAll("button").forEach((b) => b.remove());
+    LOOK_COL[k].forEach((v, i) => {
+      const b = document.createElement("button"); b.type = "button";
+      if (k === "a") b.textContent = i ? v : "✕"; else b.style.background = v;
+      b.classList.toggle("on", lookDraft[k] === i);
+      b.onclick = () => { lookDraft[k] = i; buildSwatches(); drawLookPrev(); };
+      row.append(b);
+    });
+  }
+}
+function openLookEd() {
+  if (!member) return;
+  lookDraft = { ...(member.look || { b: 0, h: 0, s: 0, a: 0 }) };
+  $("lookErr").textContent = "";
+  buildSwatches(); drawLookPrev();
+  $("entry").classList.remove("show");
+  $("lookEd").classList.add("show");
+}
+$("entryLook").addEventListener("click", openLookEd);
+$("lookCancel").addEventListener("click", (e) => { e.preventDefault(); $("lookEd").classList.remove("show"); $("entry").classList.add("show"); });
+$("lookForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  try {
+    member = await acctApi("profile", { session: liveSession(), look: lookDraft });
+    liveSend({ t: "look", look: member.look });
+    $("lookEd").classList.remove("show"); renderEntry(); $("entry").classList.add("show");
+  } catch (err) { $("lookErr").textContent = err.message; }
+});
+$("acctDelete").addEventListener("click", async (e) => {
+  e.preventDefault();
+  if (!confirm("회원 탈퇴할까요? 이메일과 캐릭터 정보가 지워져요.")) return;
+  try { await acctApi("delete", { session: liveSession() }); } catch { /* 이미 없음 */ }
+  store.set("live-session", null); member = null;
+  $("lookEd").classList.remove("show"); renderEntry(); $("entry").classList.add("show");
+});

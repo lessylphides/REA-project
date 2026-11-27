@@ -1,5 +1,6 @@
 import { DurableObject } from "cloudflare:workers";
 import { ASSETS } from "./assets.generated";
+import { type Look, cleanLook, cleanName, cleanChat, EMOJIS, randId, hashPw, EMAIL_RE } from "./live";
 
 export interface Env {
   SEATS: DurableObjectNamespace<SeatStore>;
@@ -100,7 +101,208 @@ export class SeatStore extends DurableObject<Env> {
     }
     return out;
   }
+
+  // ───────── 실시간 접속: 매장 안 손님 캐릭터 · 채팅 (채팅은 저장하지 않고 지금 접속한 사람에게만 전달) ─────────
+  /** 웹소켓 연결 받기 (Worker 가 /api/live 요청을 그대로 넘겨줌) */
+  async fetch(req: Request): Promise<Response> {
+    if (req.headers.get("upgrade") !== "websocket") return new Response("websocket only", { status: 426 });
+    const ip = req.headers.get("cf-connecting-ip") || "unknown";
+    const ban = await this.ctx.storage.get<number>(`ban:${ip}`);
+    if (ban && ban > Date.now()) return new Response("banned", { status: 403 });
+    if (this.ctx.getWebSockets().length >= LIVE_MAX) return new Response("full", { status: 503 });
+    const pair = new WebSocketPair();
+    const [client, server] = Object.values(pair);
+    this.ctx.acceptWebSocket(server);
+    server.serializeAttachment({ id: "", ip, name: "", look: null, member: null, admin: false, walk: false, x: 0, z: 0, y: 0, s: 0, pt: 0, ct: [], et: 0, mute: 0 } satisfies LiveAtt);
+    return new Response(null, { status: 101, webSocket: client });
+  }
+
+  private att(ws: WebSocket) { return ws.deserializeAttachment() as LiveAtt; }
+  private peerOf(a: LiveAtt) { return { id: a.id, name: a.name, look: a.look, x: a.x, z: a.z, y: a.y, s: a.s, boss: a.admin }; }
+  private send(ws: WebSocket, m: unknown) { try { ws.send(JSON.stringify(m)); } catch { /* 끊긴 연결 */ } }
+  private cast(m: unknown, except?: WebSocket, walkersOnly = false) {
+    const raw = JSON.stringify(m);
+    for (const w of this.ctx.getWebSockets()) {
+      if (w === except) continue;
+      if (walkersOnly && !this.att(w).walk && !this.att(w).admin) continue;
+      try { w.send(raw); } catch { /* 끊긴 연결 */ }
+    }
+  }
+  private online() { return this.ctx.getWebSockets().filter((w) => { const a = this.att(w); return a.id && a.walk; }).length; }
+
+  async webSocketMessage(ws: WebSocket, raw: string | ArrayBuffer) {
+    if (typeof raw !== "string" || raw.length > 800) return;
+    let m: Record<string, unknown>;
+    try { m = JSON.parse(raw); } catch { return; }
+    const a = this.att(ws), now = Date.now();
+    const save = () => ws.serializeAttachment(a);
+
+    if (m.t === "hello") { // 첫 인사: 이름·모양 정하고 지금 매장 안 사람들 받기
+      if (a.id) return;
+      a.id = randId(6);
+      a.walk = m.walk === true;
+      const tok = typeof m.admin === "string" ? m.admin : "";
+      a.admin = !!this.env.ADMIN_TOKEN && tok.length > 0 && timingSafe(tok, this.env.ADMIN_TOKEN);
+      const user = typeof m.session === "string" ? await this.userBySession(m.session) : null;
+      if (user) { a.member = user.email; a.name = user.name; a.look = user.look; }
+      else { a.name = cleanName(m.name) ?? `손님${Math.floor(100 + Math.random() * 900)}`; }
+      if (a.admin && !a.walk) a.name = "사장님";
+      save();
+      const peers = this.ctx.getWebSockets().filter((w) => w !== ws).map((w) => this.att(w)).filter((p) => p.id && p.walk).map((p) => this.peerOf(p));
+      this.send(ws, { t: "welcome", id: a.id, name: a.name, look: a.look, member: !!a.member, admin: a.admin, peers, emojis: EMOJIS });
+      if (a.walk) this.cast({ t: "join", p: this.peerOf(a), n: this.online() }, ws);
+      return;
+    }
+    if (!a.id) return;
+
+    switch (m.t) {
+      case "pos": { // 내 위치 (초당 5번까지)
+        if (!a.walk || now - a.pt < 150) return;
+        const num = (v: unknown, lo: number, hi: number) => (typeof v === "number" && Number.isFinite(v) ? Math.min(hi, Math.max(lo, Math.round(v * 100) / 100)) : 0);
+        a.x = num(m.x, -30, 40); a.z = num(m.z, -30, 40); a.y = num(m.y, -10, 10); a.s = num(m.s, 0, 1.5); a.pt = now;
+        save();
+        this.cast({ t: "p", id: a.id, x: a.x, z: a.z, y: a.y, s: a.s }, ws);
+        return;
+      }
+      case "chat": {
+        if (a.mute > now) return this.send(ws, { t: "sys", text: `잠시 뒤에 다시 보낼 수 있어요 (${Math.ceil((a.mute - now) / 1000)}초)` });
+        const text = cleanChat(m.text);
+        if (!text) return;
+        a.ct = a.ct.filter((t) => now - t < 10000);
+        if (a.ct.length && now - a.ct[a.ct.length - 1] < 800) return this.send(ws, { t: "sys", text: "조금 천천히 보내 주세요" });
+        a.ct.push(now);
+        if (a.ct.length > 5) { a.mute = now + 30000; a.ct = []; save(); return this.send(ws, { t: "sys", text: "너무 빨리 보내서 30초 동안 채팅이 멈춰요" }); }
+        save();
+        this.cast({ t: "chat", mid: randId(6), id: a.id, name: a.name, boss: a.admin, text, ts: now }, undefined, true);
+        return;
+      }
+      case "emo": { // 감정 이모지 말풍선
+        const e = typeof m.e === "string" && EMOJIS.includes(m.e) ? m.e : null;
+        if (!e || !a.walk || now - a.et < 700) return;
+        a.et = now; save();
+        this.cast({ t: "emo", id: a.id, e });
+        return;
+      }
+      case "name": {
+        const name = cleanName(m.name);
+        if (!name) return this.send(ws, { t: "sys", text: "그 이름은 쓸 수 없어요 (1~10자, 욕설 금지)" });
+        if (a.admin && !a.walk) return;
+        a.name = name; save();
+        if (a.member) await this.updateUser(a.member, { name });
+        this.cast({ t: "name", id: a.id, name });
+        return;
+      }
+      case "look": { // 캐릭터 꾸미기 (회원만)
+        const look = cleanLook(m.look);
+        if (!look || !a.member) return;
+        a.look = look; save();
+        await this.updateUser(a.member, { look });
+        this.cast({ t: "look", id: a.id, look });
+        return;
+      }
+      case "mod": { // 관리자: 글 지우기 · 내보내기
+        if (!a.admin) return;
+        if (m.op === "del" && typeof m.mid === "string" && m.mid.length < 20) return this.cast({ t: "del", mid: m.mid });
+        if (m.op === "kick" && typeof m.id === "string") {
+          for (const w of this.ctx.getWebSockets()) {
+            const p = this.att(w);
+            if (p.id !== m.id || p.admin) continue;
+            await this.ctx.storage.put(`ban:${p.ip}`, now + BAN_MS);
+            this.send(w, { t: "kicked" });
+            try { w.close(4003, "kicked"); } catch { /* 이미 끊김 */ }
+            this.gone(w, p);
+          }
+        }
+        return;
+      }
+    }
+  }
+
+  private gone(ws: WebSocket, a = this.att(ws)) {
+    if (!a.id || a.left) return;
+    a.left = true; try { ws.serializeAttachment(a); } catch { /* 닫힌 연결 */ }
+    if (a.walk) this.cast({ t: "leave", id: a.id, n: this.online() }, ws);
+  }
+  async webSocketClose(ws: WebSocket) { this.gone(ws); }
+  async webSocketError(ws: WebSocket) { this.gone(ws); }
+
+  // ───────── 간단 회원가입 (이메일 + 비밀번호). 비밀번호는 PBKDF2 로 바꿔서만 저장 ─────────
+  private async userBySession(token: string) {
+    if (!/^[A-Za-z0-9_-]{20,64}$/.test(token)) return null;
+    const s = await this.ctx.storage.get<{ email: string; exp: number }>(`s:${token}`);
+    if (!s || s.exp < Date.now()) return null;
+    const u = await this.ctx.storage.get<User>(`u:${s.email}`);
+    return u ? { email: s.email, name: u.name, look: u.look } : null;
+  }
+  private async updateUser(email: string, patch: Partial<Pick<User, "name" | "look">>) {
+    const u = await this.ctx.storage.get<User>(`u:${email}`);
+    if (u) await this.ctx.storage.put(`u:${email}`, { ...u, ...patch });
+  }
+  private async newSession(email: string) {
+    const token = randId(24);
+    await this.ctx.storage.put(`s:${token}`, { email, exp: Date.now() + SESSION_MS });
+    return token;
+  }
+  /** 가입·로그인 시도 제한 (IP 하나당 15분에 20번) */
+  private async accountGate(ip: string) {
+    const key = `af:${ip}`, now = Date.now();
+    let r = (await this.ctx.storage.get<{ n: number; t: number }>(key)) ?? { n: 0, t: now };
+    if (now - r.t > LOGIN_WINDOW_MS) r = { n: 0, t: now };
+    r.n++; await this.ctx.storage.put(key, r);
+    return r.n > 20;
+  }
+  async account(op: string, b: Record<string, unknown>, ip: string): Promise<{ status: number; text: string }> {
+    const res = (status: number, body: unknown) => ({ status, text: JSON.stringify(body) });
+    const err = (status: number, error: string) => res(status, { error });
+    if (op === "signup" || op === "signin") {
+      if (await this.accountGate(ip)) return err(429, "너무 많이 시도했어요. 15분 뒤에 다시 해 주세요");
+      const email = typeof b.email === "string" ? b.email.trim().toLowerCase() : "";
+      const pw = typeof b.pw === "string" ? b.pw : "";
+      if (!EMAIL_RE.test(email)) return err(400, "이메일 주소를 확인해 주세요");
+      if (pw.length < 6 || pw.length > 72) return err(400, "비밀번호는 6자 이상으로 해 주세요");
+      const key = `u:${email}`;
+      const u = await this.ctx.storage.get<User>(key);
+      if (op === "signup") {
+        if (u) return err(409, "이미 가입한 이메일이에요. 로그인해 주세요");
+        const name = cleanName(b.name) ?? `손님${Math.floor(100 + Math.random() * 900)}`;
+        const look = cleanLook(b.look) ?? { b: 0, h: 0, s: 0, a: 0 };
+        await this.ctx.storage.put(key, { ...(await hashPw(pw)), name, look, at: Date.now() } satisfies User);
+        return res(200, { session: await this.newSession(email), name, look });
+      }
+      if (!u || (await hashPw(pw, u.salt)).hash !== u.hash) return err(401, "이메일이나 비밀번호가 맞지 않아요");
+      return res(200, { session: await this.newSession(email), name: u.name, look: u.look });
+    }
+    const token = typeof b.session === "string" ? b.session : "";
+    const me = await this.userBySession(token);
+    if (op === "logout") { if (me) await this.ctx.storage.delete(`s:${token}`); return res(200, { ok: true }); }
+    if (!me) return err(401, "다시 로그인해 주세요");
+    if (op === "me") return res(200, { name: me.name, look: me.look });
+    if (op === "profile") { // 이름·캐릭터 저장
+      const patch: Partial<Pick<User, "name" | "look">> = {};
+      if (b.name !== undefined) { const n = cleanName(b.name); if (!n) return err(400, "그 이름은 쓸 수 없어요 (1~10자, 욕설 금지)"); patch.name = n; }
+      if (b.look !== undefined) { const l = cleanLook(b.look); if (!l) return err(400, "bad look"); patch.look = l; }
+      await this.updateUser(me.email, patch);
+      return res(200, { name: patch.name ?? me.name, look: patch.look ?? me.look });
+    }
+    if (op === "delete") { // 탈퇴: 계정 정보 지우기
+      await this.ctx.storage.delete([`u:${me.email}`, `s:${token}`]);
+      return res(200, { ok: true });
+    }
+    return err(404, "not found");
+  }
 }
+
+type LiveAtt = { id: string; ip: string; name: string; look: Look | null; member: string | null; admin: boolean; walk: boolean; x: number; z: number; y: number; s: number; pt: number; ct: number[]; et: number; mute: number; left?: boolean };
+type User = { salt: string; hash: string; name: string; look: Look; at: number };
+const LIVE_MAX = 60; // 동시에 붙을 수 있는 사람 수
+const BAN_MS = 60 * 60e3; // 내보낸 손님은 1시간 동안 못 들어옴
+const SESSION_MS = 180 * 86400e3; // 로그인 유지 180일
+const timingSafe = (x: string, y: string) => {
+  const ea = new TextEncoder().encode(x), eb = new TextEncoder().encode(y);
+  let d = ea.length ^ eb.length;
+  for (let i = 0; i < Math.max(ea.length, eb.length); i++) d |= (ea[i] ?? 0) ^ (eb[i] ?? 0);
+  return d === 0;
+};
 
 const MAX_VISITS_PER_DAY = 3000;
 /** 방문 통계는 이 날짜(한국시간) 0시부터 셈 — 개발·테스트 중 방문은 제외 */
@@ -141,7 +343,7 @@ function serveAsset(req: Request, path: string): Response {
   if (!f || (req.method !== "GET" && req.method !== "HEAD")) return new Response("Not found", { status: 404 });
   const headers: Record<string, string> = {
     ...SEC_HEADERS,
-    ...(f.type.startsWith("text/html") ? { "content-security-policy": CSP, "x-frame-options": "DENY" } : {}),
+    ...(f.type.startsWith("text/html") ? { "content-security-policy": CSP.replace("connect-src 'self'", `connect-src 'self' wss://${new URL(req.url).host}`), "x-frame-options": "DENY" } : {}),
     "content-type": f.type,
     etag: f.etag,
     // 화면 파일은 매번 확인(수정 즉시 반영), three.js 라이브러리는 오래 캐시
@@ -197,6 +399,23 @@ export default {
       if (!sid || ms === null) return json({ error: "bad visit" }, 400);
       await store.recordVisit(kstDay(), sid, ms, ad);
       return new Response(null, { status: 204 });
+    }
+
+    // 실시간 접속 (웹소켓) → 매장 객체로 그대로 넘김
+    if (url.pathname === "/api/live") {
+      const origin = req.headers.get("origin");
+      if (origin && new URL(origin).host !== url.host) return new Response("bad origin", { status: 403 });
+      return store.fetch(req);
+    }
+
+    // 손님 회원가입·로그인 (이메일 + 비밀번호)
+    const acc = url.pathname.match(/^\/api\/account\/(signup|signin|me|profile|logout|delete)$/);
+    if (acc) {
+      if (req.method !== "POST") return json({ error: "method" }, 405);
+      if (Number(req.headers.get("content-length") || 0) > 2048) return json({ error: "too large" }, 413);
+      const b = ((await req.json().catch(() => null)) ?? {}) as Record<string, unknown>;
+      const r = await store.account(acc[1], b, req.headers.get("cf-connecting-ip") || "unknown");
+      return new Response(r.text, { status: r.status, headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", ...SEC_HEADERS } });
     }
 
     if (url.pathname.startsWith("/api/")) {
