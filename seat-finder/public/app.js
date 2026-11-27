@@ -2831,6 +2831,33 @@ function buildInteriorProp(p, g) {
       g.userData.hit = [w, h, 0.2, h / 2]; g.userData.sayY = Math.min(h + 0.2, 1.75);
       return true;
     }
+    case "sconce": { // 벽걸이 나무 거울 + 받침 위 캔들 (위가 둥근 짙은 원목판, 타원 거울, 아래 둥근 받침대). 로컬 +z = 방 쪽
+      const y0 = p.y ?? 1.25, wood = "#4a2a1c", woodL = "#5c3524", W = 0.17, T = 0.016;
+      const sh = new THREE.Shape(); // 판: 아래 직선 → 위는 어깨가 살짝 들어간 둥근 아치
+      sh.moveTo(-W / 2, 0); sh.lineTo(W / 2, 0); sh.lineTo(W / 2, 0.24);
+      sh.quadraticCurveTo(W / 2 + 0.004, 0.262, W / 2 - 0.02, 0.268); sh.bezierCurveTo(0.05, 0.27, 0.045, 0.325, 0, 0.325); sh.bezierCurveTo(-0.045, 0.325, -0.05, 0.27, -W / 2 + 0.02, 0.268); sh.quadraticCurveTo(-W / 2 - 0.004, 0.262, -W / 2, 0.24); sh.closePath(); // 어깨 + 둥근 지붕
+      const board = new THREE.ExtrudeGeometry(sh, { depth: T, bevelEnabled: true, bevelThickness: 0.004, bevelSize: 0.004, bevelSegments: 2, curveSegments: 14 });
+      mk(board, wood, [0, y0, 0.002], g, { outline: 0.006 });
+      const ov = new THREE.Shape(); ov.absellipse(0, 0, 0.046, 0.078, 0, Math.PI * 2, false, 0);
+      const rim = new THREE.Shape(); rim.absellipse(0, 0, 0.056, 0.088, 0, Math.PI * 2, false, 0); rim.holes.push(new THREE.Path().absellipse(0, 0, 0.046, 0.078, 0, Math.PI * 2, true, 0));
+      mk(new THREE.ExtrudeGeometry(rim, { depth: 0.006, bevelEnabled: false, curveSegments: 20 }), woodL, [0, y0 + 0.165, T + 0.006], g, { outline: 0, shadow: false }); // 거울 테두리
+      mk(new THREE.ShapeGeometry(ov, 20), new THREE.MeshBasicMaterial({ color: "#7f8a86" }), [0, y0 + 0.165, T + 0.008], g, { outline: 0, shadow: false }); // 거울 (은은하게 비침)
+      mk(new THREE.ShapeGeometry(new THREE.Shape().absellipse(-0.012, 0.02, 0.012, 0.04, 0, Math.PI * 2, false, 0), 10), new THREE.MeshBasicMaterial({ color: "#d8dfdc", transparent: true, opacity: 0.35 }), [0, y0 + 0.165, T + 0.009], g, { outline: 0, shadow: false }); // 반짝임
+      // 받침: 앞이 둥근 선반 + 아래 반달 받침대
+      const sf = new THREE.Shape(); sf.moveTo(-0.11, 0); sf.lineTo(0.11, 0); sf.quadraticCurveTo(0.12, 0.06, 0.07, 0.085); sf.quadraticCurveTo(0, 0.1, -0.07, 0.085); sf.quadraticCurveTo(-0.12, 0.06, -0.11, 0); sf.closePath();
+      const shelf = mk(new THREE.ExtrudeGeometry(sf, { depth: 0.018, bevelEnabled: false, curveSegments: 10 }), woodL, [0, y0 - 0.002, 0.004], g, { outline: 0.006 });
+      shelf.rotation.x = Math.PI / 2; shelf.position.y = y0 + 0.016;
+      const br = new THREE.Shape(); br.absarc(0, 0, 0.06, Math.PI, 0, true); br.closePath();
+      mk(new THREE.ExtrudeGeometry(br, { depth: T, bevelEnabled: false, curveSegments: 14 }), wood, [0, y0, 0.002], g, { outline: 0.005 });
+      // 캔들 (LED 티라이트) + 불꽃 + 벽에 번지는 따뜻한 빛
+      mk(cyl(0.03, 0.03, 0.046, 16), "#f4efe4", [0, y0 + 0.039, 0.05], g, { outline: 0.004, shadow: false });
+      mk(new THREE.SphereGeometry(0.012, 10, 8), glowMat("#ffd27a"), [0, y0 + 0.076, 0.05], g, { outline: 0, shadow: false }).scale.set(1, 1.9, 1);
+      addHalo(g, 0, y0 + 0.07, 0.06, 0.55, "#ffbf6a", true);
+      const wash = new THREE.Mesh(new THREE.PlaneGeometry(0.7, 0.8), new THREE.MeshBasicMaterial({ map: poolTex, color: "#ffb35a", transparent: true, opacity: 0.32, depthWrite: false, blending: THREE.AdditiveBlending }));
+      wash.position.set(0, y0 + 0.12, 0.001); g.add(wash); innerGlows.push([wash.material, 0.12, 0.4]);
+      g.userData.hit = [0.25, 0.45, 0.2, y0 + 0.12]; g.userData.sayY = y0 + 0.45;
+      return true;
+    }
     case "winebarrel": { // 나무로 짠 오크통 모양 와인 셀러 (세운 타원 + 받침). 로컬 +z = 방 쪽, 뒤는 벽
       const W = 0.44, Hh = 0.71, D = 0.34, y0 = 0.17, cy = y0 + Hh / 2, wood = "#9a6436", woodD = "#6e4424", T = 0.055; // 바닥부터 꼭대기까지 88cm
       { // 다리: 아래로 벌어진 사다리꼴 판, 바닥 가운데는 아치로 파임, 위는 통 아래에 물림

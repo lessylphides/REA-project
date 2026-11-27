@@ -111,6 +111,7 @@ export default {
     { type: "coatrack", x: 9.25, z: 2.57, rot: 90, say: "외투는 여기에\n걸어 주세요" },
     // 안쪽 벽: 화장실 가는 문 (오른쪽 끝이 입구 오른쪽 기둥 안쪽 선과 일직선)
     { type: "walldoor", x: 8.475, z: 0.0, w: 0.85, text: "WC", say: "화장실은\n이 문으로 나가요" },
+    { type: "sconce", x: 9.2, z: 0.02, y: 1.28, say: "촛불 거울\n화장실 가는 길을 밝혀 줘요" }, // 화장실 문 오른쪽 벽
     { type: "sign", walkOnly: true, x: 9.46, z: 7.8, rot: 90, y: 2.1, text: "WELCOME", say: "WELCOME!\n오늘도 와 주셔서 고마워요" },
   ],
 
