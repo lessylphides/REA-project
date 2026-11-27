@@ -6016,15 +6016,26 @@ function openChat(on = !$("chat").classList.contains("open")) {
   const c = $("chat"), inside = document.body.classList.contains("live");
   c.classList.toggle("open", on);
   c.classList.toggle("show", on || inside);
+  if (!on) c.classList.remove("typing");
+  $("chatExpand").textContent = on ? "﹀" : "︿";
   $("emoPop").classList.remove("show");
   const ol = $("chatLog");
-  if (on) { $("chatBtn").classList.remove("new"); requestAnimationFrame(() => { ol.scrollTop = ol.scrollHeight; }); }
-  else { $("chatIn").blur(); requestAnimationFrame(() => { ol.scrollTop = ol.scrollHeight; }); }
+  if (on) $("chatBtn").classList.remove("new");
+  else $("chatIn").blur();
+  requestAnimationFrame(() => { ol.scrollTop = ol.scrollHeight; });
 }
-$("chat").addEventListener("click", (e) => { if (!$("chat").classList.contains("open")) { e.preventDefault(); openChat(true); $("chatIn").focus(); } });
-addEventListener("pointerdown", (e) => { // 채팅 밖(3D 화면·버튼)을 누르면 다시 작게
+// 작은 채팅을 한 번 누르면: 크기는 그대로, 입력칸만 열림. 커지는 건 ︿ 화살표로만
+$("chat").addEventListener("click", (e) => {
   const c = $("chat");
-  if (c.classList.contains("open") && !c.contains(e.target) && !e.target.closest?.("#adminChatBtn, .modal")) openChat(false);
+  if (e.target.closest("#chatExpand, #chatClose, form, .mod")) return;
+  if (!c.classList.contains("typing") && !c.classList.contains("open")) { c.classList.add("typing"); $("chatIn").focus(); }
+});
+$("chatExpand").addEventListener("click", () => { openChat(!$("chat").classList.contains("open")); if ($("chat").classList.contains("open")) $("chatIn").focus(); });
+addEventListener("pointerdown", (e) => { // 채팅 밖(3D 화면·버튼)을 누르면 입력칸 닫고 작게
+  const c = $("chat");
+  if ((c.classList.contains("open") || c.classList.contains("typing")) && !c.contains(e.target) && !e.target.closest?.("#adminChatBtn, .modal")) {
+    if (c.classList.contains("open")) openChat(false); else { c.classList.remove("typing"); $("chatIn").blur(); }
+  }
 }, true);
 function buildEmoPop() {
   const pop = $("emoPop"); pop.textContent = "";
@@ -6043,7 +6054,7 @@ $("chatForm").addEventListener("submit", (e) => {
   const v = $("chatIn").value.trim();
   if (!v) return;
   if (!live.id) { chatSys("연결 중이에요. 잠시 뒤에 다시 보내 주세요", true); return; }
-  liveSend({ t: "chat", text: v }); $("chatIn").value = "";
+  liveSend({ t: "chat", text: v }); $("chatIn").value = ""; $("chatIn").focus(); // 보낸 뒤에도 키보드 유지
 });
 for (const t of ["pointerdown", "touchstart", "wheel"]) for (const id of ["chat", "emoPop", "liveBtns"]) $(id).addEventListener(t, (e) => e.stopPropagation(), { passive: true });
 
@@ -6053,12 +6064,12 @@ for (const t of ["pointerdown", "touchstart", "wheel"]) for (const id of ["chat"
   const fit = () => {
     const c = $("chat"), ol = $("chatLog");
     if (!vv) return;
-    const kb = innerHeight - vv.height > 120 && c.classList.contains("open"); // 키보드가 떠 있음
+    const kb = innerHeight - vv.height > 120 && (c.classList.contains("open") || c.classList.contains("typing")); // 키보드가 떠 있음
     if (!kb) { c.style.transform = ""; ol.style.height = ""; return; }
     const B = parseFloat(getComputedStyle(c).bottom) || 0;
     const T = vv.height - 8 - innerHeight + B + vv.offsetTop; // 채팅창 아래 끝을 키보드 바로 위로
     c.style.transform = `translateY(${Math.round(Math.min(0, T))}px)`;
-    ol.style.height = `${Math.max(60, Math.min(210, vv.height - 140))}px`;
+    if (c.classList.contains("open")) ol.style.height = `${Math.max(60, Math.min(210, vv.height - 140))}px`;
   };
   vv?.addEventListener("resize", fit); vv?.addEventListener("scroll", fit);
   $("chatIn").addEventListener("focus", () => setTimeout(fit, 300));
