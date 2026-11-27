@@ -116,7 +116,7 @@ export class SeatStore extends DurableObject<Env> {
   }
 
   private att(ws: WebSocket) { return ws.deserializeAttachment() as LiveAtt; }
-  private peerOf(a: LiveAtt) { return { id: a.id, name: a.name, look: a.look, x: a.x, z: a.z, y: a.y, s: a.s, boss: a.admin }; }
+  private peerOf(a: LiveAtt) { return { id: a.id, name: a.name, look: a.look, x: a.x, z: a.z, y: a.y, s: a.s, c: a.c ?? 0, boss: a.admin }; }
   private send(ws: WebSocket, m: unknown) { try { ws.send(JSON.stringify(m)); } catch { /* 끊긴 연결 */ } }
   private cast(m: unknown, except?: WebSocket, walkersOnly = false) {
     const raw = JSON.stringify(m);
@@ -162,9 +162,15 @@ export class SeatStore extends DurableObject<Env> {
       case "pos": { // 내 위치 (초당 5번까지)
         if (!a.walk || now - a.pt < 150) return;
         const num = (v: unknown, lo: number, hi: number) => (typeof v === "number" && Number.isFinite(v) ? Math.min(hi, Math.max(lo, Math.round(v * 100) / 100)) : 0);
-        a.x = num(m.x, -30, 40); a.z = num(m.z, -30, 40); a.y = num(m.y, -10, 10); a.s = num(m.s, 0, 1.5); a.pt = now;
+        a.x = num(m.x, -30, 40); a.z = num(m.z, -30, 40); a.y = num(m.y, -10, 10); a.s = num(m.s, 0, 1.5); a.c = m.c === 1 ? 1 : 0; a.pt = now;
         save();
-        this.cast({ t: "p", id: a.id, x: a.x, z: a.z, y: a.y, s: a.s }, ws);
+        this.cast({ t: "p", id: a.id, x: a.x, z: a.z, y: a.y, s: a.s, c: a.c }, ws);
+        return;
+      }
+      case "act": { // 점프 등 순간 동작
+        if (!a.walk || m.a !== "jump" || now - (a.jt || 0) < 400) return;
+        a.jt = now; save();
+        this.cast({ t: "act", id: a.id, a: "jump" }, ws);
         return;
       }
       case "chat": {
@@ -295,7 +301,7 @@ export class SeatStore extends DurableObject<Env> {
   }
 }
 
-type LiveAtt = { id: string; ip: string; dev?: string; name: string; look: Look | null; member: string | null; admin: boolean; walk: boolean; x: number; z: number; y: number; s: number; pt: number; ct: number[]; et: number; mute: number; left?: boolean };
+type LiveAtt = { id: string; ip: string; dev?: string; c?: number; jt?: number; name: string; look: Look | null; member: string | null; admin: boolean; walk: boolean; x: number; z: number; y: number; s: number; pt: number; ct: number[]; et: number; mute: number; left?: boolean };
 type User = { salt: string; hash: string; name: string; look: Look; at: number };
 const LIVE_MAX = 60; // 동시에 붙을 수 있는 사람 수
 const BAN_MS = 60 * 60e3; // 내보낸 손님은 1시간 동안 못 들어옴

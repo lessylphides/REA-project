@@ -4981,7 +4981,7 @@ function jump() {
   if (!walk.on || walk.tween) return;
   if (walk.sit) return; // 앉아 있을 땐 점프 안 됨
   if (walk.crouch) { standUp(); return; }
-  if (walk.jumpY === 0) walk.vy = 3.1;
+  if (walk.jumpY === 0) { walk.vy = 3.1; if (live?.want === "walk") liveSend({ t: "act", a: "jump" }); }
 }
 function updateActBtns() {
   const b = $("sitBtn");
@@ -5672,9 +5672,16 @@ function makeAvatar(look, name) {
   const g = new THREE.Group(), L = look || guestLook(name);
   const body = new THREE.Group(); g.add(body);
   const legs = new THREE.Group(); legs.position.y = 0.7; body.add(legs); // 엉덩이 높이에서 다리가 매달림
-  const legL = mk(cyl(0.06, 0.055, 0.68, 10), "#3b3a40", [-0.08, -0.34, 0], legs, { outline: 0.008 });
-  const legR = mk(cyl(0.06, 0.055, 0.68, 10), "#3b3a40", [0.08, -0.34, 0], legs, { outline: 0.008 });
-  for (const lg of [legL, legR]) { lg.geometry = lg.geometry.clone(); lg.geometry.translate(0, -0.0, 0); }
+  const leg = (sx) => { // 허벅지(엉덩이에서) + 정강이(무릎에서) → 앉으면 무릎이 꺾임
+    const thigh = new THREE.Group(); thigh.position.x = sx * 0.08; legs.add(thigh);
+    mk(cyl(0.065, 0.06, 0.36, 10), "#3b3a40", [0, -0.18, 0], thigh, { outline: 0.008 });
+    const knee = new THREE.Group(); knee.position.y = -0.35; thigh.add(knee);
+    mk(cyl(0.058, 0.052, 0.35, 10), "#3b3a40", [0, -0.175, 0], knee, { outline: 0.008 });
+    mk(box(0.1, 0.05, 0.16), "#2a2522", [0, -0.34, 0.03], knee, { outline: 0.006 }); // 신발
+    thigh.userData.knee = knee;
+    return thigh;
+  };
+  const legL = leg(-1), legR = leg(1);
   const cloth = LOOK_COL.b[L.b] || LOOK_COL.b[0], skin = LOOK_COL.s[L.s] || LOOK_COL.s[0], hair = LOOK_COL.h[L.h] || LOOK_COL.h[0];
   mk(cyl(0.19, 0.23, 0.52, 16), cloth, [0, 0.96, 0], body, { outline: 0.012 });
   mk(new THREE.SphereGeometry(0.19, 16, 10, 0, Math.PI * 2, 0, Math.PI / 2), cloth, [0, 1.21, 0], body, { outline: 0.01 }); // 어깨
@@ -5700,6 +5707,7 @@ function makeAvatar(look, name) {
 
 var live = { ws: null, want: null, id: null, me: null, peers: new Map(), tries: 0, lastSend: 0, last: "", log: [], unread: false, admin: false, emojis: [] };
 var liveSession = () => store.get("live-session");
+if (new URLSearchParams(location.search).has("debug")) window.__live = live; // 확인용
 
 function liveConnect(mode) { // mode: "walk" (매장 안 손님) | "obs" (관리자: 보기·관리만)
   live.want = mode;
@@ -5739,7 +5747,7 @@ function addPeer(p) {
   const g = makeAvatar(p.look || guestLook(p.id), p.name);
   g.position.set(p.x, 0, p.z); g.rotation.y = (p.y || 0) + Math.PI;
   scene.add(g);
-  live.peers.set(p.id, { ...p, g, tx: p.x, tz: p.z, ty: p.y || 0, ts: p.s || 0, sitK: p.s ? 1 : 0 });
+  live.peers.set(p.id, { ...p, g, tx: p.x, tz: p.z, ty: p.y || 0, ts: p.s || 0, tc: p.c || 0, sitK: p.s ? 1 : 0, cK: p.c ? 1 : 0, jy: 0, vy: 0 });
 }
 function removePeer(id) {
   const p = live.peers.get(id);
@@ -5766,7 +5774,8 @@ function liveOn(m) {
       break;
     case "join": addPeer(m.p); chatSys(`${m.p.name} 님이 들어왔어요`); liveCount(); break;
     case "leave": { const p = live.peers.get(m.id); if (p) chatSys(`${p.name} 님이 나갔어요`); removePeer(m.id); liveCount(); break; }
-    case "p": { const p = live.peers.get(m.id); if (p) { p.tx = m.x; p.tz = m.z; p.ty = m.y; p.ts = m.s; } break; }
+    case "p": { const p = live.peers.get(m.id); if (p) { p.tx = m.x; p.tz = m.z; p.ty = m.y; p.ts = m.s; p.tc = m.c; } break; }
+    case "act": { const p = live.peers.get(m.id); if (p && m.a === "jump" && !(p.jy > 0)) p.vy = 3.1; break; }
     case "name": {
       const p = live.peers.get(m.id);
       if (p) { p.name = m.name; addPeer({ ...p, x: p.g.position.x, z: p.g.position.z, y: p.ty, s: p.ts }); }
@@ -5797,10 +5806,11 @@ function liveTick(dt) {
   if (live.want === "walk" && walk.on && live.id) {
     const now = performance.now();
     const s = walk.sit ? (seats.get(walk.sit)?.seatY ?? 0.46) : 0;
-    const key = `${walk.pos.x.toFixed(2)},${walk.pos.z.toFixed(2)},${walk.yaw.toFixed(2)},${s}`;
+    const c = walk.crouch ? 1 : 0;
+    const key = `${walk.pos.x.toFixed(2)},${walk.pos.z.toFixed(2)},${walk.yaw.toFixed(2)},${s},${c}`;
     if (now - live.lastSend > 200 && (key !== live.last || now - live.lastSend > 4000)) {
       live.lastSend = now; live.last = key;
-      liveSend({ t: "pos", x: walk.pos.x, z: walk.pos.z, y: walk.yaw, s });
+      liveSend({ t: "pos", x: walk.pos.x, z: walk.pos.z, y: walk.yaw, s, c });
     }
   }
   const k = 1 - Math.exp(-dt * 9);
@@ -5810,13 +5820,20 @@ function liveTick(dt) {
     g.position.x += dx * k; g.position.z += dz * k;
     let dy = (p.ty + Math.PI) - g.rotation.y; dy = Math.atan2(Math.sin(dy), Math.cos(dy));
     g.rotation.y += dy * k;
-    p.sitK += ((p.ts ? 1 : 0) - p.sitK) * Math.min(1, dt * 8);
+    const fk = Math.min(1, dt * 8);
+    p.sitK += ((p.ts ? 1 : 0) - p.sitK) * fk;
+    p.cK = (p.cK || 0) + ((p.tc && !p.ts ? 1 : 0) - (p.cK || 0)) * fk;
+    if (p.vy || p.jy > 0) { p.vy -= 9.8 * dt; p.jy = (p.jy || 0) + p.vy * dt; if (p.jy <= 0) { p.jy = 0; p.vy = 0; } } // 점프
     const moving = Math.hypot(dx, dz) > 0.02 && !p.ts;
     u.walkT = moving ? u.walkT + dt * 9 : u.walkT * 0.85;
-    const swing = moving ? Math.sin(u.walkT) * 0.5 : 0;
-    u.legL.rotation.x = swing; u.legR.rotation.x = -swing;
-    u.legs.rotation.x = -p.sitK * Math.PI / 2; // 앉으면 다리를 앞으로
-    u.body.position.y = p.sitK * ((p.ts || 0.46) - 0.7) + (moving ? Math.abs(Math.sin(u.walkT)) * 0.03 : 0);
+    const swing = moving && !p.jy ? Math.sin(u.walkT) * 0.5 : 0;
+    // 다리: 걷기 흔들기 / 앉기(허벅지 앞으로 90°, 무릎 아래로 90°) / 쪼그리기(허벅지 앞으로, 무릎 뒤로 깊게) / 점프(살짝 오므림)
+    const air = p.jy > 0 ? 0.5 : 0;
+    const hip = -p.sitK * Math.PI / 2 - p.cK * 1.5 - air, kneeA = p.sitK * Math.PI / 2 + p.cK * 2.2 + air * 1.4;
+    u.legL.rotation.x = swing + hip; u.legR.rotation.x = -swing + hip;
+    u.legL.userData.knee.rotation.x = kneeA; u.legR.userData.knee.rotation.x = kneeA;
+    const sitY = (p.ts || 0.46) - 0.7; // 의자 높이에 엉덩이를 맞춤 (바 의자는 서 있을 때와 비슷)
+    u.body.position.y = p.sitK * sitY - p.cK * 0.42 + (p.jy || 0) + (moving ? Math.abs(Math.sin(u.walkT)) * 0.03 : 0);
   }
 }
 
