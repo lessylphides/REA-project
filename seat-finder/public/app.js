@@ -4930,6 +4930,13 @@ function flyTo(pos, quat, fov, dur, onDone, onProgress) {
   };
 }
 
+/** 관리자 매장 안: [← 뒤로가기]를 위쪽 '빈자리' 표시 바로 옆에 같은 높이로 */
+function placeBackBtn() {
+  const r = document.querySelector(".count")?.getBoundingClientRect(), st = document.documentElement.style;
+  if (!r || !r.width) return;
+  st.setProperty("--backTop", `${Math.round(r.top)}px`); st.setProperty("--backLeft", `${Math.round(r.right + 8)}px`); st.setProperty("--backH", `${Math.round(r.height)}px`);
+}
+addEventListener("resize", () => { if (IS_ADMIN && walk.on) placeBackBtn(); });
 function enterWalk() {
   if (walk.on || walk.tween) return;
   const door = LAYOUT.door?.wall === "front" ? LAYOUT.door : null;
@@ -4939,7 +4946,7 @@ function enterWalk() {
   walk.pitch = -0.12;
   controls.enabled = false;
   document.body.classList.add("walking");
-  if (IS_ADMIN) $("logoutBtn").textContent = "← 뒤로가기";
+  if (IS_ADMIN) { $("logoutBtn").textContent = "← 뒤로가기"; placeBackBtn(); setTimeout(placeBackBtn, 400); setTimeout(placeBackBtn, 1800); }
   flyTo(new THREE.Vector3(walk.pos.x, EYE, walk.pos.z), eulerQuat(walk.pitch, walk.yaw), walkFov(), 1.6,
     () => { walk.on = true; showWalkHint(); liveStart(); },
     (t) => { fpGroup.visible = t > 0.82; });
@@ -6224,7 +6231,7 @@ function openChat(on = !$("chat").classList.contains("open")) {
 // 작은 채팅을 한 번 누르면: 크기는 그대로, 입력칸만 열림. 커지는 건 ︿ 화살표로만
 $("chat").addEventListener("click", (e) => {
   const c = $("chat");
-  if (e.target.closest("#chatExpand, #chatClose, form, .mod")) return;
+  if (e.target.closest("#chatExpand, #chatClose, .chatbar, .mod")) return;
   if (!c.classList.contains("typing") && !c.classList.contains("open")) { c.classList.add("typing"); focusChatInput(); }
 });
 $("chatExpand").addEventListener("click", () => { openChat(!$("chat").classList.contains("open")); if ($("chat").classList.contains("open")) focusChatInput(); });
@@ -6246,7 +6253,8 @@ $("chatBtn").addEventListener("click", () => openChat());
 $("adminChatBtn")?.addEventListener("click", () => openChat());
 $("chatClose").addEventListener("click", () => openChat(false));
 $("emoBtn").addEventListener("click", () => { if ($("chat").classList.contains("open")) openChat(false); $("emoPop").classList.toggle("show"); });
-$("chatForm").addEventListener("submit", (e) => {
+$("chatIn").addEventListener("keydown", (e) => { // 엔터(↵)로 보내기 (한글 조합 중엔 무시)
+  if (e.key !== "Enter" || e.isComposing || e.keyCode === 229) return;
   e.preventDefault();
   const v = $("chatIn").value.trim();
   if (!v) return;
