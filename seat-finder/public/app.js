@@ -5906,11 +5906,26 @@ function liveOn(m) {
       if (!p) break;
       const sp = textSprite(m.e, { size: 0.42, bg: "rgba(255,255,255,.95)" });
       const base = sp.scale.clone();
-      sp.position.y = 2.15;
-      addEffect(sp, p.g, 3, (e) => { const k = e.t < 0.25 ? elastic(e.t / 0.25) : 1; sp.scale.set(base.x * k, base.y * k, 1); sp.position.y = 2.15 + e.t * 0.05; sp.material.opacity = e.t > e.life - 0.5 ? (e.life - e.t) / 0.5 : 1; });
+      sp.position.y = 2.25; // 이름표 위
+      peerBubble(p, sp, 3, (e) => { const k = e.t < 0.25 ? elastic(e.t / 0.25) : 1; sp.scale.set(base.x * k, base.y * k, 1); sp.position.y = 2.25 + e.t * 0.05; });
       break;
     }
-    case "chat": chatAdd(m); break;
+    case "chat": {
+      chatAdd(m);
+      const p = live.peers.get(m.id);
+      if (!p) break;
+      const ch = [...m.text], short = ch.length > 14 ? ch.slice(0, 13).join("") + "…" : m.text; // 말풍선은 14자까지
+      const sp = bubbleSprite(short, { size: 0.09 });
+      sp.material.depthTest = true; // 벽 너머로는 안 보이게
+      sp.position.y = 2.02; // 이름표 바로 위 (말풍선 아래 끝 기준)
+      const base = sp.scale.clone();
+      peerBubble(p, sp, 5, (e) => {
+        const d = Math.hypot(camera.position.x - p.g.position.x, camera.position.z - p.g.position.z);
+        const f = Math.min(1.6, Math.max(1, d / 3)) * (e.t < 0.2 ? elastic(e.t / 0.2) : 1); // 멀면 조금 크게 (최대 1.6배)
+        sp.scale.set(base.x * f, base.y * f, 1);
+      });
+      break;
+    }
     case "bosslook": if (live.me) { live.me.look = m.look; live.me.name = m.name; } toast("사장님 캐릭터를 저장했어요", 1400); break;
     case "del": { live.log = live.log.filter((x) => x.mid !== m.mid); document.querySelector(`#chatLog li[data-mid="${m.mid}"]`)?.remove(); break; }
     case "sys": chatSys(m.text, true); break;
@@ -5919,6 +5934,12 @@ function liveOn(m) {
 }
 
 // 매 프레임: 내 위치 보내기 + 다른 손님 부드럽게 움직이기
+/** 손님 머리 위 말풍선·이모지: 한 사람당 하나만 (새로 오면 앞의 것을 바로 지움) */
+function peerBubble(p, sp, life, update) {
+  if (p.bubEf && p.bubEf.t < p.bubEf.life) p.bubEf.t = p.bubEf.life;
+  addEffect(sp, p.g, life, (e) => { update(e); sp.material.opacity = e.t > e.life - 0.5 ? Math.max(0, (e.life - e.t) / 0.5) : 1; });
+  p.bubEf = effects[effects.length - 1];
+}
 function liveTick(dt) {
   if (!live) return;
   if ((live.want === "walk" || live.bossWalk) && walk.on && live.id) {
