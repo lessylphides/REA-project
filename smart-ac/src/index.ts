@@ -7,7 +7,7 @@ import { VaneState, findUpDownScene, fixVane, vaneReady } from './vane';
 import { HumState, HUM_DEFAULT, humDecide, findHumPowerScene } from './hum';
 import { Config, DEFAULT_CONFIG, Env, DesiredAcState, MODE_CODES, FAN_CODES } from './config';
 import * as hej from './hej';
-import { getWeather, Weather } from './weather';
+import { getWeather, getForecast, Weather } from './weather';
 import { decide, scheduleState, nextTransition, Reading, Ctl, Stage, BizOverride, scheduleWithOverride, nextTransitionWithOverride, extendUntil, closeUntil, activeOverride } from './engine';
 import { ICON_192, ICON_512 } from './icons';
 
@@ -117,18 +117,18 @@ interface RunStatus {
 // KV 무료 한도(쓰기 하루 1,000회)를 아끼려고 마지막 상태(status)와 온도 기록(history)을
 // 한 키('state')에 함께 저장한다 → 10분마다 실행해도 쓰기는 1회.
 interface HistoryPoint { t: number; temp: number; hum: number | null; out: number | null; cmd?: string }
-interface RunState { status: RunStatus | null; history: HistoryPoint[]; adapt?: AdaptState | null }
+interface RunState { status: RunStatus | null; history: HistoryPoint[]; adapt?: AdaptState | null; fc?: { ts: number; pts: { t: number; temp: number }[] } | null }
 const HISTORY_MAX = 1008; // 최근 ~7일(10분 간격)
 
 async function loadState(env: Env): Promise<RunState> {
   const s = await env.KV.get('state', 'json') as RunState | null;
-  if (s) return { status: s.status ?? null, history: Array.isArray(s.history) ? s.history : [], adapt: s.adapt ?? null };
+  if (s) return { status: s.status ?? null, history: Array.isArray(s.history) ? s.history : [], adapt: s.adapt ?? null, fc: s.fc ?? null };
   // 이전 버전은 status/history 를 따로 저장했음 → 처음 한 번 읽어서 이어받음
   const [status, history] = await Promise.all([env.KV.get('status', 'json'), env.KV.get('history', 'json')]);
   return { status: status as RunStatus | null, history: Array.isArray(history) ? history as HistoryPoint[] : [] };
 }
 async function saveState(env: Env, st: RunState): Promise<void> {
-  await env.KV.put('state', JSON.stringify({ status: st.status, history: st.history.slice(-HISTORY_MAX), adapt: st.adapt ?? null }));
+  await env.KV.put('state', JSON.stringify({ status: st.status, history: st.history.slice(-HISTORY_MAX), adapt: st.adapt ?? null, fc: st.fc ?? null }));
 }
 /** 값이 바뀌었을 때만 KV 에 쓴다 */
 async function putIfChanged(env: Env, key: string, prev: unknown, next: unknown): Promise<void> {
@@ -272,7 +272,12 @@ async function runOnce(env: Env, opts: { force?: boolean; preview?: boolean; log
     // 영업 목표: 날씨 흐름·매장 열에 맞춰 천천히 조정 (상태는 state 에 함께 저장 → 추가 KV 쓰기 없음)
     let cfgA = cfg;
     if (cfg.adaptAuto !== false) {
-      const ad = computeAdapt(cfg, state.history, weather?.outdoorTemp ?? null, temp, state.adapt, Date.now());
+      // 예보는 1시간에 한 번만 새로 받음 (state 에 함께 저장)
+      if (!state.fc || Date.now() - state.fc.ts > 60 * 60000) {
+        const pts = await getForecast(cfg.lat, cfg.lon, cfg.owmKey || env.OWM_API_KEY);
+        if (pts) state.fc = { ts: Date.now(), pts };
+      }
+      const ad = computeAdapt(cfg, state.history, weather?.outdoorTemp ?? null, temp, state.adapt, Date.now(), state.fc?.pts);
       state.adapt = ad.state; status.adapt = ad.info;
       cfgA = { ...cfg, winterTarget: ad.state.w, summerTarget: ad.state.s };
     }
