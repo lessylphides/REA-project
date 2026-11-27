@@ -22,6 +22,8 @@
     overscroll-behavior: none;
   }
   html, body { touch-action: manipulation; } /* 두 번 톡 확대 막기 */
+  html:has(body.walking) { background: #1d1714; } /* 아이폰 키보드가 페이지를 밀 때 드러나는 바닥: 하얀색 대신 어두운 매장 색 */
+  .chat input { color-scheme: dark; }
   #scene { position: fixed; inset: 0; touch-action: none; }
   #scene canvas { display: block; }
 

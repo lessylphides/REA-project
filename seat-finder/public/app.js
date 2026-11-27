@@ -6071,8 +6071,11 @@ for (const t of ["pointerdown", "touchstart", "wheel"]) for (const id of ["chat"
     c.style.transform = `translateY(${Math.round(Math.min(0, T))}px)`;
     if (c.classList.contains("open")) ol.style.height = `${Math.max(60, Math.min(210, vv.height - 140))}px`;
   };
-  vv?.addEventListener("resize", fit); vv?.addEventListener("scroll", fit);
-  $("chatIn").addEventListener("focus", () => setTimeout(fit, 300));
+  // 아이폰이 페이지 전체를 위로 밀면 바로 원위치 (하얀 바닥이 드러나지 않게) → 채팅창만 키보드 위로
+  const unshift = () => { if (document.activeElement === $("chatIn") && (scrollY || document.documentElement.scrollTop || document.body.scrollTop)) { window.scrollTo(0, 0); document.documentElement.scrollTop = document.body.scrollTop = 0; } fit(); };
+  vv?.addEventListener("resize", unshift); vv?.addEventListener("scroll", unshift);
+  addEventListener("scroll", unshift, { passive: true });
+  $("chatIn").addEventListener("focus", () => { for (const t of [0, 80, 250, 500]) setTimeout(unshift, t); });
   $("chatIn").addEventListener("blur", () => setTimeout(() => { window.scrollTo(0, 0); document.documentElement.scrollTop = document.body.scrollTop = 0; fit(); }, 60));
 })();
 
