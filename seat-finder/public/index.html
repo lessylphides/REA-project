@@ -30,7 +30,7 @@
   html, body { touch-action: manipulation; } /* 두 번 톡 확대 막기 */
   html:has(body.walking) { background: #1d1714; } /* 아이폰 키보드가 페이지를 밀 때 드러나는 바닥: 하얀색 대신 어두운 매장 색 */
   .chat #chatIn { color-scheme: dark; }
-  #scene { position: fixed; inset: 0; touch-action: none; }
+  #scene { position: fixed; left: 0; right: 0; top: 0; height: 100vh; height: 100lvh; touch-action: none; } /* 주소창 뒤까지 매장을 그림 (반투명 주소창 너머로 비쳐 보이게) */
   #scene canvas { display: block; }
 
   .top {

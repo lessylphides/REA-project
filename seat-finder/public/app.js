@@ -32,6 +32,23 @@ try {
 
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(32, 1, 0.05, 200);
+// 3D 화면은 주소창 뒤까지(100lvh) 그려짐 → 실제로 보이는 영역(주소창 위)의 가운데가 시야 중심이 되도록,
+// 보이는 높이 기준의 시야각을 유지하면서 그 아래(주소창 뒤)만 덧붙여 그림
+{
+  const orig = camera.updateProjectionMatrix.bind(camera);
+  camera.updateProjectionMatrix = () => {
+    const el = document.getElementById("scene"), H = el?.clientHeight || innerHeight, W = el?.clientWidth || innerWidth;
+    const V = Math.min(innerHeight, window.visualViewport?.height || innerHeight, H);
+    if (H - V < 2) { camera.view = null; return orig(); }
+    const f0 = camera.fov, a0 = camera.aspect, F = 2 * H - V; // 가상 전체 높이: 가운데가 보이는 영역의 가운데 (V/2)
+    camera.fov = THREE.MathUtils.radToDeg(2 * Math.atan(Math.tan(THREE.MathUtils.degToRad(f0) / 2) * F / V));
+    camera.aspect = W / F;
+    camera.view = { enabled: true, fullWidth: W, fullHeight: F, offsetX: 0, offsetY: H - V, width: W, height: H };
+    orig();
+    camera.fov = f0; camera.aspect = a0;
+  };
+  window.visualViewport?.addEventListener("resize", () => camera.updateProjectionMatrix());
+}
 const R = LAYOUT.room;
 const center = new THREE.Vector3(R.w / 2, 0.4, R.d / 2);
 
