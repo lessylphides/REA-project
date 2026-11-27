@@ -6295,14 +6295,17 @@ $("chatBtn").addEventListener("click", () => openChat());
 $("adminChatBtn")?.addEventListener("click", () => openChat());
 $("chatClose").addEventListener("click", () => openChat(false));
 $("emoBtn").addEventListener("click", () => { if ($("chat").classList.contains("open")) openChat(false); $("emoPop").classList.toggle("show"); });
-$("chatIn").addEventListener("keydown", (e) => { // 엔터(↵)로 보내기 (한글 조합 중엔 무시)
-  if (e.key !== "Enter" || e.isComposing || e.keyCode === 229) return;
-  e.preventDefault();
-  const v = $("chatIn").value.trim();
+function sendChat() {
+  const v = $("chatIn").value.replace(/\n/g, " ").trim();
   if (!v) return;
   if (!live.id) { chatSys("연결 중이에요. 잠시 뒤에 다시 보내 주세요", true); return; }
   liveSend({ t: "chat", text: v }); $("chatIn").value = ""; $("chatIn").focus(); // 보낸 뒤에도 키보드 유지
+}
+$("chatIn").addEventListener("keydown", (e) => { // 엔터(↵)로 보내기 (한글 조합 중엔 무시 — 조합이 끝난 뒤 들어오는 줄바꿈은 아래에서 처리)
+  if (e.key !== "Enter" || e.isComposing || e.keyCode === 229) return;
+  e.preventDefault(); sendChat();
 });
+$("chatIn").addEventListener("input", () => { if ($("chatIn").value.includes("\n")) sendChat(); }); // 줄바꿈이 들어오면 = 보내기
 for (const t of ["pointerdown", "touchstart", "wheel"]) for (const id of ["chat", "emoPop", "liveBtns"]) $(id).addEventListener(t, (e) => e.stopPropagation(), { passive: true });
 
 // 아이폰: 입력칸을 누르면 키보드가 뜨면서 화면 전체가 위로 밀림 → 채팅창을 보이는 영역에 붙이고, 키보드가 닫히면 원위치

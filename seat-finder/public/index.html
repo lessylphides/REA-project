@@ -29,7 +29,7 @@
   }
   html, body { touch-action: manipulation; } /* 두 번 톡 확대 막기 */
   html:has(body.walking) { background: #1d1714; } /* 아이폰 키보드가 페이지를 밀 때 드러나는 바닥: 하얀색 대신 어두운 매장 색 */
-  .chat input { color-scheme: dark; }
+  .chat #chatIn { color-scheme: dark; }
   #scene { position: fixed; inset: 0; touch-action: none; }
   #scene canvas { display: block; }
 
@@ -316,7 +316,7 @@
   .chat.open .chatbar, .chat.typing .chatbar { display: flex; }
   .chat.typing:not(.open) { background: linear-gradient(rgba(20,16,14,.05), rgba(20,16,14,.5)); }
   .chat.typing:not(.open) .chatbar { padding: 6px; border-top: 0; }
-  .chat input { flex: 1; min-width: 0; font-size: 16px; padding: 9px 12px; border-radius: 12px; border: 0; outline: none; }
+  .chat #chatIn { flex: 1; min-width: 0; font-size: 16px; line-height: 22px; font-family: inherit; padding: 9px 12px; height: 40px; box-sizing: border-box; border-radius: 12px; border: 0; outline: none; resize: none; overflow: hidden; white-space: nowrap; display: block; } /* textarea: 아이폰 연락처 자동완성이 안 뜸 */
   .chat .chatbar button { border: 0; border-radius: 12px; padding: 0 14px; background: var(--empty); color: #fff; font-weight: 800; font-family: inherit; cursor: pointer; }
   .chat.kbraise { opacity: 0; pointer-events: none; } /* 키보드 부르는 순간: 위쪽에 투명하게 */
   .chat.kbglide { transition: transform .32s cubic-bezier(.2,.8,.2,1), opacity .25s ease-out, background .2s; } /* 키보드 위로 스르륵 */
@@ -446,7 +446,7 @@
   <section class="chat" id="chat" aria-label="채팅">
     <header><b>채팅</b><span id="chatWho">지금 매장 안 1명</span><button type="button" id="chatExpand" aria-label="채팅 크게 보기">︿</button><button type="button" id="chatClose" aria-label="닫기">✕</button></header>
     <ol id="chatLog"></ol>
-    <div class="chatbar" id="chatForm"><input id="chatIn" type="text" name="chat-msg" maxlength="120" placeholder="메시지 입력 후 ↵" enterkeyhint="enter" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" aria-autocomplete="none" data-form-type="other" /></div>
+    <div class="chatbar" id="chatForm"><textarea id="chatIn" rows="1" maxlength="120" placeholder="메시지 입력 후 ↵" enterkeyhint="enter" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" aria-label="채팅 메시지"></textarea></div>
   </section>
 
   <!-- 입장: 게스트 / 회원 -->
