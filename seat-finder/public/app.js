@@ -4918,7 +4918,8 @@ function bindPointer() {
     if (document.body.classList.contains("admin")) {
       if (lightSwitch?.userData.hitbox && pick(e, [lightSwitch.userData.hitbox])) { toggleLights(); return; } // 사장님: 불 스위치
       const id = seatAt(e);
-      if (id) toggleSeat(id);
+      if (id) { toggleSeat(id); return; } // 자리는 앉음·비움 바꾸기
+      interact(e); // 그 밖엔 손님처럼 소품 누르기 (숨은 재미)
       return;
     }
     interact(e); // 손님: 자리 상태는 못 바꾸고, 둘러보며 놀기만
