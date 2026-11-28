@@ -122,7 +122,7 @@ export default {
     // 오른쪽 벽: 노퍽 소나무 옆 원목 행거
     { type: "coatrack", x: 9.25, z: 2.57, rot: 90, say: "외투는 여기에\n걸어 주세요" },
     // 안쪽 벽: 화장실 가는 문 (오른쪽 끝이 입구 오른쪽 기둥 안쪽 선과 일직선)
-    { type: "walldoor", x: 8.815, z: 0.0, w: 0.85, text: "WC", curtain: true, say: "화장실은\n이 커튼 안쪽이에요" }, // 문 대신 야자잎 그림 커튼
+    { type: "walldoor", x: 8.615, /* 오른쪽 끝 = 입구 문 오른쪽 끝(9.04)과 일직선, 기둥과 20cm 간격 */ z: 0.0, w: 0.85, text: "WC", curtain: true, say: "화장실은\n이 커튼 안쪽이에요" }, // 문 대신 야자잎 그림 커튼
     { type: "sconce", x: 9.29, z: 0.2, rot: 90, y: 1.28, say: "촛불 거울\n화장실 가는 길을 밝혀 줘요" }, // 화장실 문 오른쪽 벽
     { type: "sign", walkOnly: true, x: 9.46, z: 7.8, rot: 90, y: 2.1, text: "WELCOME", say: "WELCOME!\n오늘도 와 주셔서 고마워요" },
   ],
