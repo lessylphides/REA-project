@@ -1222,6 +1222,19 @@ function buildInsideShell(T) {
     }
   }
   if (R.bigBeam) { const { x, w, drop } = R.bigBeam; beamBox(R.d - 0.02, drop, w, [x, H - drop / 2, R.d / 2], Math.PI / 2); }
+  // 창 모서리 기둥: 두 벽의 안쪽 방향 가운데(이등분선)로 d 만큼 나온 평평한 면
+  for (const cp of R.cornerPillars || []) {
+    const N = OUTLINE.length, i = OUTLINE.findIndex(([x, z]) => Math.hypot(x - cp.at[0], z - cp.at[1]) < 0.01);
+    if (i < 0) continue;
+    let cx0 = 0, cz0 = 0; for (const [x, z] of OUTLINE) { cx0 += x / N; cz0 += z / N; }
+    const inN = (a, b) => { const dx = b[0] - a[0], dz = b[1] - a[1], L = Math.hypot(dx, dz); let nx = -dz / L, nz = dx / L; if ((cx0 - (a[0] + b[0]) / 2) * nx + (cz0 - (a[1] + b[1]) / 2) * nz < 0) { nx = -nx; nz = -nz; } return [nx, nz]; };
+    const n1 = inN(OUTLINE[(i + N - 1) % N], OUTLINE[i]), n2 = inN(OUTLINE[i], OUTLINE[(i + 1) % N]);
+    let bx = n1[0] + n2[0], bz = n1[1] + n2[1]; const bl = Math.hypot(bx, bz); bx /= bl; bz /= bl;
+    const d = cp.d ?? 0.2, px = cp.at[0] + bx * d / 2, pz = cp.at[1] + bz * d / 2;
+    const m = mk(box(cp.w, H - 0.004, d), wallMat, [px, H / 2, pz], fpGroup, { outline: 0.012, shadow: false });
+    m.rotation.y = Math.atan2(bx, bz);
+    addObstacle(px, pz, cp.w / 2, d / 2, -THREE.MathUtils.radToDeg(Math.atan2(bx, bz)));
+  }
   // 벽에서 튀어나온 기둥 (바닥 ~ 천장)
   for (const [x0, z0, x1, z1] of R.wallPillars || []) {
     const pw = x1 - x0 - 0.004, pd = z1 - z0 - 0.004, cx = (x0 + x1) / 2, cz = (z0 + z1) / 2;
