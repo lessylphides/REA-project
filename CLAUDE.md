@@ -40,6 +40,7 @@ for i in 1 2 3 4 5 6; do CLOUDFLARE_ACCOUNT_ID=9ecdd9e050cc043f4c41cbef5f0b9853 
 - 같은 자리에 면 두 개가 겹치면 지글거림 → 몇 mm 띄우기
 
 ## 다음에 할 일 (사장님이 기억해 두라고 하신 것)
+- **LP 늘리기**: 사장님이 스포티파이 링크를 보내 주면 layout.js hifi `lps` 목록에 추가 (지금 1장: track/3ctALmweZBapfBdFiIVpji). 나중에 LP장에서 손님이 골라 걸기
 - (완료) 관리자가 3D 매장에 들어가면 사장님 캐릭터(앞치마 + 주황 이름표)로 보임. 모습은 관리자 바 [내 캐릭터]에서 꾸밈 (서버 `bossLook`)
 
 ## 실시간 접속 (손님 캐릭터 · 채팅)
