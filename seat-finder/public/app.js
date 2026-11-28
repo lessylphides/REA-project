@@ -1212,11 +1212,12 @@ function buildInsideShell(T) {
     return g;
   };
   if (R.perimBeam) {
-    const { inner = 0.2, outer = 0.2, drop } = R.perimBeam, N = OUTLINE.length;
+    const { inner: inner0 = 0.2, outer = 0.2, drop, innerBy = {} } = R.perimBeam, N = OUTLINE.length;
     let cx0 = 0, cz0 = 0; for (const [x, z] of OUTLINE) { cx0 += x / N; cz0 += z / N; }
     for (let i = 0; i < N; i++) {
       const [ax, az] = OUTLINE[i], [bx, bz] = OUTLINE[(i + 1) % N], dx = bx - ax, dz = bz - az, L = Math.hypot(dx, dz);
       let nx = -dz / L, nz = dx / L; if ((cx0 - (ax + bx) / 2) * nx + (cz0 - (az + bz) / 2) * nz < 0) { nx = -nx; nz = -nz; } // 안쪽 방향
+      const inner = innerBy[i] ?? inner0;
       const glass = !!(R.outside || [])[i], d = glass ? Math.max(0.06, H - WIN_TOP) + i * 0.002 : drop + i * 0.002; // 겹치는 모서리 지글거림 막기: 변마다 몇 mm 다르게
       const w = glass ? inner + outer : inner, off = glass ? (inner - outer) / 2 : inner / 2; // 창 쪽: 벽 선 가운데로 안·밖 반반
       beamBox(L + (glass ? 0.4 : 0), d, w, [(ax + bx) / 2 + nx * off, H - d / 2, (az + bz) / 2 + nz * off], -Math.atan2(dz, dx));
@@ -4990,7 +4991,8 @@ function collideInner(p) {
   }
   // 화장실 문 → 화장실 통로 공간 (문이 열려 있을 때만 드나듦, 뒤 바깥문은 아직 막힘)
   if (wcDoor5) {
-    const dx0 = 8.475 - 0.425 + 0.12, dx1 = 8.475 + 0.425 - 0.12, inGap = p.x > dx0 && p.x < dx1, open = wcDoor5.open > 0.7;
+    const wd = (LAYOUT.props || []).find((q) => q.type === "walldoor") || { x: 8.475, w: 0.85 };
+    const dx0 = wd.x - wd.w / 2 + 0.12, dx1 = wd.x + wd.w / 2 - 0.12, inGap = p.x > dx0 && p.x < dx1, open = wcDoor5.open > 0.7;
     const rx0 = WC_ROOM_X0 + T / 2 + PR, rx1 = R.w - PR, rz0 = -BACK_D + T + PR, rz1 = -T - PR;
     if (p.z < PR && (inWcRoom(p.x, p.z) || (open && inGap && p.z < PR))) {
       if (p.z > rz1) { // 문턱 (벽 두께 안): 문 폭 안에서만
