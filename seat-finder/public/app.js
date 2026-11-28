@@ -2295,6 +2295,7 @@ function buildCurvedBar(b) {
 
 /** 뒷선반 (창 아래, 술병) */
 const SPEAKERS = (LAYOUT.props || []).filter((p) => p.type === "speaker");
+const HIFI = (LAYOUT.props || []).filter((p) => p.type === "hifi");
 function buildBackbar(p) {
   const curve = roundedPath(p.path, 0.25);
   const S = pathSamples(curve, 0.15);
@@ -2331,6 +2332,7 @@ function buildBackbar(p) {
     if (Math.floor(s / 1.1) % 3 === 2) continue; // 빈 칸
     const q = curve.getPointAt(s / L), t = curve.getTangentAt(s / L);
     if (SPEAKERS.some((sp) => Math.hypot(sp.x - q.x, sp.z - q.z) < 0.4)) continue; // 스피커 자리는 비움
+    if (HIFI.some((h) => Math.abs(h.x - q.x) < (h.clear ?? 0.5) && Math.abs(h.z - q.z) < 0.4)) continue; // 오디오 자리도 비움
     const off = (rnd() - 0.5) * 0.18;
     const x = q.x + t.z * off, z = q.z - t.x * off;
     const h = 0.22 + rnd() * 0.16, r = 0.035 + rnd() * 0.02;
@@ -3160,6 +3162,74 @@ function buildInteriorProp(p, g) {
       piv.userData.hitbox = hb;
       g.userData.onTap = () => { if (document.body.classList.contains("admin")) toggleLights(); else g.userData.sayLine = "숨겨진 스위치 발견!\n사장님만 켜고 끌 수 있어요"; };
       g.userData.hit = [0.16, 0.2, 0.12, y0]; g.userData.sayY = y0 + 0.3;
+      return true;
+    }
+    case "hifi": { // 마란츠 CD50n(+맥북) · PM8006(+오디오테크니카 턴테이블). 로컬 +z = 방 쪽, +x = 방에서 볼 때 오른쪽(앰프·스피커 쪽)
+      const y0 = p.y0 ?? 0.99, blk = "#1b1b1d", face = "#262628", knob = "#141416", no = { outline: 0, shadow: false };
+      const feet = (cx, w, d, y) => { for (const fx of [-1, 1]) for (const fz of [-1, 1]) mk(cyl(0.028, 0.03, 0.018, 12), "#2c2c2e", [cx + fx * (w / 2 - 0.05), y + 0.009, fz * (d / 2 - 0.05)], g, no); };
+      const knobAt = (x, y, r, z) => { const k = mk(cyl(r, r * 1.02, 0.026, 24), knob, [x, y, z + 0.013], g, { outline: 0.003 }); k.rotation.x = Math.PI / 2; mk(cyl(r * 0.92, r * 0.92, 0.002, 24), "#303033", [x, y, z + 0.027], g, no).rotation.x = Math.PI / 2; };
+      const labelTex = (txt, col = "#cfcac0", font = "700 28px Georgia, serif") => canvasTex(256, 48, (c, W, H) => { c.fillStyle = col; c.font = font; c.textAlign = "center"; c.fillText(txt, W / 2, 34); });
+      const cl = (t) => new THREE.MeshBasicMaterial({ map: t, transparent: true, depthWrite: false });
+      // ── PM8006 (오른쪽, 스피커 옆)
+      const ax = 0.23, aW = 0.44, aH = 0.127, aD = 0.38, ay = y0 + 0.018;
+      feet(ax, aW, aD, y0);
+      mk(box(aW, aH, aD), blk, [ax, ay + aH / 2, 0], g, { outline: 0.006 });
+      mk(box(aW - 0.01, aH - 0.012, 0.012), face, [ax, ay + aH / 2, aD / 2 + 0.002], g, no);
+      for (let i = 0; i < 9; i++) mk(box(aW - 0.08, 0.002, 0.012), "#111", [ax, ay + aH + 0.001, -aD / 2 + 0.05 + i * 0.022], g, no); // 윗면 통풍구
+      const fz = aD / 2 + 0.008;
+      knobAt(ax + 0.155, ay + 0.078, 0.032, fz); knobAt(ax - 0.155, ay + 0.078, 0.032, fz); // 입력 선택 · 볼륨
+      for (const k of [0.075, 0.025, -0.025, -0.075]) knobAt(ax + k, ay + 0.03, 0.011, fz); // 베이스·미드·트레블·밸런스
+      mk(new THREE.PlaneGeometry(0.2, 0.006), glowMat("#9fb4c8"), [ax, ay + 0.092, fz + 0.002], g, no); // 입력 표시줄
+      mk(new THREE.CircleGeometry(0.004, 10), glowMat("#4aa3ff"), [ax + 0.02, ay + 0.092, fz + 0.003], g, no);
+      for (const k of [0.035, -0.005]) { mk(new THREE.RingGeometry(0.006, 0.009, 16), glowMat("#3d8bff"), [ax + k, ay + 0.065, fz + 0.003], g, no); } // 스피커 A·B 파란 불
+      mk(new THREE.PlaneGeometry(0.08, 0.015), cl(labelTex("marantz")), [ax, ay + 0.112, fz + 0.002], g, no);
+      mk(cyl(0.006, 0.006, 0.004, 10), "#222", [ax - 0.19, ay + 0.03, fz + 0.002], g, no).rotation.x = Math.PI / 2; // 전원
+      // ── AT-LP120X 턴테이블 (앰프 위, 받침발 4개)
+      const tW = 0.45, tD = 0.35, ty = ay + aH + 0.045;
+      for (const fx of [-1, 1]) for (const fzz of [-1, 1]) mk(cyl(0.035, 0.04, 0.045, 16), "#202022", [ax + fx * 0.18, ay + aH + 0.0225, fzz * 0.13], g, { outline: 0.003 });
+      mk(box(tW, 0.07, tD), "#18181a", [ax, ty + 0.035, 0], g, { outline: 0.006 });
+      const px = ax - 0.045, pz = 0.0, py = ty + 0.072;
+      mk(cyl(0.155, 0.155, 0.018, 40), "#3a3a3c", [px, py + 0.009, pz], g, { outline: 0.003 }); // 플래터 (옆면 점무늬)
+      for (let i = 0; i < 48; i++) { const a = (i / 48) * Math.PI * 2; mk(box(0.006, 0.006, 0.002), "#aaa", [px + Math.cos(a) * 0.156, py + 0.009, pz + Math.sin(a) * 0.156], g, no).rotation.y = -a; }
+      mk(cyl(0.15, 0.15, 0.003, 40), "#0e0e10", [px, py + 0.0195, pz], g, no); // 레코드
+      mk(cyl(0.045, 0.045, 0.004, 24), "#b23a32", [px, py + 0.02, pz], g, no); // 라벨
+      mk(cyl(0.004, 0.004, 0.02, 8), "#ccc", [px, py + 0.028, pz], g, no);
+      const arm = new THREE.Group(); arm.position.set(ax + 0.16, py + 0.03, pz - 0.09); arm.rotation.y = 0.55; g.add(arm); // 톤암 (오른쪽 뒤에서)
+      mk(cyl(0.022, 0.022, 0.03, 16), "#2c2c2e", [0, -0.012, 0], arm, { outline: 0.002 });
+      const rod = mk(cyl(0.004, 0.004, 0.22, 8), "#c9c9cc", [0, 0.012, 0.11], arm, no); rod.rotation.x = Math.PI / 2;
+      mk(box(0.02, 0.01, 0.035), "#8e2024", [-0.004, 0.006, 0.225], arm, { outline: 0.001 }); // 빨간 카트리지 (오르토폰)
+      mk(cyl(0.012, 0.012, 0.03, 12), "#2c2c2e", [0, 0.012, -0.035], arm, no).rotation.x = Math.PI / 2; // 무게추
+      mk(box(0.03, 0.012, 0.06), "#333", [ax + 0.19, ty + 0.074, 0.12], g, no); // 피치 슬라이더
+      mk(cyl(0.012, 0.012, 0.012, 12), "#2a2a2c", [ax - 0.19, ty + 0.078, 0.13], g, no); // 시작 버튼
+      const cover = mk(box(tW, 0.11, tD), new THREE.MeshBasicMaterial({ color: "#dfe9ee", transparent: true, opacity: 0.16, depthWrite: false }), [ax, ty + 0.07 + 0.055, 0], g, { outline: 0.002, shadow: false }); // 투명 덮개
+      // 덮개 위: 가죽 장갑 한 켤레 + 흰 동글 스피커
+      const gy = ty + 0.07 + 0.11;
+      for (let i = 0; i < 2; i++) { const gl = mk(new THREE.CapsuleGeometry(0.028, 0.11, 4, 10), "#c08a4e", [ax - 0.1 + i * 0.015, gy + 0.018 + i * 0.03, 0.03 + i * 0.01], g, { outline: 0.004 }); gl.rotation.z = Math.PI / 2; gl.scale.set(1, 1, 0.45); }
+      mk(new THREE.SphereGeometry(0.035, 16, 12), "#f2f0ea", [ax + 0.02, gy + 0.03, -0.02], g, { outline: 0.004 }).scale.set(1, 0.85, 1);
+      mk(new THREE.CircleGeometry(0.024, 16), new THREE.MeshBasicMaterial({ color: "#5a3a2a" }), [ax + 0.02, gy + 0.034, 0.012], g, no);
+      // ── CD50n (왼쪽)
+      const cx = -0.23, cW = 0.44, cH = 0.123, cD = 0.37, cy = y0 + 0.018;
+      feet(cx, cW, cD, y0);
+      mk(box(cW, cH, cD), blk, [cx, cy + cH / 2, 0], g, { outline: 0.006 });
+      const cfz = cD / 2 + 0.006;
+      mk(box(cW - 0.01, cH - 0.012, 0.012), face, [cx, cy + cH / 2, cD / 2], g, no);
+      for (const sx of [-1, 1]) for (let i = 0; i < 6; i++) mk(box(0.002, cH - 0.03, 0.004), "#2f2f32", [cx + sx * (0.16 + i * 0.008), cy + cH / 2, cfz], g, no); // 양옆 줄무늬 장식
+      const disp = canvasTex(256, 96, (c, W, H) => { c.fillStyle = "#050505"; c.fillRect(0, 0, W, H); c.fillStyle = "#f2f2f2"; c.font = "700 30px monospace"; c.textAlign = "center"; c.fillText("USB-DAC", W / 2, 44); c.font = "20px monospace"; c.fillText("PCM 44.1kHz", W / 2, 76); });
+      mk(new THREE.PlaneGeometry(0.15, 0.055), new THREE.MeshBasicMaterial({ map: disp }), [cx, cy + 0.06, cfz + 0.002], g, no);
+      mk(new THREE.PlaneGeometry(0.08, 0.015), cl(labelTex("marantz")), [cx, cy + 0.108, cfz + 0.002], g, no);
+      knobAt(cx + 0.12, cy + 0.065, 0.018, cfz - 0.006); knobAt(cx - 0.12, cy + 0.065, 0.018, cfz - 0.006);
+      mk(cyl(0.006, 0.006, 0.004, 10), "#222", [cx - 0.19, cy + 0.06, cfz + 0.002], g, no).rotation.x = Math.PI / 2;
+      // 맥북 (CD50n 위, 화면을 방 쪽으로 펴 둠)
+      const my = cy + cH, mbW = 0.304, mbD = 0.212;
+      mk(box(mbW, 0.012, mbD), "#c9cbcf", [cx, my + 0.006, 0.04], g, { outline: 0.004 });
+      mk(new THREE.PlaneGeometry(mbW - 0.04, mbD * 0.55), new THREE.MeshBasicMaterial({ color: "#202124" }), [cx, my + 0.0125, 0.07], g, no).rotation.x = -Math.PI / 2; // 키보드
+      const lid = new THREE.Group(); lid.position.set(cx, my + 0.012, 0.04 - mbD / 2); lid.rotation.x = -0.18; g.add(lid); // 뒤로 살짝 젖힘
+      mk(box(mbW, 0.2, 0.008), "#c9cbcf", [0, 0.1, 0], lid, { outline: 0.004 });
+      const scr = canvasTex(256, 160, (c, W, H) => { const gr = c.createLinearGradient(0, 0, 0, H); gr.addColorStop(0, "#3a2c22"); gr.addColorStop(1, "#15110e"); c.fillStyle = gr; c.fillRect(0, 0, W, H); c.fillStyle = "#c79a62"; c.fillRect(150, 30, 26, 34); c.fillStyle = "#e8e3d6"; c.fillRect(20, 20, 40, 120); c.fillStyle = "#4a6c96"; c.beginPath(); c.arc(118, 90, 16, 0, 7); c.fill(); c.fillStyle = "#6b4a32"; c.fillRect(80, 112, 90, 14); c.fillStyle = "#ffffff"; c.font = "11px sans-serif"; c.fillText("The Moves", 34, 150); });
+      mk(new THREE.PlaneGeometry(mbW - 0.024, 0.18), new THREE.MeshBasicMaterial({ map: scr }), [0, 0.1, 0.0045], lid, no);
+      addObstacle(p.x, p.z, 0.46, 0.22, p.rot);
+      g.userData.hit = [0.92, 0.45, 0.42, y0 + 0.2]; g.userData.sayY = y0 + 0.55;
+      void cover;
       return true;
     }
     case "sconce": { // 벽걸이 나무 거울 + 받침 위 캔들 (위가 둥근 짙은 원목판, 타원 거울, 아래 둥근 받침대). 로컬 +z = 방 쪽
