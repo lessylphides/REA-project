@@ -357,6 +357,7 @@ const FRONT = EDGES.find((e) => e.kind === "front") || { ax: R.w, bx: 0 };
 const FRONT_X0 = Math.min(FRONT.ax, FRONT.bx), FRONT_X1 = Math.max(FRONT.ax, FRONT.bx);
 // 2층 이상은 1층보다 넓음: 유리 3면 쪽으로 OVER(안쪽 벽선 기준) 만큼 나오고, 모서리 기둥이 받침. 뒤로는 화장실 문 밖 공간(BACK_D)까지
 const BACK_PIL_GAP = 0.11; // 왼쪽 통창 끝 흰 테두리가 벽선 뒤로 나온 만큼 (뒤쪽 끝 기둥이 이만큼 뒤에서 시작)
+const WIN_TOP = 2.55; // 창·문 위 작은 창 꼭대기 = 둘레 대들보 아랫면 (천장 2.9 - 들보 0.35)
 const OVER = 0.7, SOFFIT_Y = 2.95, BACK_D = 2.15, PIL_W = 0.6, PIL_R_IN = 8.9; // PIL_R_IN: 입구 오른쪽 기둥 안쪽 선 (화장실 문 오른쪽 끝과 일직선)
 const UPPER = (() => {
   const off = (e) => (e.kind === "front" || e.kind === "glass" ? OVER : e.i === 0 ? BACK_D : 0.14);
@@ -603,7 +604,7 @@ function buildEdge(e, group, h, T) {
     }
   }
   if (e.kind !== "glass" || h < 1) { wallBox(0, h); return; }
-  const sill = 0.12, top = Math.min(h - 0.1, 2.75); // 입구 쪽 창과 같은 높이
+  const sill = 0.12, top = Math.min(h - 0.1, WIN_TOP); // 입구 쪽 창과 같은 높이
   wallBox(0, sill);
   wallBox(top, h);
   // 모서리 기둥 (room.pillars): 유리는 기둥 사이만
@@ -1114,14 +1115,14 @@ function buildInsideShell(T) {
     const dh = 2.2;
     // 정면 창 자리는 뚫어 둠 → 블라인드 틈으로 진짜 바깥(골목)이 보임
     const winW0 = LAYOUT.front?.windowW ?? 2.6;
-    const ox0 = door.x - door.w / 2 - 0.05 - winW0, ox1 = door.x - door.w / 2 - 0.05, oy0 = 0.12, oy1 = 2.75;
+    const ox0 = door.x - door.w / 2 - 0.05 - winW0, ox1 = door.x - door.w / 2 - 0.05, oy0 = 0.12, oy1 = WIN_TOP;
     front(FRONT_X0 - T / 2, ox0, 0, H);
     front(ox0, ox1, 0, oy0);
     front(ox0, ox1, oy1, H);
     front(ox1, door.x - door.w / 2, 0, H);
     front(door.x + door.w / 2, FRONT_X1 + T / 2, 0, H);
     { // 문 위: 작은 창 자리는 뚫어 둠(안팎이 보임), 환풍기 자리는 벽 + 안쪽 환풍구
-      const hx0 = door.x - door.w / 2 + 0.03, hx1 = door.x - 0.02, hy0 = dh + 0.05, hy1 = 2.75; // 위끝을 옆 통창(2.75)과 맞춤
+      const hx0 = door.x - door.w / 2 + 0.03, hx1 = door.x - 0.02, hy0 = dh + 0.05, hy1 = WIN_TOP; // 위끝을 옆 통창과 맞춤
       front(door.x - door.w / 2, hx0, dh, H);
       front(hx1, door.x + door.w / 2, dh, H);
       front(hx0, hx1, dh, hy0);
@@ -1141,19 +1142,19 @@ function buildInsideShell(T) {
     const wx0 = door.x - door.w / 2 - 0.05 - winW, wx1 = door.x - door.w / 2 - 0.05;
     const t = blindsTex.clone();
     t.needsUpdate = true;
-    t.repeat.set(winW / 0.5, (2.75 - BLIND_BOTTOM) / 1.1);
+    t.repeat.set(winW / 0.5, (WIN_TOP - BLIND_BOTTOM) / 1.1);
     const bm = new THREE.MeshBasicMaterial({ map: t, color: "#fff6f2", transparent: true, depthWrite: false, side: THREE.DoubleSide });
     registerTint(bm);
     bm.userData.forceOutside = true;
-    const inner = mk(new THREE.PlaneGeometry(winW, 2.75 - BLIND_BOTTOM), bm, [(wx0 + wx1) / 2, (2.75 + BLIND_BOTTOM) / 2, R.d - 0.005], fpGroup, { outline: 0, shadow: false });
+    const inner = mk(new THREE.PlaneGeometry(winW, WIN_TOP - BLIND_BOTTOM), bm, [(wx0 + wx1) / 2, (WIN_TOP + BLIND_BOTTOM) / 2, R.d - 0.005], fpGroup, { outline: 0, shadow: false });
     // 유리·창틀은 벽 두께 가운데 (옆 통창들과 같은 깊이)
     mk(new THREE.PlaneGeometry(winW, BLIND_BOTTOM - 0.12), clearGlass(), [(wx0 + wx1) / 2, (BLIND_BOTTOM + 0.12) / 2, zF], fpGroup, { outline: 0, shadow: false });
-    addGlassRefl(fpGroup, winW, 2.75 - 0.12, [(wx0 + wx1) / 2, (2.75 + 0.12) / 2, zF + 0.006], 0); // 유리 면 바로 앞
-    for (const y of [0.14, 2.73]) mk(box(winW, 0.05, T * 0.9), "#f4f1ec", [(wx0 + wx1) / 2, y, zF], fpGroup, { outline: 0.01, shadow: false });
+    addGlassRefl(fpGroup, winW, WIN_TOP - 0.12, [(wx0 + wx1) / 2, (WIN_TOP + 0.12) / 2, zF + 0.006], 0); // 유리 면 바로 앞
+    for (const y of [0.14, WIN_TOP - 0.02]) mk(box(winW, 0.05, T * 0.9), "#f4f1ec", [(wx0 + wx1) / 2, y, zF], fpGroup, { outline: 0.01, shadow: false });
     inner.renderOrder = 3;
     { const face = blindFace("front"); face.mats.push(bm); // 입구 쪽 창 조절 줄 (문 쪽 끝)
       const cg = new THREE.Group(); cg.position.set(wx1 - 0.1, 0, R.d); cg.rotation.y = Math.PI; fpGroup.add(cg);
-      addBlindCord(cg, 0, 2.75, face, 0.08); }
+      addBlindCord(cg, 0, WIN_TOP, face, 0.08); }
     {
       const sg = new THREE.Group();
       sg.position.set((wx0 + wx1) / 2, 0, R.d);
@@ -1199,7 +1200,7 @@ function buildInsideShell(T) {
   // 노출된 들보 (방 안쪽에 들어가는 위치만)
   const beam = toon("#e6d6d2");
   for (const x of R.beams || []) mk(box(0.22, 0.16, R.d - 0.05), beam, [x, H - 0.08, R.d / 2], fpGroup, { outline: 0.015, shadow: false });
-  // 대들보: 벽 꼭대기를 따라 둘러진 들보 (막힌 벽은 안으로 20cm, 창 쪽은 안·밖 20cm씩, 창 위는 창 꼭대기 2.75m 까지만) + 창 모서리에서 안쪽 벽까지 큰 들보
+  // 대들보: 벽 꼭대기를 따라 둘러진 들보 (막힌 벽은 안으로 20cm, 창 쪽은 안·밖 20cm씩, 창 위도 같은 두께로 내려와 창 꼭대기 = WIN_TOP) + 창 모서리에서 안쪽 벽까지 큰 들보
   const wallMat = toon(R.wall || "#f2e6ec");
   const shade = (k) => toon("#" + new THREE.Color(R.wall || "#f2e6ec").multiplyScalar(k).getHexString());
   // 같은 흰 벽이라도 들보·기둥 모서리가 보이게: 들보 아랫면은 그늘 판, 기둥 옆면은 조금 어두운 판을 덧댐 (한 물체에 한 재질 → 매장 조명 색이 같이 입혀짐)
@@ -1216,7 +1217,7 @@ function buildInsideShell(T) {
     for (let i = 0; i < N; i++) {
       const [ax, az] = OUTLINE[i], [bx, bz] = OUTLINE[(i + 1) % N], dx = bx - ax, dz = bz - az, L = Math.hypot(dx, dz);
       let nx = -dz / L, nz = dx / L; if ((cx0 - (ax + bx) / 2) * nx + (cz0 - (az + bz) / 2) * nz < 0) { nx = -nx; nz = -nz; } // 안쪽 방향
-      const glass = !!(R.outside || [])[i], d = glass ? Math.max(0.06, H - 2.75) : drop + i * 0.002; // 겹치는 모서리 지글거림 막기: 변마다 몇 mm 다르게
+      const glass = !!(R.outside || [])[i], d = glass ? Math.max(0.06, H - WIN_TOP) + i * 0.002 : drop + i * 0.002; // 겹치는 모서리 지글거림 막기: 변마다 몇 mm 다르게
       const w = glass ? inner + outer : inner, off = glass ? (inner - outer) / 2 : inner / 2; // 창 쪽: 벽 선 가운데로 안·밖 반반
       beamBox(L + (glass ? 0.4 : 0), d, w, [(ax + bx) / 2 + nx * off, H - d / 2, (az + bz) / 2 + nz * off], -Math.atan2(dz, dx));
     }
