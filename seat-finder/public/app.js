@@ -6334,16 +6334,24 @@ $("adminChatBtn")?.addEventListener("click", () => openChat());
 $("chatClose").addEventListener("click", () => openChat(false));
 $("emoBtn").addEventListener("click", () => { if ($("chat").classList.contains("open")) openChat(false); $("emoPop").classList.toggle("show"); });
 function sendChat() {
-  const v = $("chatIn").value.replace(/\n/g, " ").trim();
+  const v = chatText().replace(/\n/g, " ").trim().slice(0, 120);
   if (!v) return;
   if (!live.id) { chatSys("연결 중이에요. 잠시 뒤에 다시 보내 주세요", true); return; }
-  liveSend({ t: "chat", text: v }); $("chatIn").value = ""; $("chatIn").focus(); // 보낸 뒤에도 키보드 유지
+  liveSend({ t: "chat", text: v }); $("chatIn").textContent = ""; $("chatIn").focus(); // 보낸 뒤에도 키보드 유지
 }
 $("chatIn").addEventListener("keydown", (e) => { // 엔터(↵)로 보내기 (한글 조합 중엔 무시 — 조합이 끝난 뒤 들어오는 줄바꿈은 아래에서 처리)
   if (e.key !== "Enter" || e.isComposing || e.keyCode === 229) return;
   e.preventDefault(); sendChat();
 });
-$("chatIn").addEventListener("input", () => { if ($("chatIn").value.includes("\n")) sendChat(); }); // 줄바꿈이 들어오면 = 보내기
+// 글 상자 내용 (줄바꿈 = <br>·<div> 도 \n 으로)
+function chatText() { return ($("chatIn").innerText || "").replace(/\u00a0/g, " "); }
+$("chatIn").addEventListener("input", () => {
+  const el = $("chatIn");
+  if (/<(br|div|p)\b/i.test(el.innerHTML) && chatText().trim()) { sendChat(); return; } // 줄바꿈이 들어오면 = 보내기
+  if (!chatText().trim() && el.innerHTML) el.textContent = ""; // 빈 줄만 남으면 비워서 안내 글자가 다시 보이게
+  if (chatText().length > 120) { el.textContent = chatText().slice(0, 120); const r = document.createRange(); r.selectNodeContents(el); r.collapse(false); const sel = getSelection(); sel.removeAllRanges(); sel.addRange(r); } // 120자까지
+});
+$("chatIn").addEventListener("paste", (e) => { e.preventDefault(); const t = (e.clipboardData?.getData("text/plain") || "").replace(/\s+/g, " "); document.execCommand("insertText", false, t); }); // 붙여넣기는 글자만
 for (const t of ["pointerdown", "touchstart", "wheel"]) for (const id of ["chat", "emoPop", "liveBtns"]) $(id).addEventListener(t, (e) => e.stopPropagation(), { passive: true });
 
 // 아이폰: 입력칸을 누르면 키보드가 뜨면서 화면 전체가 위로 밀림 → 채팅창을 보이는 영역에 붙이고, 키보드가 닫히면 원위치
