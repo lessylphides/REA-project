@@ -358,7 +358,7 @@ const FRONT_X0 = Math.min(FRONT.ax, FRONT.bx), FRONT_X1 = Math.max(FRONT.ax, FRO
 // 2층 이상은 1층보다 넓음: 유리 3면 쪽으로 OVER(안쪽 벽선 기준) 만큼 나오고, 모서리 기둥이 받침. 뒤로는 화장실 문 밖 공간(BACK_D)까지
 const BACK_PIL_GAP = 0.11; // 왼쪽 통창 끝 흰 테두리가 벽선 뒤로 나온 만큼 (뒤쪽 끝 기둥이 이만큼 뒤에서 시작)
 const WIN_TOP = (LAYOUT.room?.wallH ?? 2.9) - 0.35; // 창·문 위 작은 창 꼭대기 = 둘레 대들보 아랫면 (천장 - 들보 0.35)
-const OVER = 0.7, SOFFIT_Y = (LAYOUT.room?.wallH ?? 2.9) + 0.05, BACK_D = 2.15, PIL_W = 0.6, PIL_R_IN = 9.4; // PIL_R_IN: 입구 오른쪽 바깥 기둥 안쪽 선 (입구 문틀 바로 옆)
+const OVER = 0.7, SOFFIT_Y = (LAYOUT.room?.wallH ?? 2.9) + 0.05, BACK_D = 2.15, PIL_W = 0.6, PIL_R_IN = LAYOUT.door ? LAYOUT.door.x + LAYOUT.door.w / 2 + 0.15 : 9.4; // PIL_R_IN: 입구 오른쪽 바깥 벽돌 기둥 안쪽 선 = 문틀 흰 테두리 바깥선 (사이에 꺾인 틈 없게)
 const UPPER = (() => {
   const off = (e) => (e.kind === "front" || e.kind === "glass" ? OVER : e.i === 0 ? BACK_D : 0.14);
   const line = (e) => ({ px: e.ax - e.nx * off(e), pz: e.az - e.nz * off(e), dx: e.dx, dz: e.dz });
