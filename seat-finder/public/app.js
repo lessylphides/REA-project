@@ -2439,6 +2439,7 @@ function updateDoors5(dt) {
     if (d.target) { d.t += dt; if (d.t > (d.slow ? 1.2 : 7) && !(d.keepOpen && d.keepOpen())) d.target = 0; } // 7초 뒤 저절로 닫힘 (드나드는 중엔 열어 둠)
     d.open += ((d.target ? 1 : 0) - d.open) * Math.min(1, dt * (d.slow ? (d.target ? 2.2 : 1.1) : 3)); // 커튼은 천천히, 돌아올 땐 더 천천히
     if (!d.slow && Math.abs(d.open - (d.target ? 1 : 0)) < 0.002) d.open = d.target ? 1 : 0;
+    if (d.tick) d.tick(dt);
     if (d.apply) d.apply(d.open); else d.hinge.rotation.y = d.ang * d.open;
     d.inside.visible = d.keep || d.open > 0.01;
   }
@@ -2908,33 +2909,62 @@ function buildInteriorProp(p, g) {
         // 긴 커튼 두 장 (가운데서 갈라짐) — 그림은 두 장에 이어지게 반씩
         const cm = new THREE.MeshBasicMaterial({ map: tex, side: THREE.DoubleSide });
         registerTint(cm);
-        const pw = cw / 2 + 0.01, panels = [];
+        const pw = cw / 2 + 0.01, panels = [], NX = 10, NY = 14;
+        // 천 흉내 (점 + 실): 윗단은 봉에 꿰매져 고정, 나머지는 무게로 늘어지고 사람이 지나가면 밀려서 펄럭이다 가라앉음
         for (const sd of [-1, 1]) {
-          const geo = new THREE.PlaneGeometry(pw, ch, 10, 14), pos = geo.attributes.position, uv = geo.attributes.uv; // 물결 주름
+          const geo = new THREE.PlaneGeometry(pw, ch, NX, NY), pos = geo.attributes.position, uv = geo.attributes.uv;
           for (let i = 0; i < pos.count; i++) { pos.setZ(i, Math.sin((pos.getX(i) / pw + 0.5) * Math.PI * 3 + (sd > 0 ? 1 : 0)) * 0.016); uv.setX(i, uv.getX(i) * 0.5 + (sd > 0 ? 0.5 : 0)); }
-          const base = Float32Array.from(pos.array);
           const m = new THREE.Mesh(geo, cm); m.position.set(sd * pw / 2, bot + ch / 2, 0.06 + (sd > 0 ? 0.004 : 0)); g.add(m);
-          panels.push({ m, sd, pos, base });
+          const P = Float32Array.from(pos.array), Q = Float32Array.from(pos.array), R0 = Float32Array.from(pos.array);
+          panels.push({ m, sd, pos, P, Q, R0 });
         }
-        // 실제 천처럼: 윗단은 봉에 꿰매져 고정, 아래로 갈수록 사람이 밀고 지나가는 만큼 옆·안쪽으로 젖혀짐 (천천히, 살짝 흔들리며 돌아옴)
-        let sway = 0;
-        const bend = (o, time) => {
-          sway = time;
-          for (const P of panels) {
-            const { pos, base, sd } = P;
-            for (let i = 0; i < pos.count; i++) {
-              const x0 = base[i * 3], y0 = base[i * 3 + 1], z0 = base[i * 3 + 2];
-              const t = Math.min(1, Math.max(0, (ch / 2 - y0) / ch)); // 0 = 윗단(고정) ~ 1 = 아랫단
-              const inner = (x0 * sd + pw / 2) / pw; // 0 = 바깥 가장자리 ~ 1 = 가운데 갈라진 쪽
-              const k = Math.pow(t, 1.6) * o, wob = Math.sin(time * 2.2 + sd + t * 2) * 0.015 * t * (1 - o * 0.5);
-              pos.setXYZ(i, x0 + sd * k * pw * 0.55 * (0.35 + inner * 0.65), y0 + k * 0.12 * inner, z0 - k * 0.45 * (0.5 + inner * 0.5) + wob);
+        const W1 = NX + 1, sx = pw / NX, sy = ch / NY, links = [];
+        for (let r = 0; r <= NY; r++) for (let c = 0; c <= NX; c++) {
+          const i = r * W1 + c;
+          if (c < NX) links.push(i, i + 1, sx); if (r < NY) links.push(i, i + W1, sy); // 가로·세로 실
+          if (c < NX - 1) links.push(i, i + 2, sx * 2); if (r < NY - 1) links.push(i, i + 2 * W1, sy * 2); // 빳빳함 (접힘 방지)
+          if (c < NX && r < NY) links.push(i, i + W1 + 1, Math.hypot(sx, sy));
+        }
+        const tmp = new THREE.Vector3();
+        let clothT = 0, quiet = 0;
+        const clothStep = (dt) => {
+          clothT += dt;
+          const bodies = []; // 커튼을 미는 사람들: 나 + 매장 안 다른 손님 캐릭터
+          if (walk.on) bodies.push([walk.pos.x, walk.pos.z]);
+          if (typeof live !== "undefined" && live?.peers) for (const pr of live.peers.values()) if (!pr.ts) bodies.push([pr.g.position.x, pr.g.position.z]);
+          const close = bodies.filter(([x, z]) => Math.hypot(x - p.x, z - (p.z || 0)) < 2.2);
+          const near = close.length > 0;
+          if (!near && quiet > 3) return; // 멀리 있고 가라앉았으면 쉼
+          quiet = near ? 0 : quiet + dt;
+          const h = Math.min(dt, 1 / 30) / 2, G = -9.8 * h * h;
+          for (let sub = 0; sub < 2; sub++) for (const pn of panels) {
+            const { P, Q, R0, m, sd } = pn;
+            const locs = close.map(([x, z]) => { const l = m.worldToLocal(tmp.set(x, 0, z)); return [l.x, l.y, l.z]; });
+            const breeze = Math.sin(clothT * 1.3 + sd) * 0.0000025 + Math.sin(clothT * 3.1) * 0.0000012; // 살짝 바람
+            for (let i = 0; i < P.length; i += 3) {
+              if (i / 3 < W1) { P[i] = R0[i]; P[i + 1] = R0[i + 1]; P[i + 2] = R0[i + 2]; continue; } // 윗단 고정
+              const x = P[i], y = P[i + 1], z = P[i + 2];
+              P[i] += (x - Q[i]) * 0.985; P[i + 1] += (y - Q[i + 1]) * 0.985 + G; P[i + 2] += (z - Q[i + 2]) * 0.985 + breeze;
+              Q[i] = x; Q[i + 1] = y; Q[i + 2] = z;
+              // 사람(원기둥, 반지름 30cm, 키 1.8m)에 밀림
+              for (const [lx, ly0, lz] of locs) {
+                if (P[i + 1] - ly0 > 1.8) continue;
+                const dx = P[i] - lx, dz = P[i + 2] - lz, d = Math.hypot(dx, dz); if (d < 0.3 && d > 1e-4) { const k = 0.3 / d; P[i] = lx + dx * k; P[i + 2] = lz + dz * k; }
+              }
             }
-            pos.needsUpdate = true;
+            for (let it = 0; it < 5; it++) for (let j = 0; j < links.length; j += 3) {
+              const a = links[j] * 3, b = links[j + 1] * 3, L = links[j + 2];
+              const dx = P[b] - P[a], dy = P[b + 1] - P[a + 1], dz = P[b + 2] - P[a + 2], d = Math.hypot(dx, dy, dz) || 1e-6, f = (d - L) / d * 0.5;
+              const pa = a < W1 * 3 ? 0 : 1, pb = b < W1 * 3 ? 0 : 1, w = pa + pb; if (!w) continue;
+              const fa = f * 2 * pa / w, fb = f * 2 * pb / w;
+              P[a] += dx * fa; P[a + 1] += dy * fa; P[a + 2] += dz * fa; P[b] -= dx * fb; P[b + 1] -= dy * fb; P[b + 2] -= dz * fb;
+            }
           }
+          for (const { pos, P } of panels) { pos.array.set(P); pos.needsUpdate = true; }
         };
         g.userData.door5 = { hinge, inside, open: 0, target: 0, t: 0, ang: 0, keepOpen: near, slow: true,
-          auto: () => walk.on && walk.pos.z < 0.75 && walk.pos.z > -0.9 && Math.abs(walk.pos.x - p.x) < 0.5, // 지나갈 때만 젖혀짐
-          apply: (o) => bend(o, performance.now() / 1000) };
+          auto: () => walk.on && walk.pos.z < 0.75 && walk.pos.z > -0.9 && Math.abs(walk.pos.x - p.x) < 0.5, // 지나갈 수 있게 (보이는 건 천 흉내)
+          apply: () => {}, tick: clothStep };
       } else {
         mk(box(w, h, 0.04), p.color || "#7a5638", [0, h / 2, 0], dg, { outline: 0.012 });
         g.userData.door5 = { hinge, inside, open: 0, target: 0, t: 0, ang: 1.6, keepOpen: near };
