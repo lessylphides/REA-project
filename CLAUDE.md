@@ -29,12 +29,12 @@ node tools/topview.cjs out.png                 # 위에서 내려다본 사진
 for i in 1 2 3 4 5 6; do CLOUDFLARE_ACCOUNT_ID=9ecdd9e050cc043f4c41cbef5f0b9853 CLOUDFLARE_API_TOKEN=dummy npm run deploy > /tmp/dep.log 2>&1 && { grep -iE "Current Version|custom domain" /tmp/dep.log; break; }; tail -2 /tmp/dep.log; sleep 30; done
 ```
 - 테스트 URL 옵션: `?debug` (window.__walk/__cam/__seats/__bt/__fx 노출), `?time=HH`, `?locked`
-- 1인칭 이동은 벽을 뚫고 순간이동하면 막힘 → 입구 앞(8.1, 10.6)에서 출발해 경로로 옮겨야 함 (shot.cjs 가 처리)
+- 1인칭 이동은 벽을 뚫고 순간이동하면 막힘 → 입구 앞(8.49, 10.6)에서 출발해 경로로 옮겨야 함 (shot.cjs 가 처리)
 - 커밋은 브랜치 `claude/jolly-planck-rj3wef` 에.
 
 ## 좌표 (m, 위에서 볼 때 x 오른쪽, z 아래 = 입구 쪽)
 - 매장 안쪽 윤곽 `[[0,0],[9.5,0],[9.5,9.5],[3.9,9.5],[0,5.6]]`, 벽 두께 0.14, 천장 2.9
-- 입구 문 x 8.1 (폭 1.1), 화장실 문 x 8.815 z 0 (폭 0.85, 오른쪽 기둥에 붙음), 화장실 옆 기둥 x 9.3~9.5 z 0~0.4 (왼편 면에 거울 촛대), 안쪽 벽 들보 깊이 40cm, 에어컨 장 x 3.3 z 0 (폭 0.8, 깊이 0.75)
+- 입구 문 x 8.49 (폭 1.1, 입구 구석 기둥과 20cm 간격), 입구 구석 기둥 x 9.3~9.5 z 9.3~9.5, 화장실 문 x 8.815 z 0 (폭 0.85, 오른쪽 기둥에 붙음), 화장실 옆 기둥 x 9.3~9.5 z 0~0.4 (왼편 면에 거울 촛대), 안쪽 벽 들보 깊이 40cm, 에어컨 장 x 3.3 z 0 (폭 0.8, 깊이 0.75)
 - 2층은 유리 3면 쪽으로 OVER 0.7 넓음, 모서리 기둥 4개, 처마 밑 SOFFIT_Y 2.95
 - 매장 뒤 공간 깊이 BACK_D 2.15: 칸막이 x 4.1(BACK_PART_X), x 7.55(WC_ROOM_X0). 화장실 통로 공간 = x 7.55~9.5, 뒷벽에 바깥문(아직 안 열림)
 - 같은 자리에 면 두 개가 겹치면 지글거림 → 몇 mm 띄우기
