@@ -2542,7 +2542,17 @@ function reelPosterTex() {
 
 /** 사진 크게 보기 (누르거나 X 로 닫기) */
 // ───── 맥북 화면: 매장에서 지금 나오는 곡 (사장님 스포티파이에서 곡 정보만 읽어 옴) ─────
-var nowPlaying = null, npArt = null, npArtUrl = "", npCtx = null, npTex = null;
+var nowPlaying = null, npArt = null, npArtUrl = "", npCtx = null, npTex = null, turntableLP = null;
+var lpInfo = {}; // 스포티파이 링크 → { title, img }
+function loadLpInfo(url) {
+  if (lpInfo[url]) return;
+  lpInfo[url] = {};
+  fetch("/api/lpinfo?u=" + encodeURIComponent(url)).then((r) => r.json()).then((j) => {
+    const o = lpInfo[url]; o.title = j.title;
+    if (j.art) { o.img = new Image(); o.img.onload = () => { if (turntableLP) { turntableLP.img = o.img; drawMacScreen(); } }; o.img.src = "/api/nowplaying/art?u=" + encodeURIComponent(j.art); }
+    if (turntableLP && turntableLP.url === url) { turntableLP.title = o.title; drawMacScreen(); }
+  }).catch(() => {});
+}
 function macScreen() {
   const c = document.createElement("canvas"); c.width = 384; c.height = 240;
   npCtx = c.getContext("2d");
@@ -2554,6 +2564,15 @@ function drawMacScreen() {
   const c = npCtx; if (!c) return;
   const W = 384, H = 240, np = nowPlaying;
   const gr = c.createLinearGradient(0, 0, 0, H); gr.addColorStop(0, "#2a2320"); gr.addColorStop(1, "#121010"); c.fillStyle = gr; c.fillRect(0, 0, W, H);
+  if (!np?.title && turntableLP) { // 앱 턴테이블에서 LP 가 돌 때
+    const S = 150, ax = 22, ay = 30;
+    if (turntableLP.img?.complete && turntableLP.img.naturalWidth) c.drawImage(turntableLP.img, ax, ay, S, S); else { c.fillStyle = "#0e0e10"; c.beginPath(); c.arc(ax + S / 2, ay + S / 2, S / 2, 0, 7); c.fill(); c.fillStyle = "#b23a32"; c.beginPath(); c.arc(ax + S / 2, ay + S / 2, 24, 0, 7); c.fill(); }
+    c.textAlign = "left"; const tx = ax + S + 18;
+    c.fillStyle = "#1db954"; c.font = "700 12px sans-serif"; c.fillText("◉ 턴테이블에서", tx, ay + 16);
+    c.fillStyle = "#ffffff"; c.font = "800 19px sans-serif"; let t = turntableLP.title || "LP 한 장"; while (t.length > 1 && c.measureText(t).width > W - tx - 16) t = t.slice(0, -2) + "…"; c.fillText(t, tx, ay + 50);
+    c.fillStyle = "#a59c93"; c.font = "500 13px sans-serif"; c.fillText("눌러서 스포티파이로 듣기", tx, ay + 80);
+    npTex.needsUpdate = true; return;
+  }
   if (!np?.title) { // 연결 전·재생 안 할 때: 조용한 화면
     c.fillStyle = "#1db954"; c.beginPath(); c.arc(W / 2, H / 2 - 16, 22, 0, 7); c.fill();
     c.strokeStyle = "#121010"; c.lineWidth = 4; c.lineCap = "round";
@@ -3267,7 +3286,8 @@ function buildInteriorProp(p, g) {
       const lp = new THREE.Group(); lp.visible = false; g.add(lp); // LP (누르면 스윽 들어옴)
       mk(cyl(0.15, 0.15, 0.003, 48), "#0e0e10", [0, 0, 0], lp, no);
       for (const r of [0.07, 0.1, 0.13]) mk(new THREE.RingGeometry(r, r + 0.003, 48), new THREE.MeshBasicMaterial({ color: "#26262a", side: THREE.DoubleSide }), [0, 0.0017, 0], lp, no).rotation.x = -Math.PI / 2; // 홈 결
-      mk(cyl(0.045, 0.045, 0.004, 24), "#b23a32", [0, 0.001, 0], lp, no); // 라벨
+      const lpLabel = toon("#b23a32", { unique: true });
+      mk(cyl(0.045, 0.045, 0.004, 24), lpLabel, [0, 0.001, 0], lp, no); // 라벨
       mk(box(0.02, 0.0012, 0.006), "#f2e6c8", [0.02, 0.0035, 0], lp, no); // 라벨 글씨 (돌아가는 게 보이게)
       const lpRest = new THREE.Vector3(px, py + 0.021, pz);
       const arm = new THREE.Group(); arm.position.set(ax + 0.16, py + 0.03, pz - 0.09); arm.rotation.y = 0.55; g.add(arm); // 톤암 (오른쪽 뒤에서)
@@ -3310,6 +3330,7 @@ function buildInteriorProp(p, g) {
       const mac = part(cx, "맥북으로 음악을 골라요\n오늘은 어떤 곡일까요?", [0.32, 0.24, 0.26, my + 0.11], my + 0.4);
       mac.userData.onTap = () => { // 지금 나오는 곡이 있으면 말풍선 대신 스포티파이 플레이어
         if (nowPlaying?.title && nowPlaying.url) { mac.userData.skipSay = true; showSpotify(nowPlaying.url); }
+        else if (turntableLP?.url) { mac.userData.skipSay = true; showSpotify(turntableLP.url); }
         else if (nowPlaying?.title) mac.userData.sayLine = `지금 매장에서 나오는 곡\n${nowPlaying.title}\n${nowPlaying.artist || ""}`;
       };
       part(cx, "마란츠 CD50n\nCD도 듣고 DAC로도 써요", [0.45, cH, 0.38, cy + cH / 2], cy + cH + 0.4).position.y = 0;
@@ -3318,9 +3339,13 @@ function buildInteriorProp(p, g) {
       // 턴테이블 숨은 재미: 가까이 다가가 보고 → 뚜껑 열림 → LP 가 스윽 들어와 놓임 → 톤암 내려오고 → 돌기 시작
       const cam0 = new THREE.PerspectiveCamera(), st = { busy: false, spin: 0 };
       const toW = (x, y, z) => g.localToWorld(new THREE.Vector3(x, y, z));
+      const lps = p.lps || [];
       tt.userData.onTap = () => {
         if (st.busy) return;
         st.busy = true;
+        const rec = lps.length ? lps[(st.n = ((st.n ?? -1) + 1) % lps.length)] : null; // 다음 LP
+        if (rec?.label) lpLabel.color.set(rec.label);
+        if (rec?.spotify) loadLpInfo(rec.spotify);
         if (walk.on && !walk.tween) { // 클로즈업
           const cp = toW(ax - 0.02, ty + 0.55, 0.85), look = toW(ax - 0.02, ty + 0.04, -0.02);
           cam0.position.copy(cp); cam0.lookAt(look);
@@ -3340,8 +3365,10 @@ function buildInteriorProp(p, g) {
           const target = t > 4 && t < 18.8 ? 3.46 : 0; // 33⅓ 회전
           st.spin += (target - st.spin) * Math.min(1, dt * 1.5);
           platter.rotation.y -= st.spin * dt; lp.rotation.y = platter.rotation.y;
+          if (rec?.spotify && !st.shown && t > 4.6) { st.shown = true; turntableLP = { ...(lpInfo[rec.spotify] || {}), url: rec.spotify }; drawMacScreen(); showSpotify(rec.spotify); } // LP 가 돌기 시작하면 스포티파이 플레이어
+          if (t > 19 && turntableLP) { turntableLP = null; drawMacScreen(); }
           if (!back && t > 7.5) { back = true; if (walk.hold) flyTo(new THREE.Vector3(walk.pos.x, walk.eye, walk.pos.z), eulerQuat(walk.pitch, walk.yaw), walkFov(), 1.1, () => { walk.hold = false; }); }
-          if (t >= 23.9) { st.busy = false; lp.visible = false; }
+          if (t >= 23.9) { st.busy = false; st.shown = false; lp.visible = false; }
         });
       };
       return true;

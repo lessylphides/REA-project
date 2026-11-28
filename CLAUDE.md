@@ -55,4 +55,5 @@ for i in 1 2 3 4 5 6; do CLOUDFLARE_ACCOUNT_ID=9ecdd9e050cc043f4c41cbef5f0b9853 
 - 사장님 스포티파이 계정의 "지금 재생 중" 정보만 읽음 (소리는 안 내보냄). 서버 `/api/nowplaying` (10초 캐시), 표지 `/api/nowplaying/art`, 연결 `/api/spotify/start`(관리자) → `/api/spotify/callback`
 - Cloudflare Secrets: `SPOTIFY_CLIENT_ID`, `SPOTIFY_CLIENT_SECRET` (반드시 Secret 으로 — 일반 변수는 배포 때 지워짐). 리디렉트 주소: https://xn--ok0bu1teudt3lg0f.kr/api/spotify/callback (+ .com)
 - 맥북 누르면 스포티파이 공식 플레이어(임베드, 로그인 안 한 손님은 30초 미리듣기). CSP frame-src open.spotify.com
-- 다음에: LP장 만들어 LP마다 스포티파이 앨범 연결 → 턴테이블에 건 앨범이 플레이어로
+- 턴테이블 LP 목록: layout.js hifi `lps: [{ spotify, label }]` — 누를 때마다 다음 LP, 돌기 시작하면 스포티파이 플레이어 + 맥북 화면 "턴테이블에서" (곡 제목·표지는 `/api/lpinfo` = 스포티파이 oEmbed)
+- 다음에: LP장 만들어 손님이 LP 골라 걸기

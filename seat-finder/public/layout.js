@@ -94,7 +94,8 @@ export default {
     { type: "fridge", x: 1.91, z: 2.82, w: 1.5, rot: 90 }, // 에스프레소 머신 아래는 비우고 그 옆, 바 몸통 안 (냉동 | 냉장)
     { type: "coffee", x: 1.7, z: 1.765, rot: 90, y0: 1.04, shelf: true, say: "커피도 내려 드려요\n원두 향이 솔솔" },
     // 정면 창 아래 장 위 양초
-    { type: "hifi", x: 5.96, z: 9.2, rot: 180, clear: 0.5, say: "마란츠 CD50n · PM8006\n턴테이블로 LP도 틀어요" }, // 입구 쪽 스피커 왼쪽: CD50n(+맥북) · PM8006(+턴테이블)
+    { type: "hifi", x: 5.96, z: 9.2, rot: 180, clear: 0.5, lps: [{ spotify: "https://open.spotify.com/track/3ctALmweZBapfBdFiIVpji", label: "#b23a32" }], // 턴테이블에 거는 LP (나중에 LP장에서 고르기)
+      say: "마란츠 CD50n · PM8006\n턴테이블로 LP도 틀어요" }, // 입구 쪽 스피커 왼쪽: CD50n(+맥북) · PM8006(+턴테이블)
     { type: "candles", x: 6.95, z: 9.2, y0: 0.99, say: "은은한 촛불\n밤이 되면 더 예뻐요" },
     // 조명
     { type: "pendant", kind: "linear", x: 2.1, z: 2.8, rot: 90, len: 1.8, y: 2.2, glowLen: 4.1, glowOff: 0.2 }, // glowLen/Off: 바 상판 위 빛줄기 길이·위치

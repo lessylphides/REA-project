@@ -477,9 +477,20 @@ export default {
     if (url.pathname === "/api/nowplaying" && req.method === "GET") return json(await store.nowPlaying(env.SPOTIFY_CLIENT_ID, env.SPOTIFY_CLIENT_SECRET));
     if (url.pathname === "/api/nowplaying/art" && req.method === "GET") { // 앨범 표지 (스포티파이 이미지 서버만, 같은 주소로 받아 3D 화면에 그림)
       const u = url.searchParams.get("u") || "";
-      if (!/^https:\/\/i\.scdn\.co\/image\/[A-Za-z0-9]+$/.test(u)) return new Response("bad", { status: 400 });
+      if (!/^https:\/\/(i\.scdn\.co|image-cdn-[a-z]{2}\.spotifycdn\.com)\/image\/[A-Za-z0-9]+$/.test(u)) return new Response("bad", { status: 400 });
       const r = await fetch(u, { cf: { cacheTtl: 86400, cacheEverything: true } } as RequestInit);
       return new Response(r.body, { status: r.status, headers: { "content-type": r.headers.get("content-type") || "image/jpeg", "cache-control": "public, max-age=86400", ...SEC_HEADERS } });
+    }
+    // LP 정보 (스포티파이 공개 oEmbed: 곡/앨범 제목·표지) — 로그인 필요 없음
+    if (url.pathname === "/api/lpinfo" && req.method === "GET") {
+      const u = url.searchParams.get("u") || "";
+      if (!/^https:\/\/open\.spotify\.com\/(track|album|playlist)\/[A-Za-z0-9]+$/.test(u)) return json({ error: "bad" }, 400);
+      try {
+        const r = await fetch(`https://open.spotify.com/oembed?url=${encodeURIComponent(u)}`, { cf: { cacheTtl: 86400, cacheEverything: true } } as RequestInit);
+        const j = (await r.json()) as { title?: string; thumbnail_url?: string };
+        const art = j.thumbnail_url && /^https:\/\/(i\.scdn\.co|image-cdn-[a-z]{2}\.spotifycdn\.com)\/image\/[A-Za-z0-9]+$/.test(j.thumbnail_url) ? j.thumbnail_url : null;
+        return new Response(JSON.stringify({ title: j.title || null, art }), { headers: { "content-type": "application/json; charset=utf-8", "cache-control": "public, max-age=86400", ...SEC_HEADERS } });
+      } catch { return json({ title: null, art: null }); }
     }
     // 스포티파이 연결 마무리 (로그인 후 돌아오는 곳)
     if (url.pathname === "/api/spotify/callback" && req.method === "GET") {
