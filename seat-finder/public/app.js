@@ -2893,13 +2893,14 @@ function buildInteriorProp(p, g) {
           c.globalAlpha = 0.06; c.fillStyle = "#8a7f6c"; for (let y = 0; y < H2; y += 3) c.fillRect(0, y, W2, 1); for (let x = 0; x < W2; x += 3) c.fillRect(x, 0, 1, H2); c.globalAlpha = 1; // 리넨 결
           const stem = (t) => [W2 * (0.62 - 0.12 * t * t), H2 * (1.02 - t * 1.05)];
           c.strokeStyle = "#3f5a3c"; c.lineWidth = 5; c.beginPath(); for (let i = 0; i <= 30; i++) { const [x, y] = stem(i / 30); i ? c.lineTo(x, y) : c.moveTo(x, y); } c.stroke();
-          for (let i = 1; i < 15; i++) { // 잎: 양쪽으로 길쭉하게, 수채화처럼 두 톤
-            const t = i / 15, [x, y] = stem(t), L = W2 * (0.62 - t * 0.22);
+          for (let i = 1; i < 10; i++) { // 잎: 양쪽으로 넓고 길쭉하게 (사진처럼 통통한 잎), 수채화처럼 두 톤
+            const t = i / 10 - 0.03, [x, y] = stem(t), L = W2 * (0.66 - t * 0.2);
             for (const sd of [-1, 1]) {
               const a = sd < 0 ? Math.PI + 0.55 - t * 0.2 : -0.45 + t * 0.15;
               c.save(); c.translate(x, y); c.rotate(a);
-              const g2 = c.createLinearGradient(0, -12, 0, 12); g2.addColorStop(0, "#2f4a32"); g2.addColorStop(0.5, "#5d7d4c"); g2.addColorStop(1, "#3b5a3a");
-              c.fillStyle = g2; c.beginPath(); c.moveTo(0, 0); c.quadraticCurveTo(L * 0.5, -17, L, 2); c.quadraticCurveTo(L * 0.5, 12, 0, 0); c.fill(); c.restore();
+              const g2 = c.createLinearGradient(0, -26, 0, 22); g2.addColorStop(0, "#2a4430"); g2.addColorStop(0.45, "#5f7f4c"); g2.addColorStop(1, "#33523a");
+              c.fillStyle = g2; c.beginPath(); c.moveTo(0, 0); c.bezierCurveTo(L * 0.2, -34, L * 0.7, -30, L, 0); c.bezierCurveTo(L * 0.7, 22, L * 0.2, 24, 0, 0); c.fill();
+              c.strokeStyle = "rgba(30,50,30,.45)"; c.lineWidth = 1.5; c.beginPath(); c.moveTo(2, -2); c.quadraticCurveTo(L * 0.5, -6, L * 0.95, 0); c.stroke(); c.restore(); // 잎맥
             }
           }
         });
