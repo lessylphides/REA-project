@@ -3189,11 +3189,17 @@ function buildInteriorProp(p, g) {
       for (const fx of [-1, 1]) for (const fzz of [-1, 1]) mk(cyl(0.035, 0.04, 0.045, 16), "#202022", [ax + fx * 0.18, ay + aH + 0.0225, fzz * 0.13], g, { outline: 0.003 });
       mk(box(tW, 0.07, tD), "#18181a", [ax, ty + 0.035, 0], g, { outline: 0.006 });
       const px = ax - 0.045, pz = 0.0, py = ty + 0.072;
-      mk(cyl(0.155, 0.155, 0.018, 40), "#3a3a3c", [px, py + 0.009, pz], g, { outline: 0.003 }); // 플래터 (옆면 점무늬)
-      for (let i = 0; i < 48; i++) { const a = (i / 48) * Math.PI * 2; mk(box(0.006, 0.006, 0.002), "#aaa", [px + Math.cos(a) * 0.156, py + 0.009, pz + Math.sin(a) * 0.156], g, no).rotation.y = -a; }
-      mk(cyl(0.15, 0.15, 0.003, 40), "#0e0e10", [px, py + 0.0195, pz], g, no); // 레코드
-      mk(cyl(0.045, 0.045, 0.004, 24), "#b23a32", [px, py + 0.02, pz], g, no); // 라벨
-      mk(cyl(0.004, 0.004, 0.02, 8), "#ccc", [px, py + 0.028, pz], g, no);
+      const platter = new THREE.Group(); platter.position.set(px, py, pz); g.add(platter); // 돌아가는 부분
+      mk(cyl(0.155, 0.155, 0.018, 40), "#3a3a3c", [0, 0.009, 0], platter, { outline: 0.003 }); // 플래터 (옆면 점무늬)
+      for (let i = 0; i < 48; i++) { const a = (i / 48) * Math.PI * 2; mk(box(0.006, 0.006, 0.002), "#aaa", [Math.cos(a) * 0.156, 0.009, Math.sin(a) * 0.156], platter, no).rotation.y = -a; }
+      mk(cyl(0.148, 0.148, 0.002, 40), "#232325", [0, 0.0185, 0], platter, no); // 고무 매트
+      mk(cyl(0.004, 0.004, 0.024, 8), "#ccc", [px, py + 0.028, pz], g, no); // 스핀들
+      const lp = new THREE.Group(); lp.visible = false; g.add(lp); // LP (누르면 스윽 들어옴)
+      mk(cyl(0.15, 0.15, 0.003, 48), "#0e0e10", [0, 0, 0], lp, no);
+      for (const r of [0.07, 0.1, 0.13]) mk(new THREE.RingGeometry(r, r + 0.003, 48), new THREE.MeshBasicMaterial({ color: "#26262a", side: THREE.DoubleSide }), [0, 0.0017, 0], lp, no).rotation.x = -Math.PI / 2; // 홈 결
+      mk(cyl(0.045, 0.045, 0.004, 24), "#b23a32", [0, 0.001, 0], lp, no); // 라벨
+      mk(box(0.02, 0.0012, 0.006), "#f2e6c8", [0.02, 0.0035, 0], lp, no); // 라벨 글씨 (돌아가는 게 보이게)
+      const lpRest = new THREE.Vector3(px, py + 0.021, pz);
       const arm = new THREE.Group(); arm.position.set(ax + 0.16, py + 0.03, pz - 0.09); arm.rotation.y = 0.55; g.add(arm); // 톤암 (오른쪽 뒤에서)
       mk(cyl(0.022, 0.022, 0.03, 16), "#2c2c2e", [0, -0.012, 0], arm, { outline: 0.002 });
       const rod = mk(cyl(0.004, 0.004, 0.22, 8), "#c9c9cc", [0, 0.012, 0.11], arm, no); rod.rotation.x = Math.PI / 2;
@@ -3201,7 +3207,8 @@ function buildInteriorProp(p, g) {
       mk(cyl(0.012, 0.012, 0.03, 12), "#2c2c2e", [0, 0.012, -0.035], arm, no).rotation.x = Math.PI / 2; // 무게추
       mk(box(0.03, 0.012, 0.06), "#333", [ax + 0.19, ty + 0.074, 0.12], g, no); // 피치 슬라이더
       mk(cyl(0.012, 0.012, 0.012, 12), "#2a2a2c", [ax - 0.19, ty + 0.078, 0.13], g, no); // 시작 버튼
-      const cover = mk(box(tW, 0.11, tD), new THREE.MeshBasicMaterial({ color: "#dfe9ee", transparent: true, opacity: 0.16, depthWrite: false }), [ax, ty + 0.07 + 0.055, 0], g, { outline: 0.002, shadow: false }); // 투명 덮개
+      const lid = new THREE.Group(); lid.position.set(ax, ty + 0.07, -tD / 2); g.add(lid); // 투명 덮개: 뒤쪽 경첩
+      mk(box(tW, 0.11, tD), new THREE.MeshBasicMaterial({ color: "#dfe9ee", transparent: true, opacity: 0.16, depthWrite: false }), [0, 0.055, tD / 2], lid, { outline: 0.002, shadow: false });
       // ── CD50n (왼쪽)
       const cx = -0.23, cW = 0.44, cH = 0.123, cD = 0.37, cy = y0 + 0.018;
       feet(cx, cW, cD, y0);
@@ -3218,13 +3225,51 @@ function buildInteriorProp(p, g) {
       const my = cy + cH, mbW = 0.304, mbD = 0.212;
       mk(box(mbW, 0.012, mbD), "#c9cbcf", [cx, my + 0.006, 0.04], g, { outline: 0.004 });
       mk(new THREE.PlaneGeometry(mbW - 0.04, mbD * 0.55), new THREE.MeshBasicMaterial({ color: "#202124" }), [cx, my + 0.0125, 0.07], g, no).rotation.x = -Math.PI / 2; // 키보드
-      const lid = new THREE.Group(); lid.position.set(cx, my + 0.012, 0.04 - mbD / 2); lid.rotation.x = -0.18; g.add(lid); // 뒤로 살짝 젖힘
-      mk(box(mbW, 0.2, 0.008), "#c9cbcf", [0, 0.1, 0], lid, { outline: 0.004 });
+      const mlid = new THREE.Group(); mlid.position.set(cx, my + 0.012, 0.04 - mbD / 2); mlid.rotation.x = -0.18; g.add(mlid); // 뒤로 살짝 젖힘
+      mk(box(mbW, 0.2, 0.008), "#c9cbcf", [0, 0.1, 0], mlid, { outline: 0.004 });
       const scr = canvasTex(256, 160, (c, W, H) => { const gr = c.createLinearGradient(0, 0, 0, H); gr.addColorStop(0, "#3a2c22"); gr.addColorStop(1, "#15110e"); c.fillStyle = gr; c.fillRect(0, 0, W, H); c.fillStyle = "#c79a62"; c.fillRect(150, 30, 26, 34); c.fillStyle = "#e8e3d6"; c.fillRect(20, 20, 40, 120); c.fillStyle = "#4a6c96"; c.beginPath(); c.arc(118, 90, 16, 0, 7); c.fill(); c.fillStyle = "#6b4a32"; c.fillRect(80, 112, 90, 14); c.fillStyle = "#ffffff"; c.font = "11px sans-serif"; c.fillText("The Moves", 34, 150); });
-      mk(new THREE.PlaneGeometry(mbW - 0.024, 0.18), new THREE.MeshBasicMaterial({ map: scr }), [0, 0.1, 0.0045], lid, no);
+      mk(new THREE.PlaneGeometry(mbW - 0.024, 0.18), new THREE.MeshBasicMaterial({ map: scr }), [0, 0.1, 0.0045], mlid, no);
       addObstacle(p.x, p.z, 0.46, 0.22, p.rot);
-      g.userData.hit = [0.92, 0.45, 0.42, y0 + 0.2]; g.userData.sayY = y0 + 0.55;
-      void cover;
+      // ── 누를 곳 나누기: 턴테이블 · 맥북 · 앰프 · CD 플레이어 (각자 말풍선, 턴테이블은 숨은 재미)
+      const part = (lx, say, hit, sayY) => {
+        const sg = new THREE.Group(); sg.position.x = lx; g.add(sg);
+        const [wx, wz] = rotXZ(lx, 0, p.rot || 0); sg.userData.sayPos = [p.x + wx, p.z + wz];
+        addSayHit({ type: "hifi", say }, sg, hit, sayY);
+        return sg;
+      };
+      part(cx, "맥북으로 음악을 골라요\n오늘은 어떤 곡일까요?", [0.32, 0.24, 0.26, my + 0.11], my + 0.4);
+      part(cx, "마란츠 CD50n\nCD도 듣고 DAC로도 써요", [0.45, cH, 0.38, cy + cH / 2], cy + cH + 0.4).position.y = 0;
+      part(ax, "마란츠 PM8006 앰프\n따뜻한 소리의 비결", [0.45, aH, 0.39, ay + aH / 2], ay + aH + 0.5);
+      const tt = part(ax, "LP 한 장 걸어 볼게요 🎵", [0.47, 0.2, 0.37, ty + 0.1], ty + 0.5);
+      // 턴테이블 숨은 재미: 가까이 다가가 보고 → 뚜껑 열림 → LP 가 스윽 들어와 놓임 → 톤암 내려오고 → 돌기 시작
+      const cam0 = new THREE.PerspectiveCamera(), st = { busy: false, spin: 0 };
+      const toW = (x, y, z) => g.localToWorld(new THREE.Vector3(x, y, z));
+      tt.userData.onTap = () => {
+        if (st.busy) return;
+        st.busy = true;
+        if (walk.on && !walk.tween) { // 클로즈업
+          const cp = toW(ax - 0.02, ty + 0.55, 0.85), look = toW(ax - 0.02, ty + 0.04, -0.02);
+          cam0.position.copy(cp); cam0.lookAt(look);
+          walk.hold = true;
+          flyTo(cp, cam0.quaternion.clone(), 38, 1.2, null);
+        }
+        let back = false;
+        const ease3 = (x) => (x <= 0 ? 0 : x >= 1 ? 1 : x * x * (3 - 2 * x)), seg = (t, a, b) => ease3((t - a) / (b - a));
+        addEffect(new THREE.Object3D(), g, 24, (e) => {
+          const t = e.t, dt = 1 / 60;
+          lid.rotation.x = -1.15 * (seg(t, 0.5, 1.6) - seg(t, 21.5, 23)); // 뚜껑
+          const inK = seg(t, 1.6, 3.0), outK = seg(t, 20, 21.4); // LP 들어옴·나감
+          lp.visible = inK > 0 && outK < 1;
+          const k = inK * (1 - outK), drop = Math.max(0, 1 - k * 1.25);
+          lp.position.set(lpRest.x, lpRest.y + 0.05 * drop, lpRest.z + 0.42 * (1 - k));
+          arm.rotation.y = THREE.MathUtils.lerp(0.55, -0.6, seg(t, 3.1, 4.0) - seg(t, 18.6, 19.6)); // 톤암
+          const target = t > 4 && t < 18.8 ? 3.46 : 0; // 33⅓ 회전
+          st.spin += (target - st.spin) * Math.min(1, dt * 1.5);
+          platter.rotation.y -= st.spin * dt; lp.rotation.y = platter.rotation.y;
+          if (!back && t > 7.5) { back = true; if (walk.hold) flyTo(new THREE.Vector3(walk.pos.x, walk.eye, walk.pos.z), eulerQuat(walk.pitch, walk.yaw), walkFov(), 1.1, () => { walk.hold = false; }); }
+          if (t >= 23.9) { st.busy = false; lp.visible = false; }
+        });
+      };
       return true;
     }
     case "sconce": { // 벽걸이 나무 거울 + 받침 위 캔들 (위가 둥근 짙은 원목판, 타원 거울, 아래 둥근 받침대). 로컬 +z = 방 쪽
@@ -5317,6 +5362,10 @@ function updateWalk(dt, time) {
     camera.updateProjectionMatrix();
     tw.onProgress?.(tw.t);
     if (tw.t >= 1) { walk.tween = null; tw.onDone?.(); }
+    return;
+  }
+  if (walk.hold) { // 클로즈업 중: 움직이려 하면 바로 돌아옴
+    if (walk.keys.size || Math.hypot(walk.joy.x, walk.joy.y) > 0.2) flyTo(new THREE.Vector3(walk.pos.x, walk.eye, walk.pos.z), eulerQuat(walk.pitch, walk.yaw), walkFov(), 0.6, () => { walk.hold = false; });
     return;
   }
   if (!walk.on) return;
