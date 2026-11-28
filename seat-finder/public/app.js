@@ -2893,10 +2893,11 @@ function buildInteriorProp(p, g) {
           c.globalAlpha = 0.06; c.fillStyle = "#8a7f6c"; for (let y = 0; y < H2; y += 3) c.fillRect(0, y, W2, 1); for (let x = 0; x < W2; x += 3) c.fillRect(x, 0, 1, H2); c.globalAlpha = 1; // 리넨 결
           const stem = (t) => [W2 * (0.62 - 0.12 * t * t), H2 * (1.02 - t * 1.05)];
           c.strokeStyle = "#3f5a3c"; c.lineWidth = 5; c.beginPath(); for (let i = 0; i <= 30; i++) { const [x, y] = stem(i / 30); i ? c.lineTo(x, y) : c.moveTo(x, y); } c.stroke();
-          for (let i = 1; i < 10; i++) { // 잎: 양쪽으로 넓고 길쭉하게 (사진처럼 통통한 잎), 수채화처럼 두 톤
-            const t = i / 10 - 0.03, [x, y] = stem(t), L = W2 * (0.66 - t * 0.2);
-            for (const sd of [-1, 1]) {
-              const a = sd < 0 ? Math.PI + 0.55 - t * 0.2 : -0.45 + t * 0.15;
+          const leaves = [[0.08, -1], [0.16, 1], [0.24, -1], [0.33, 1], [0.41, -1], [0.5, 1], [0.58, -1], [0.67, 1], [0.75, -1], [0.83, 1], [0.9, -1], [0.95, 1], [1.0, 0]]; // 사진처럼 한쪽 6장씩 엇갈려 + 꼭대기 1장
+          for (const [t, side] of leaves) { // 잎: 길고 통통하게, 비스듬히 위로, 수채화처럼 두 톤
+            const [x, y] = stem(Math.min(t, 0.98)), L = W2 * (side ? 0.74 - t * 0.16 : 0.34);
+            for (const sd of side ? [side] : [0]) {
+              const a = sd === 0 ? -Math.PI / 2 - 0.12 : sd < 0 ? Math.PI + 0.5 + t * 0.25 : -0.5 - t * 0.25;
               c.save(); c.translate(x, y); c.rotate(a);
               const g2 = c.createLinearGradient(0, -26, 0, 22); g2.addColorStop(0, "#2a4430"); g2.addColorStop(0.45, "#5f7f4c"); g2.addColorStop(1, "#33523a");
               c.fillStyle = g2; c.beginPath(); c.moveTo(0, 0); c.bezierCurveTo(L * 0.2, -34, L * 0.7, -30, L, 0); c.bezierCurveTo(L * 0.7, 22, L * 0.2, 24, 0, 0); c.fill();
