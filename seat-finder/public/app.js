@@ -1199,6 +1199,37 @@ function buildInsideShell(T) {
   // 노출된 들보 (방 안쪽에 들어가는 위치만)
   const beam = toon("#e6d6d2");
   for (const x of R.beams || []) mk(box(0.22, 0.16, R.d - 0.05), beam, [x, H - 0.08, R.d / 2], fpGroup, { outline: 0.015, shadow: false });
+  // 대들보: 벽 꼭대기를 따라 둘러진 들보 (막힌 벽은 안으로 20cm, 창 쪽은 안·밖 20cm씩, 창 위는 창 꼭대기 2.75m 까지만) + 창 모서리에서 안쪽 벽까지 큰 들보
+  const wallMat = toon(R.wall || "#f2e6ec");
+  const shade = (k) => toon("#" + new THREE.Color(R.wall || "#f2e6ec").multiplyScalar(k).getHexString());
+  // 같은 흰 벽이라도 들보·기둥 모서리가 보이게: 들보 아랫면은 그늘 판, 기둥 옆면은 조금 어두운 판을 덧댐 (한 물체에 한 재질 → 매장 조명 색이 같이 입혀짐)
+  const underMat = shade(0.78), sideMat = shade(0.86), no = { outline: 0, shadow: false };
+  const beamBox = (L, d, w, pos, rotY = 0) => {
+    const g = new THREE.Group(); g.position.set(pos[0], pos[1], pos[2]); g.rotation.y = rotY; fpGroup.add(g);
+    mk(box(L, d, w), wallMat, [0, 0, 0], g, { outline: 0.012, shadow: false });
+    const u = mk(new THREE.PlaneGeometry(L - 0.004, w - 0.004), underMat, [0, -d / 2 - 0.002, 0], g, no); u.rotation.x = Math.PI / 2; // 아랫면 그늘
+    return g;
+  };
+  if (R.perimBeam) {
+    const { inner = 0.2, outer = 0.2, drop } = R.perimBeam, N = OUTLINE.length;
+    let cx0 = 0, cz0 = 0; for (const [x, z] of OUTLINE) { cx0 += x / N; cz0 += z / N; }
+    for (let i = 0; i < N; i++) {
+      const [ax, az] = OUTLINE[i], [bx, bz] = OUTLINE[(i + 1) % N], dx = bx - ax, dz = bz - az, L = Math.hypot(dx, dz);
+      let nx = -dz / L, nz = dx / L; if ((cx0 - (ax + bx) / 2) * nx + (cz0 - (az + bz) / 2) * nz < 0) { nx = -nx; nz = -nz; } // 안쪽 방향
+      const glass = !!(R.outside || [])[i], d = glass ? Math.max(0.06, H - 2.75) : drop + i * 0.002; // 겹치는 모서리 지글거림 막기: 변마다 몇 mm 다르게
+      const w = glass ? inner + outer : inner, off = glass ? (inner - outer) / 2 : inner / 2; // 창 쪽: 벽 선 가운데로 안·밖 반반
+      beamBox(L + (glass ? 0.4 : 0), d, w, [(ax + bx) / 2 + nx * off, H - d / 2, (az + bz) / 2 + nz * off], -Math.atan2(dz, dx));
+    }
+  }
+  if (R.bigBeam) { const { x, w, drop } = R.bigBeam; beamBox(R.d - 0.02, drop, w, [x, H - drop / 2, R.d / 2], Math.PI / 2); }
+  // 벽에서 튀어나온 기둥 (바닥 ~ 천장)
+  for (const [x0, z0, x1, z1] of R.wallPillars || []) {
+    const pw = x1 - x0 - 0.004, pd = z1 - z0 - 0.004, cx = (x0 + x1) / 2, cz = (z0 + z1) / 2;
+    mk(box(pw, H - 0.004, pd), wallMat, [cx, H / 2, cz], fpGroup, { outline: 0.012, shadow: false });
+    if (pd < pw) for (const sx of [-1, 1]) { const m = mk(new THREE.PlaneGeometry(pd, H - 0.01), sideMat, [cx + sx * (pw / 2 + 0.002), H / 2, cz], fpGroup, no); m.rotation.y = sx * Math.PI / 2; } // 옆면 조금 어둡게
+    else for (const sz of [-1, 1]) { const m = mk(new THREE.PlaneGeometry(pw, H - 0.01), sideMat, [cx, H / 2, cz + sz * (pd / 2 + 0.002)], fpGroup, no); if (sz < 0) m.rotation.y = Math.PI; }
+    addObstacle((x0 + x1) / 2, (z0 + z1) / 2, (x1 - x0) / 2, (z1 - z0) / 2);
+  }
 }
 
 /** 정면이 아닌 유리면의 바깥쪽 (벽돌 위·아래, 보도) */
