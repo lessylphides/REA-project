@@ -50,3 +50,9 @@ for i in 1 2 3 4 5 6; do CLOUDFLARE_ACCOUNT_ID=9ecdd9e050cc043f4c41cbef5f0b9853 
 ## 매장 불 스위치
 - 달력 바로 위 벽의 작은 스위치(`lightswitch`). 손님이 누르면 "숨겨진 스위치 발견! 사장님만 켜고 끌 수 있어요", 관리자가 누르면 모든 화면의 불을 켜고 끔 (`POST /api/lights`, 서버 `lights`)
 - 스위치 값은 다음 새벽 4시·오전 10시가 되면 시간대 기본값으로 돌아감. 관리자 화면도 손님과 똑같이 잠긴 시간엔 블라인드 닫힘·바텐더 없음
+
+## 스포티파이 (맥북 화면 = 매장에서 지금 나오는 곡)
+- 사장님 스포티파이 계정의 "지금 재생 중" 정보만 읽음 (소리는 안 내보냄). 서버 `/api/nowplaying` (10초 캐시), 표지 `/api/nowplaying/art`, 연결 `/api/spotify/start`(관리자) → `/api/spotify/callback`
+- Cloudflare Secrets: `SPOTIFY_CLIENT_ID`, `SPOTIFY_CLIENT_SECRET` (반드시 Secret 으로 — 일반 변수는 배포 때 지워짐). 리디렉트 주소: https://xn--ok0bu1teudt3lg0f.kr/api/spotify/callback (+ .com)
+- 맥북 누르면 스포티파이 공식 플레이어(임베드, 로그인 안 한 손님은 30초 미리듣기). CSP frame-src open.spotify.com
+- 다음에: LP장 만들어 LP마다 스포티파이 앨범 연결 → 턴테이블에 건 앨범이 플레이어로

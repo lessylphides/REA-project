@@ -2541,6 +2541,76 @@ function reelPosterTex() {
 }
 
 /** 사진 크게 보기 (누르거나 X 로 닫기) */
+// ───── 맥북 화면: 매장에서 지금 나오는 곡 (사장님 스포티파이에서 곡 정보만 읽어 옴) ─────
+var nowPlaying = null, npArt = null, npArtUrl = "", npCtx = null, npTex = null;
+function macScreen() {
+  const c = document.createElement("canvas"); c.width = 384; c.height = 240;
+  npCtx = c.getContext("2d");
+  npTex = new THREE.CanvasTexture(c); npTex.colorSpace = THREE.SRGBColorSpace;
+  drawMacScreen();
+  return npTex;
+}
+function drawMacScreen() {
+  const c = npCtx; if (!c) return;
+  const W = 384, H = 240, np = nowPlaying;
+  const gr = c.createLinearGradient(0, 0, 0, H); gr.addColorStop(0, "#2a2320"); gr.addColorStop(1, "#121010"); c.fillStyle = gr; c.fillRect(0, 0, W, H);
+  if (!np?.title) { // 연결 전·재생 안 할 때: 조용한 화면
+    c.fillStyle = "#1db954"; c.beginPath(); c.arc(W / 2, H / 2 - 16, 22, 0, 7); c.fill();
+    c.strokeStyle = "#121010"; c.lineWidth = 4; c.lineCap = "round";
+    for (const [y, w] of [[-8, 26], [0, 22], [8, 16]]) { c.beginPath(); c.moveTo(W / 2 - w / 2, H / 2 - 16 + y); c.quadraticCurveTo(W / 2, H / 2 - 20 + y, W / 2 + w / 2, H / 2 - 14 + y); c.stroke(); }
+    c.fillStyle = "#bdb4aa"; c.font = "600 16px sans-serif"; c.textAlign = "center"; c.fillText(np?.connected ? "잠시 쉬는 중" : "DIVE HIDE AWAY", W / 2, H / 2 + 34);
+    npTex.needsUpdate = true; return;
+  }
+  const S = 150, ax = 22, ay = 22;
+  if (npArt?.complete && npArt.naturalWidth) c.drawImage(npArt, ax, ay, S, S); else { c.fillStyle = "#3a3330"; c.fillRect(ax, ay, S, S); }
+  c.textAlign = "left"; const tx = ax + S + 18, tw = W - tx - 16;
+  const fit = (t, f) => { c.font = f; let s = t || ""; while (s.length > 1 && c.measureText(s).width > tw) s = s.slice(0, -2) + "…"; return s; };
+  c.fillStyle = "#1db954"; c.font = "700 12px sans-serif"; c.fillText(np.playing ? "● 지금 매장에서" : "Ⅱ 잠시 멈춤", tx, ay + 16);
+  c.fillStyle = "#ffffff"; c.fillText(fit(np.title, "800 20px sans-serif"), tx, ay + 50);
+  c.fillStyle = "#cfc6bc"; c.fillText(fit(np.artist, "500 15px sans-serif"), tx, ay + 76);
+  c.fillStyle = "#8f877f"; c.fillText(fit(np.album, "400 13px sans-serif"), tx, ay + 98);
+  const dur = np.duration || 1, prog = Math.min(dur, (np.progress || 0) + (np.playing ? Date.now() - (np.at || Date.now()) : 0));
+  c.fillStyle = "#4a4440"; c.fillRect(22, 196, W - 44, 5); c.fillStyle = "#ffffff"; c.fillRect(22, 196, (W - 44) * prog / dur, 5);
+  const mm = (ms) => `${Math.floor(ms / 60000)}:${String(Math.floor(ms / 1000) % 60).padStart(2, "0")}`;
+  c.fillStyle = "#a59c93"; c.font = "500 12px sans-serif"; c.fillText(mm(prog), 22, 222); c.textAlign = "right"; c.fillText(mm(dur), W - 22, 222);
+  npTex.needsUpdate = true;
+}
+async function pollNowPlaying() {
+  try {
+    const r = await fetch("/api/nowplaying", { cache: "no-store" });
+    const j = r.ok ? await r.json() : null;
+    if (j) {
+      if (j.at) j.at = Date.now(); // 진행 막대는 받은 순간부터 이어서 그림
+      nowPlaying = j;
+      if (j.art && j.art !== npArtUrl) { npArtUrl = j.art; npArt = new Image(); npArt.onload = drawMacScreen; npArt.src = "/api/nowplaying/art?u=" + encodeURIComponent(j.art); }
+      drawMacScreen();
+    }
+  } catch { /* 다음에 다시 */ }
+}
+setInterval(() => { if (!document.hidden && (fpGroup.visible || walk.on)) pollNowPlaying(); }, 15000);
+setInterval(() => { if (nowPlaying?.playing && !document.hidden) drawMacScreen(); }, 1000); // 진행 막대
+setTimeout(pollNowPlaying, 2500);
+/** 스포티파이 공식 플레이어 띄우기 (로그인한 손님은 전곡, 아니면 30초 미리듣기) */
+function showSpotify(url) {
+  const m = String(url).match(/open\.spotify\.com\/(track|album|playlist)\/([A-Za-z0-9]+)/); if (!m) return;
+  let ov = document.getElementById("spView");
+  if (!ov) {
+    ov = document.createElement("div"); ov.id = "spView";
+    Object.assign(ov.style, { position: "fixed", inset: "0", zIndex: "60", background: "rgba(0,0,0,.6)", display: "flex", alignItems: "center", justifyContent: "center", padding: "16px" });
+    const box = document.createElement("div"); Object.assign(box.style, { width: "100%", maxWidth: "420px", position: "relative" });
+    const fr = document.createElement("iframe"); fr.allow = "autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"; fr.loading = "lazy";
+    Object.assign(fr.style, { width: "100%", height: "352px", border: "0", borderRadius: "12px", background: "#121212" });
+    const x = document.createElement("button"); x.textContent = "✕"; x.setAttribute("aria-label", "닫기");
+    Object.assign(x.style, { position: "absolute", top: "-44px", right: "0", width: "36px", height: "36px", borderRadius: "18px", border: "0", background: "rgba(255,255,255,.9)", fontSize: "16px", fontWeight: "700" });
+    box.append(fr, x); ov.append(box); document.body.appendChild(ov);
+    const close = () => { ov.style.display = "none"; fr.src = "about:blank"; };
+    x.onclick = close; ov.addEventListener("click", (e) => { if (e.target === ov) close(); });
+    for (const t of ["pointerdown", "touchstart"]) ov.addEventListener(t, (e) => e.stopPropagation());
+  }
+  ov.querySelector("iframe").src = `https://open.spotify.com/embed/${m[1]}/${m[2]}?utm_source=generator&theme=0`;
+  ov.style.display = "flex";
+}
+
 function showPhoto(src) {
   let ov = document.getElementById("photoView");
   if (!ov) {
@@ -3227,7 +3297,7 @@ function buildInteriorProp(p, g) {
       mk(new THREE.PlaneGeometry(mbW - 0.04, mbD * 0.55), new THREE.MeshBasicMaterial({ color: "#202124" }), [cx, my + 0.0125, 0.07], g, no).rotation.x = -Math.PI / 2; // 키보드
       const mlid = new THREE.Group(); mlid.position.set(cx, my + 0.012, 0.04 - mbD / 2); mlid.rotation.x = -0.18; g.add(mlid); // 뒤로 살짝 젖힘
       mk(box(mbW, 0.2, 0.008), "#c9cbcf", [0, 0.1, 0], mlid, { outline: 0.004 });
-      const scr = canvasTex(256, 160, (c, W, H) => { const gr = c.createLinearGradient(0, 0, 0, H); gr.addColorStop(0, "#3a2c22"); gr.addColorStop(1, "#15110e"); c.fillStyle = gr; c.fillRect(0, 0, W, H); c.fillStyle = "#c79a62"; c.fillRect(150, 30, 26, 34); c.fillStyle = "#e8e3d6"; c.fillRect(20, 20, 40, 120); c.fillStyle = "#4a6c96"; c.beginPath(); c.arc(118, 90, 16, 0, 7); c.fill(); c.fillStyle = "#6b4a32"; c.fillRect(80, 112, 90, 14); c.fillStyle = "#ffffff"; c.font = "11px sans-serif"; c.fillText("The Moves", 34, 150); });
+      const scr = macScreen(); // 매장에서 지금 나오는 곡 (스포티파이) — 아래 macScreen
       mk(new THREE.PlaneGeometry(mbW - 0.024, 0.18), new THREE.MeshBasicMaterial({ map: scr }), [0, 0.1, 0.0045], mlid, no);
       addObstacle(p.x, p.z, 0.46, 0.22, p.rot);
       // ── 누를 곳 나누기: 턴테이블 · 맥북 · 앰프 · CD 플레이어 (각자 말풍선, 턴테이블은 숨은 재미)
@@ -3237,7 +3307,11 @@ function buildInteriorProp(p, g) {
         addSayHit({ type: "hifi", say }, sg, hit, sayY);
         return sg;
       };
-      part(cx, "맥북으로 음악을 골라요\n오늘은 어떤 곡일까요?", [0.32, 0.24, 0.26, my + 0.11], my + 0.4);
+      const mac = part(cx, "맥북으로 음악을 골라요\n오늘은 어떤 곡일까요?", [0.32, 0.24, 0.26, my + 0.11], my + 0.4);
+      mac.userData.onTap = () => { // 지금 나오는 곡이 있으면 말풍선 대신 스포티파이 플레이어
+        if (nowPlaying?.title && nowPlaying.url) { mac.userData.skipSay = true; showSpotify(nowPlaying.url); }
+        else if (nowPlaying?.title) mac.userData.sayLine = `지금 매장에서 나오는 곡\n${nowPlaying.title}\n${nowPlaying.artist || ""}`;
+      };
       part(cx, "마란츠 CD50n\nCD도 듣고 DAC로도 써요", [0.45, cH, 0.38, cy + cH / 2], cy + cH + 0.4).position.y = 0;
       part(ax, "마란츠 PM8006 앰프\n따뜻한 소리의 비결", [0.45, aH, 0.39, ay + aH / 2], ay + aH + 0.5);
       const tt = part(ax, "LP 한 장 걸어 볼게요 🎵", [0.47, 0.2, 0.37, ty + 0.1], ty + 0.5);
@@ -6822,6 +6896,10 @@ function openBossLook() {
   buildSwatches(); drawLookPrev();
 }
 $("bossLookBtn")?.addEventListener("click", openBossLook);
+$("spotifyBtn")?.addEventListener("click", async () => { // 사장님: 스포티파이 연결 (매장에서 나오는 곡을 맥북 화면에)
+  try { const r = await api("/api/spotify/start"); location.href = r.url; } catch (err) { toast(err.message || "잠시 뒤에 다시 해 주세요", 2600); }
+});
+{ const q = new URLSearchParams(location.search).get("spotify"); if (q) { setTimeout(() => toast(q === "ok" ? "🎵 스포티파이 연결 완료!\n맥북 화면에 지금 나오는 곡이 떠요" : "스포티파이 연결에 실패했어요\n다시 눌러 주세요", 3000), 1500); history.replaceState(null, "", location.pathname); } }
 $("lookForm").addEventListener("submit", async (e) => {
   e.preventDefault();
   if (lookBoss) {

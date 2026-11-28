@@ -252,7 +252,7 @@
   body.walking.admin .adminbar #resetBtn { position: fixed; z-index: 12; top: var(--backTop, calc(env(safe-area-inset-top) + 12px)); left: var(--resetLeft, 240px); height: var(--backH, 40px); padding: 0 14px; border-radius: 16px; box-shadow: 0 6px 24px rgba(120,80,50,.14); font-weight: 800; }
   body.walking.admin .adminbar #logoutBtn { position: fixed; z-index: 12; top: var(--backTop, calc(env(safe-area-inset-top) + 12px)); left: var(--backLeft, 140px); height: var(--backH, 40px);
     padding: 0 14px; border-radius: 16px; background: var(--card); color: var(--ink); border: 1px solid rgba(255,255,255,.7); box-shadow: 0 6px 24px rgba(120,80,50,.14); font-weight: 800; }
-  body.walking .adminbar #bossLookBtn, body.walking .adminbar #adminChatBtn, body.walking .adminbar #boardEditBtn, body.walking .adminbar #view3dBtn { display: none; } /* 매장 안: 안에서 안 쓰는 버튼은 숨김 */
+  body.walking .adminbar #spotifyBtn, body.walking .adminbar #bossLookBtn, body.walking .adminbar #adminChatBtn, body.walking .adminbar #boardEditBtn, body.walking .adminbar #view3dBtn { display: none; } /* 매장 안: 안에서 안 쓰는 버튼은 숨김 */
 
   /* 처음 켜질 때 로딩 화면 (3D 준비되면 사라짐) */
   .boot { position: fixed; inset: 0; z-index: 50; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px;
@@ -435,6 +435,7 @@
       <button type="button" id="boardEditBtn">배치 편집</button>
       <button type="button" id="view3dBtn">3D 보기</button>
       <button type="button" class="warn" id="resetBtn">전체 비우기</button>
+      <button type="button" id="spotifyBtn">스포티파이</button>
       <button type="button" id="bossLookBtn">내 캐릭터</button>
       <button type="button" id="adminChatBtn">채팅 <b id="adminLiveN">0</b></button>
       <button type="button" id="logoutBtn">나가기</button>

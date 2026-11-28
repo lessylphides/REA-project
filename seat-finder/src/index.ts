@@ -5,6 +5,9 @@ import { type Look, cleanLook, cleanName, cleanChat, EMOJIS, randId, hashPw, EMA
 export interface Env {
   SEATS: DurableObjectNamespace<SeatStore>;
   ADMIN_TOKEN?: string;
+  /** 스포티파이 앱 (developer.spotify.com) — 매장에서 지금 나오는 곡 보여주기 */
+  SPOTIFY_CLIENT_ID?: string;
+  SPOTIFY_CLIENT_SECRET?: string;
   /** 매장 에어컨 앱(heyhome-smart-ac)의 KV — 읽기만 함 (영업시간·실내 온습도·에어컨 상태) */
   AC?: KVNamespace;
 }
@@ -34,6 +37,47 @@ export class SeatStore extends DurableObject<Env> {
   }
 
   /** 매장 불 스위치 (관리자만): 모든 화면에 적용. 다음 새벽 4시·오전 10시가 되면 시간대 기본값으로 돌아감 */
+  // ───────── 스포티파이: 사장님 계정에서 "지금 나오는 곡" 정보만 읽음 (소리는 내보내지 않음) ─────────
+  private np: { at: number; data: unknown } | null = null;
+  async spotifyState(state?: string) { // 로그인 시작할 때 만든 확인용 번호 저장 / 확인
+    if (state === undefined) { const st = randId(16); await this.ctx.storage.put("spState", { st, at: Date.now() }); return st; }
+    const v = await this.ctx.storage.get<{ st: string; at: number }>("spState");
+    await this.ctx.storage.delete("spState");
+    return !!v && v.st === state && Date.now() - v.at < 10 * 60e3;
+  }
+  async spotifySave(tok: { refresh_token?: string; access_token: string; expires_in: number }) {
+    const old = await this.ctx.storage.get<{ refresh: string }>("spotify");
+    await this.ctx.storage.put("spotify", { refresh: tok.refresh_token || old?.refresh, access: tok.access_token, exp: Date.now() + (tok.expires_in - 60) * 1000 });
+    this.np = null;
+  }
+  async nowPlaying(id?: string, secret?: string) {
+    if (this.np && Date.now() - this.np.at < 10000) return this.np.data; // 10초 동안은 저장해 둔 값
+    const sp = await this.ctx.storage.get<{ refresh: string; access: string; exp: number }>("spotify");
+    let data: unknown = { connected: false };
+    if (sp?.refresh && id && secret) {
+      try {
+        let access = sp.access;
+        if (!access || Date.now() > sp.exp) {
+          const r = await fetch("https://accounts.spotify.com/api/token", { method: "POST", headers: { "content-type": "application/x-www-form-urlencoded", authorization: "Basic " + btoa(`${id}:${secret}`) }, body: new URLSearchParams({ grant_type: "refresh_token", refresh_token: sp.refresh }) });
+          if (!r.ok) throw new Error("refresh " + r.status);
+          const t = (await r.json()) as { access_token: string; expires_in: number; refresh_token?: string };
+          await this.spotifySave(t); access = t.access_token;
+        }
+        const r = await fetch("https://api.spotify.com/v1/me/player/currently-playing", { headers: { authorization: `Bearer ${access}` } });
+        if (r.status === 204) data = { connected: true, playing: false };
+        else if (r.ok) {
+          const j = (await r.json()) as { is_playing?: boolean; progress_ms?: number; item?: { name?: string; duration_ms?: number; artists?: { name: string }[]; album?: { name?: string; images?: { url: string; width: number }[] }; external_urls?: { spotify?: string } } };
+          const it = j.item;
+          const imgs = (it?.album?.images || []).slice().sort((a, b) => a.width - b.width);
+          const art = (imgs.find((x) => x.width >= 250) || imgs[imgs.length - 1])?.url;
+          data = it ? { connected: true, playing: !!j.is_playing, title: it.name, artist: (it.artists || []).map((a) => a.name).join(", "), album: it.album?.name, art: art && /^https:\/\/i\.scdn\.co\//.test(art) ? art : null, url: it.external_urls?.spotify, progress: j.progress_ms, duration: it.duration_ms, at: Date.now() } : { connected: true, playing: false };
+        } else data = { connected: true, playing: false, error: r.status };
+      } catch { data = { connected: true, playing: false, error: "fail" }; }
+    }
+    this.np = { at: Date.now(), data };
+    return data;
+  }
+
   async setLights(on: boolean) {
     const lights = { on, at: Date.now() };
     await this.ctx.storage.put("lights", lights);
@@ -361,7 +405,7 @@ const SEC_HEADERS: Record<string, string> = {
   "permissions-policy": "camera=(), microphone=(), geolocation=()",
 };
 // 화면(HTML): 같은 사이트의 스크립트만, 다른 사이트에 끼워 넣기(iframe) 금지
-const CSP = "default-src 'self'; script-src 'self' 'sha256-x1TAhLj6rKB/Bc8IgFvrpLhJuvFs40ISRM3iiU77Ty4='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; media-src 'self' https: blob:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'";
+const CSP = "default-src 'self'; script-src 'self' 'sha256-x1TAhLj6rKB/Bc8IgFvrpLhJuvFs40ISRM3iiU77Ty4='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; media-src 'self' https: blob:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'; frame-src https://open.spotify.com";
 
 const json = (data: unknown, status = 200) =>
   new Response(JSON.stringify(data), {
@@ -429,6 +473,25 @@ export default {
     }
 
     // 관리자 버튼판 배치 (누구나 읽기, 저장은 관리자)
+    // 지금 매장에서 나오는 곡 (스포티파이) — 누구나 읽기
+    if (url.pathname === "/api/nowplaying" && req.method === "GET") return json(await store.nowPlaying(env.SPOTIFY_CLIENT_ID, env.SPOTIFY_CLIENT_SECRET));
+    if (url.pathname === "/api/nowplaying/art" && req.method === "GET") { // 앨범 표지 (스포티파이 이미지 서버만, 같은 주소로 받아 3D 화면에 그림)
+      const u = url.searchParams.get("u") || "";
+      if (!/^https:\/\/i\.scdn\.co\/image\/[A-Za-z0-9]+$/.test(u)) return new Response("bad", { status: 400 });
+      const r = await fetch(u, { cf: { cacheTtl: 86400, cacheEverything: true } } as RequestInit);
+      return new Response(r.body, { status: r.status, headers: { "content-type": r.headers.get("content-type") || "image/jpeg", "cache-control": "public, max-age=86400", ...SEC_HEADERS } });
+    }
+    // 스포티파이 연결 마무리 (로그인 후 돌아오는 곳)
+    if (url.pathname === "/api/spotify/callback" && req.method === "GET") {
+      const code = url.searchParams.get("code") || "", state = url.searchParams.get("state") || "";
+      const back = (m: string) => Response.redirect(`${url.origin}/admin?spotify=${m}`, 302);
+      if (!env.SPOTIFY_CLIENT_ID || !env.SPOTIFY_CLIENT_SECRET || !code || !(await store.spotifyState(state))) return back("fail");
+      const r = await fetch("https://accounts.spotify.com/api/token", { method: "POST", headers: { "content-type": "application/x-www-form-urlencoded", authorization: "Basic " + btoa(`${env.SPOTIFY_CLIENT_ID}:${env.SPOTIFY_CLIENT_SECRET}`) }, body: new URLSearchParams({ grant_type: "authorization_code", code, redirect_uri: `${url.origin}/api/spotify/callback` }) });
+      if (!r.ok) return back("fail");
+      await store.spotifySave((await r.json()) as { refresh_token?: string; access_token: string; expires_in: number });
+      return back("ok");
+    }
+
     if (url.pathname === "/api/board" && req.method === "GET") {
       return json(await store.getBoard());
     }
@@ -493,6 +556,12 @@ export default {
         const clean = { barQ: num(src.barQ, 0.5, 2, 1.12), bar: { dx: num(src.bar?.dx, -10, 10, 0), dz: num(src.bar?.dz, -10, 10, 0) }, seats, tables };
         await store.setBoard(clean, b.asDefault === true);
         return json({ ok: true, board: clean });
+      }
+      if (url.pathname === "/api/spotify/start") { // 사장님: 스포티파이 연결 시작 → 로그인 주소
+        if (!env.SPOTIFY_CLIENT_ID || !env.SPOTIFY_CLIENT_SECRET) return json({ error: "Cloudflare 에 SPOTIFY_CLIENT_ID · SPOTIFY_CLIENT_SECRET 을 먼저 넣어 주세요" }, 400);
+        const state = String(await store.spotifyState());
+        const q = new URLSearchParams({ response_type: "code", client_id: env.SPOTIFY_CLIENT_ID, scope: "user-read-currently-playing user-read-playback-state", redirect_uri: `${url.origin}/api/spotify/callback`, state });
+        return json({ url: `https://accounts.spotify.com/authorize?${q}` });
       }
       if (url.pathname === "/api/lights") {
         const b = (await req.json().catch(() => null)) as { on?: unknown } | null;
