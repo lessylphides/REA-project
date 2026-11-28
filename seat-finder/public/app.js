@@ -3202,11 +3202,6 @@ function buildInteriorProp(p, g) {
       mk(box(0.03, 0.012, 0.06), "#333", [ax + 0.19, ty + 0.074, 0.12], g, no); // 피치 슬라이더
       mk(cyl(0.012, 0.012, 0.012, 12), "#2a2a2c", [ax - 0.19, ty + 0.078, 0.13], g, no); // 시작 버튼
       const cover = mk(box(tW, 0.11, tD), new THREE.MeshBasicMaterial({ color: "#dfe9ee", transparent: true, opacity: 0.16, depthWrite: false }), [ax, ty + 0.07 + 0.055, 0], g, { outline: 0.002, shadow: false }); // 투명 덮개
-      // 덮개 위: 가죽 장갑 한 켤레 + 흰 동글 스피커
-      const gy = ty + 0.07 + 0.11;
-      for (let i = 0; i < 2; i++) { const gl = mk(new THREE.CapsuleGeometry(0.028, 0.11, 4, 10), "#c08a4e", [ax - 0.1 + i * 0.015, gy + 0.018 + i * 0.03, 0.03 + i * 0.01], g, { outline: 0.004 }); gl.rotation.z = Math.PI / 2; gl.scale.set(1, 1, 0.45); }
-      mk(new THREE.SphereGeometry(0.035, 16, 12), "#f2f0ea", [ax + 0.02, gy + 0.03, -0.02], g, { outline: 0.004 }).scale.set(1, 0.85, 1);
-      mk(new THREE.CircleGeometry(0.024, 16), new THREE.MeshBasicMaterial({ color: "#5a3a2a" }), [ax + 0.02, gy + 0.034, 0.012], g, no);
       // ── CD50n (왼쪽)
       const cx = -0.23, cW = 0.44, cH = 0.123, cD = 0.37, cy = y0 + 0.018;
       feet(cx, cW, cD, y0);
