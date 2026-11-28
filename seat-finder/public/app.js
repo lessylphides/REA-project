@@ -5401,22 +5401,6 @@ function initWalk() {
 const clock = new THREE.Clock();
 const elastic = (t) => (t === 0 || t === 1 ? t : Math.pow(2, -10 * t) * Math.sin((t * 10 - 0.75) * ((2 * Math.PI) / 3)) + 1);
 
-// 아이폰 사파리 맨 위 시계 줄은 페이지가 못 그리는 영역 → 매장 화면 맨 위(천장) 색을 읽어 그 색으로 칠함 (이어져 보이게)
-let topTintT = -9, topTintLast = "";
-const topPx = new Uint8Array(4);
-function tintTopBar(time) {
-  if (time - topTintT < 1.5) return;
-  topTintT = time;
-  const gl = renderer.getContext(), W = gl.drawingBufferWidth, H = gl.drawingBufferHeight;
-  if (!W || !H) return;
-  let r = 0, g = 0, b = 0, n = 0;
-  for (const fx of [0.2, 0.5, 0.8]) { gl.readPixels(Math.floor(W * fx), H - 2, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, topPx); if (topPx[3] > 200) { r += topPx[0]; g += topPx[1]; b += topPx[2]; n++; } }
-  const hex = n ? "#" + [r, g, b].map((v) => Math.round(v / n).toString(16).padStart(2, "0")).join("") : "";
-  if (hex === topTintLast) return;
-  topTintLast = hex;
-  document.documentElement.style.backgroundColor = hex; // 사파리가 위·아래 막대 색을 페이지 바탕에서 가져감
-  const m = document.getElementById("themeColor"); if (m) m.content = hex || "#fdf1e2";
-}
 function tick() {
   const dt = Math.min(clock.getDelta(), 0.05);
   liveTick(dt);
@@ -5461,7 +5445,6 @@ function tick() {
   updateWorld(dt, time);
   if (!walk.on && !walk.tween && !walk.intro) controls.update();
   renderer.render(scene, camera);
-  tintTopBar(time);
 }
 
 const leaves = []; // 접이식 테이블 날개

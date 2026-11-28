@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
 <title>빈자리찾기</title>
 <meta name="description" content="지금 매장에 빈자리가 있는지 3D로 확인하세요." />
-<meta name="theme-color" content="#fdf1e2" id="themeColor" />
+<meta name="theme-color" content="#fdf1e2" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-title" content="빈자리찾기" />
@@ -20,7 +20,7 @@
     --empty: #2fa877; --busy: #ee7a62; --line: rgba(59,47,42,.1);
   }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-  html, body { margin: 0; height: 100%; height: calc(100lvh + env(safe-area-inset-bottom)); overflow: hidden; } /* 본문을 주소창 뒤까지 (사파리는 본문만 반투명 주소창 뒤에 그려 줌) */
+  html, body { margin: 0; height: 100%; height: 100lvh; overflow: hidden; } /* 본문을 주소창 뒤까지 (사파리는 본문만 반투명 주소창 뒤에 그려 줌) */
   body {
     font-family: "Pretendard", "Apple SD Gothic Neo", "Noto Sans KR", system-ui, sans-serif;
     color: var(--ink);
@@ -30,7 +30,7 @@
   html, body { touch-action: manipulation; } /* 두 번 톡 확대 막기 */
   html:has(body.walking) { background: #1d1714; } /* 아이폰 키보드가 페이지를 밀 때 드러나는 바닥: 하얀색 대신 어두운 매장 색 */
   
-  #scene { position: absolute; left: 0; right: 0; top: 0; height: 100vh; height: calc(100lvh + env(safe-area-inset-bottom)); touch-action: none; } /* 홈 표시줄 자리까지 */ /* 주소창 뒤까지 매장을 그림 (반투명 주소창 너머로 비쳐 보이게) */
+  #scene { position: absolute; left: 0; right: 0; top: 0; height: 100vh; height: 100lvh; touch-action: none; } /* 주소창 뒤까지 매장을 그림 (반투명 주소창 너머로 비쳐 보이게) */
   #scene canvas { display: block; }
 
   .top {
