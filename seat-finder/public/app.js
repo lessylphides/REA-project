@@ -2436,9 +2436,9 @@ const doors5 = [];
 function updateDoors5(dt) {
   for (const d of doors5) {
     if (d.auto && d.auto()) { d.target = 1; d.t = 0; } // 커튼: 다가가면 걷힘
-    if (d.target) { d.t += dt; if (d.t > 7 && !(d.keepOpen && d.keepOpen())) d.target = 0; } // 7초 뒤 저절로 닫힘 (드나드는 중엔 열어 둠)
-    d.open += ((d.target ? 1 : 0) - d.open) * Math.min(1, dt * 3);
-    if (Math.abs(d.open - (d.target ? 1 : 0)) < 0.002) d.open = d.target ? 1 : 0;
+    if (d.target) { d.t += dt; if (d.t > (d.slow ? 1.2 : 7) && !(d.keepOpen && d.keepOpen())) d.target = 0; } // 7초 뒤 저절로 닫힘 (드나드는 중엔 열어 둠)
+    d.open += ((d.target ? 1 : 0) - d.open) * Math.min(1, dt * (d.slow ? (d.target ? 2.2 : 1.1) : 3)); // 커튼은 천천히, 돌아올 땐 더 천천히
+    if (!d.slow && Math.abs(d.open - (d.target ? 1 : 0)) < 0.002) d.open = d.target ? 1 : 0;
     if (d.apply) d.apply(d.open); else d.hinge.rotation.y = d.ang * d.open;
     d.inside.visible = d.keep || d.open > 0.01;
   }
@@ -2910,14 +2910,31 @@ function buildInteriorProp(p, g) {
         registerTint(cm);
         const pw = cw / 2 + 0.01, panels = [];
         for (const sd of [-1, 1]) {
-          const geo = new THREE.PlaneGeometry(pw, ch, 10, 1), pos = geo.attributes.position, uv = geo.attributes.uv; // 물결 주름
+          const geo = new THREE.PlaneGeometry(pw, ch, 10, 14), pos = geo.attributes.position, uv = geo.attributes.uv; // 물결 주름
           for (let i = 0; i < pos.count; i++) { pos.setZ(i, Math.sin((pos.getX(i) / pw + 0.5) * Math.PI * 3 + (sd > 0 ? 1 : 0)) * 0.016); uv.setX(i, uv.getX(i) * 0.5 + (sd > 0 ? 0.5 : 0)); }
+          const base = Float32Array.from(pos.array);
           const m = new THREE.Mesh(geo, cm); m.position.set(sd * pw / 2, bot + ch / 2, 0.06 + (sd > 0 ? 0.004 : 0)); g.add(m);
-          panels.push([m, sd]);
+          panels.push({ m, sd, pos, base });
         }
-        g.userData.door5 = { hinge, inside, open: 0, target: 0, t: 0, ang: 0, keepOpen: near,
-          auto: () => walk.on && walk.pos.z < 0.95 && walk.pos.z > -1.2 && Math.abs(walk.pos.x - p.x) < 0.55, // 다가가면 양옆으로 걷힘 (드나들 수 있게)
-          apply: (o) => { for (const [m, sd] of panels) { m.scale.x = 1 - 0.7 * o; m.position.x = sd * (pw / 2 + pw * 0.35 * o); } } };
+        // 실제 천처럼: 윗단은 봉에 꿰매져 고정, 아래로 갈수록 사람이 밀고 지나가는 만큼 옆·안쪽으로 젖혀짐 (천천히, 살짝 흔들리며 돌아옴)
+        let sway = 0;
+        const bend = (o, time) => {
+          sway = time;
+          for (const P of panels) {
+            const { pos, base, sd } = P;
+            for (let i = 0; i < pos.count; i++) {
+              const x0 = base[i * 3], y0 = base[i * 3 + 1], z0 = base[i * 3 + 2];
+              const t = Math.min(1, Math.max(0, (ch / 2 - y0) / ch)); // 0 = 윗단(고정) ~ 1 = 아랫단
+              const inner = (x0 * sd + pw / 2) / pw; // 0 = 바깥 가장자리 ~ 1 = 가운데 갈라진 쪽
+              const k = Math.pow(t, 1.6) * o, wob = Math.sin(time * 2.2 + sd + t * 2) * 0.015 * t * (1 - o * 0.5);
+              pos.setXYZ(i, x0 + sd * k * pw * 0.55 * (0.35 + inner * 0.65), y0 + k * 0.12 * inner, z0 - k * 0.45 * (0.5 + inner * 0.5) + wob);
+            }
+            pos.needsUpdate = true;
+          }
+        };
+        g.userData.door5 = { hinge, inside, open: 0, target: 0, t: 0, ang: 0, keepOpen: near, slow: true,
+          auto: () => walk.on && walk.pos.z < 0.75 && walk.pos.z > -0.9 && Math.abs(walk.pos.x - p.x) < 0.5, // 지나갈 때만 젖혀짐
+          apply: (o) => bend(o, performance.now() / 1000) };
       } else {
         mk(box(w, h, 0.04), p.color || "#7a5638", [0, h / 2, 0], dg, { outline: 0.012 });
         g.userData.door5 = { hinge, inside, open: 0, target: 0, t: 0, ang: 1.6, keepOpen: near };
