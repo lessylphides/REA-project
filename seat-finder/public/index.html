@@ -369,6 +369,19 @@
   .rotate svg { animation: rot 2.4s ease-in-out infinite; }
   @keyframes rot { 0%, 30% { transform: rotate(-90deg); } 60%, 100% { transform: rotate(0deg); } }
   @media (orientation: landscape) and (max-height: 599px) and (pointer: coarse) { html:not(.admin-page) .rotate { display: flex; } }
+  /* 태블릿(짧은 쪽 600px 이상, 터치): 채팅·조이스틱·앉기/점프 1.2배 */
+  @media (pointer: coarse) and (min-width: 600px) and (min-height: 600px) {
+    .joy { width: 77px; height: 77px; }
+    .joy i { width: 36px; height: 36px; margin: -18px 0 0 -18px; }
+    .actbtns { gap: 14px; }
+    .actbtns button { width: 77px; height: 77px; font-size: 14px; }
+    .chat { max-width: 408px; bottom: calc(env(safe-area-inset-bottom) + 121px); }
+    .chat header { font-size: 15px; } .chat header span { font-size: 13px; }
+    .chat ol { font-size: 15.5px; } .chat.open ol { font-size: 17px; height: min(252px, 30vh); }
+    .chat li.sys { font-size: 13px; }
+    .chat #chatExpand { width: 41px; height: 26px; font-size: 18px; border-radius: 13px; }
+    .chat #chatIn { font-size: 19px; line-height: 26px; height: 48px; padding: 11px 14px; }
+  }
 </style>
 <script type="importmap">
 { "imports": {

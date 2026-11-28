@@ -2989,8 +2989,16 @@ function buildInteriorProp(p, g) {
         });
       };
       const st = { busy: false };
+      // 누르기: 1번 = 안내 말풍선만 / 2번 = 말풍선 없이 살짝 흔들림 / 3번 = 뚜껑(상반신)이 열리며 향 피움. 6초 쉬면 처음부터
       g.userData.onTap = () => {
-        if (st.busy) return;
+        if (st.busy) { g.userData.skipSay = true; return; }
+        const now = performance.now();
+        if (now - (st.last || 0) > 6000) st.n = 0;
+        st.last = now; st.n = (st.n || 0) + 1;
+        if (st.n === 1) return; // 안내 멘트
+        g.userData.skipSay = true;
+        if (st.n < 3) return; // 2번째: 흔들림만
+        st.n = 0;
         st.busy = true;
         let last = 0;
         addEffect(new THREE.Object3D(), g, 12, (e) => {
@@ -4474,6 +4482,7 @@ function tapProp(u) {
   if (p.type === "aircon" && storeInfo?.temp != null) line = `에어컨이에요\n지금 매장 ${Math.round(storeInfo.temp * 10) / 10}℃${storeInfo.acOn ? " · 작동 중" : ""}`;
   if (p.type === "sidetable" && p.item === "humidifier" && storeInfo?.hum != null) line = `가습기예요\n지금 습도 ${Math.round(storeInfo.hum)}%`;
   const sp = bu.sayPos || [u.group.position.x, u.group.position.z];
+  if (bu.skipSay) { bu.skipSay = false; return; } // 말풍선 없이 반응만 (예: 연기 인형 2·3번째)
   popBubble(line || p.say, sp[0], u.sayY ?? SAY_HEIGHT[p.type] ?? 1.5, sp[1], bu.path ? { follow: u.group, scale: 0.7 } : bu.sayScale ? { scale: bu.sayScale } : undefined);
   if (!found.has(u.idx)) {
     found.add(u.idx);
@@ -5360,8 +5369,9 @@ function initWalk() {
   // 가상 조이스틱 (휴대폰)
   const joy = $("joy"), knob = joy.querySelector("i");
   let jid = null, jc = null;
-  const R0 = 30; // 조이스틱 손잡이가 움직이는 거리 (원 지름 64px — 앉기 버튼과 같은 크기)
+  let R0 = 30; // 조이스틱 손잡이가 움직이는 거리 (원 지름의 약 절반 — 태블릿은 원이 1.2배라 함께 커짐)
   const move = (e) => {
+    R0 = Math.round((joy.clientWidth || 64) * 0.47);
     let dx = e.clientX - jc.x, dy = e.clientY - jc.y;
     const m = Math.hypot(dx, dy);
     if (m > R0) { dx *= R0 / m; dy *= R0 / m; }
