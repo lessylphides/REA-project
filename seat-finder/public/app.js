@@ -2435,10 +2435,11 @@ const airCons = [];
 const doors5 = [];
 function updateDoors5(dt) {
   for (const d of doors5) {
+    if (d.auto && d.auto()) { d.target = 1; d.t = 0; } // 커튼: 다가가면 걷힘
     if (d.target) { d.t += dt; if (d.t > 7 && !(d.keepOpen && d.keepOpen())) d.target = 0; } // 7초 뒤 저절로 닫힘 (드나드는 중엔 열어 둠)
     d.open += ((d.target ? 1 : 0) - d.open) * Math.min(1, dt * 3);
     if (Math.abs(d.open - (d.target ? 1 : 0)) < 0.002) d.open = d.target ? 1 : 0;
-    d.hinge.rotation.y = d.ang * d.open;
+    if (d.apply) d.apply(d.open); else d.hinge.rotation.y = d.ang * d.open;
     d.inside.visible = d.keep || d.open > 0.01;
   }
 }
@@ -2880,15 +2881,50 @@ function buildInteriorProp(p, g) {
       const w = p.w ?? 0.85, h = p.h ?? 2.05, frame = "#f4f1ec";
       const hinge = new THREE.Group(); hinge.position.set(w / 2, 0, 0.03); g.add(hinge); // 오른쪽 경첩 (5번 누르면 열림)
       const dg = new THREE.Group(); dg.position.x = -w / 2; hinge.add(dg);
-      mk(box(w, h, 0.04), p.color || "#7a5638", [0, h / 2, 0], dg, { outline: 0.012 });
       const inside = new THREE.Group(); inside.visible = false; g.add(inside); // 열리면 보이는 바깥 복도 (어두운 뒤 공간)
       // (문 너머는 buildBackRooms 의 화장실 통로 공간이 실제로 있음)
-      g.userData.door5 = { hinge, inside, open: 0, target: 0, t: 0, ang: 1.6, keepOpen: () => walk.on && walk.pos.z < 1.0 && Math.abs(walk.pos.x - p.x) < 1.4 };
+      const near = () => walk.on && walk.pos.z < 1.0 && Math.abs(walk.pos.x - p.x) < 1.4;
+      if (p.curtain) { // 문 대신 커튼: 흰 리넨에 큰 야자잎 그림, 흰 봉에 걸림. 다가가면 옆으로 걷힘
+        const cw = w + 0.1, top = h + 0.02, bot = p.curtainBottom ?? 0.45, ch = top - bot;
+        mk(cyl(0.012, 0.012, cw + 0.14, 10), "#f2f0ea", [0, top + 0.03, 0.05], g, { outline: 0.004 }).rotation.z = Math.PI / 2; // 커튼 봉
+        for (const sx of [-1, 1]) mk(new THREE.SphereGeometry(0.018, 8, 6), "#f2f0ea", [sx * (cw / 2 + 0.07), top + 0.03, 0.05], g, { outline: 0.003 });
+        const tex = canvasTex(320, 512, (c, W2, H2) => {
+          c.fillStyle = "#efeae0"; c.fillRect(0, 0, W2, H2);
+          c.globalAlpha = 0.06; c.fillStyle = "#8a7f6c"; for (let y = 0; y < H2; y += 3) c.fillRect(0, y, W2, 1); for (let x = 0; x < W2; x += 3) c.fillRect(x, 0, 1, H2); c.globalAlpha = 1; // 리넨 결
+          const stem = (t) => [W2 * (0.62 - 0.12 * t * t), H2 * (1.02 - t * 1.05)];
+          c.strokeStyle = "#3f5a3c"; c.lineWidth = 5; c.beginPath(); for (let i = 0; i <= 30; i++) { const [x, y] = stem(i / 30); i ? c.lineTo(x, y) : c.moveTo(x, y); } c.stroke();
+          for (let i = 1; i < 15; i++) { // 잎: 양쪽으로 길쭉하게, 수채화처럼 두 톤
+            const t = i / 15, [x, y] = stem(t), L = W2 * (0.62 - t * 0.22);
+            for (const sd of [-1, 1]) {
+              const a = sd < 0 ? Math.PI + 0.55 - t * 0.2 : -0.45 + t * 0.15;
+              c.save(); c.translate(x, y); c.rotate(a);
+              const g2 = c.createLinearGradient(0, -12, 0, 12); g2.addColorStop(0, "#2f4a32"); g2.addColorStop(0.5, "#5d7d4c"); g2.addColorStop(1, "#3b5a3a");
+              c.fillStyle = g2; c.beginPath(); c.moveTo(0, 0); c.quadraticCurveTo(L * 0.5, -17, L, 2); c.quadraticCurveTo(L * 0.5, 12, 0, 0); c.fill(); c.restore();
+            }
+          }
+        });
+        // 긴 커튼 두 장 (가운데서 갈라짐) — 그림은 두 장에 이어지게 반씩
+        const cm = new THREE.MeshBasicMaterial({ map: tex, side: THREE.DoubleSide });
+        registerTint(cm);
+        const pw = cw / 2 + 0.01, panels = [];
+        for (const sd of [-1, 1]) {
+          const geo = new THREE.PlaneGeometry(pw, ch, 10, 1), pos = geo.attributes.position, uv = geo.attributes.uv; // 물결 주름
+          for (let i = 0; i < pos.count; i++) { pos.setZ(i, Math.sin((pos.getX(i) / pw + 0.5) * Math.PI * 3 + (sd > 0 ? 1 : 0)) * 0.016); uv.setX(i, uv.getX(i) * 0.5 + (sd > 0 ? 0.5 : 0)); }
+          const m = new THREE.Mesh(geo, cm); m.position.set(sd * pw / 2, bot + ch / 2, 0.06 + (sd > 0 ? 0.004 : 0)); g.add(m);
+          panels.push([m, sd]);
+        }
+        g.userData.door5 = { hinge, inside, open: 0, target: 0, t: 0, ang: 0, keepOpen: near,
+          auto: () => walk.on && walk.pos.z < 0.95 && walk.pos.z > -1.2 && Math.abs(walk.pos.x - p.x) < 0.55, // 다가가면 양옆으로 걷힘 (드나들 수 있게)
+          apply: (o) => { for (const [m, sd] of panels) { m.scale.x = 1 - 0.7 * o; m.position.x = sd * (pw / 2 + pw * 0.35 * o); } } };
+      } else {
+        mk(box(w, h, 0.04), p.color || "#7a5638", [0, h / 2, 0], dg, { outline: 0.012 });
+        g.userData.door5 = { hinge, inside, open: 0, target: 0, t: 0, ang: 1.6, keepOpen: near };
+      }
       wcDoor5 = g.userData.door5;
       for (const sx of [-1, 1]) mk(box(0.06, h + 0.04, 0.07), frame, [sx * (w / 2 + 0.03), (h + 0.04) / 2, 0.035], g, { outline: 0.008 });
       mk(box(w + 0.18, 0.06, 0.07), frame, [0, h + 0.05, 0.035], g, { outline: 0.008 });
-      mk(new THREE.SphereGeometry(0.035, 10, 8), "#c9b27a", [-w / 2 + 0.1, 1.0, 0.04], dg, { outline: 0.005 }); // 손잡이는 경첩 반대쪽
-      if (p.text) {
+      if (!p.curtain) mk(new THREE.SphereGeometry(0.035, 10, 8), "#c9b27a", [-w / 2 + 0.1, 1.0, 0.04], dg, { outline: 0.005 }); // 손잡이는 경첩 반대쪽
+      if (p.text && !p.curtain) {
         const t = canvasTex(128, 64, (c, W2, H2) => {
           c.fillStyle = "#f4f1ec"; c.beginPath(); c.roundRect(2, 2, W2 - 4, H2 - 4, 12); c.fill();
           c.fillStyle = "#3b2f2a"; c.font = "800 30px 'Pretendard','Apple SD Gothic Neo',sans-serif"; c.textAlign = "center"; c.fillText(p.text, W2 / 2, 43);
