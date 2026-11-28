@@ -1153,7 +1153,7 @@ document.getElementById('wxClose').onclick=()=>document.getElementById('wxModal'
 document.getElementById('devline').onclick=function(e){e.stopPropagation();document.getElementById('acTile').click();setTimeout(function(){var x=document.getElementById('circState');if(x)x.scrollIntoView({block:'center'})},250);};
 document.getElementById('tgtTile').onclick=function(){var ad=lastPv&&lastPv.adapt;if(!ad){alert('목표 온도 자동 조정이 꺼져 있어요');return}
   if(lastPv.scheduleState==='closed'){alert('비영업 시간이라 최저 기준만 지켜요.\\n\\n영업 시간 목표: '+ad.note);return}
-  alert((lastPv.seasonMode==='cooling'?('여름 목표 설정 '+ad.baseS+'℃ → 지금 '+ad.s+'℃'+(ad.climateS?'\\n· 선선한 날씨가 이어져 +'+ad.climateS+'℃':'')):ad.note)+'\\n\\n목표는 30분에 0.5℃씩 천천히 움직여요.');};
+  alert((lastPv.seasonMode==='cooling'?('여름 목표 설정 '+ad.baseS+'℃ → 지금 '+ad.s+'℃'+(ad.climateS?'\\n· 선선한 날씨가 이어져 +'+ad.climateS+'℃':'')):ad.note)+'\\n\\n목표는 천천히 움직여요 (내릴 땐 30분에 0.5℃, 올릴 땐 1.5℃).');};
 document.getElementById('humid').onclick=function(e){e.stopPropagation();document.getElementById('humModal').style.display='flex';document.getElementById('humMsg').textContent='';var h=lastPv&&lastPv.indoorHumidity;document.getElementById('humNow').textContent='지금 실내 습도 '+(h!=null?h+'%':'–');showHum(null);refreshHum();loadHum();};
 document.getElementById('humClose').onclick=()=>document.getElementById('humModal').style.display='none';
 function bizRender(){var pv=lastPv||{},o=pv.override,i=document.getElementById('bizInfo');
